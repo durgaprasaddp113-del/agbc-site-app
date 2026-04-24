@@ -27,10 +27,10 @@ function useProjects() {
       if (data) setProjects(data.map(p => ({
         id: p.id, number: p.project_number, name: p.project_name,
         plot: p.plot_number, location: p.location,
-        plotArea: p.plot_area_sqft, bua: p.bua_sqft, gfa: p.max_gfa_sqft,
+        plotArea: p.plot_area_sqft, bua: p.bua_sqft,
         duration: p.duration_months, consultant: p.consultant_name,
-        consultantContact: p.consultant_contact, status: p.status || "Active",
-        mapUrl: p.map_url, progress: 0, openTasks: 0, openSnags: 0, pendingIR: 0,
+        status: p.status || "Active", mapUrl: p.map_url,
+        progress: 0, openTasks: 0, openSnags: 0, pendingIR: 0,
       })));
       setLoading(false);
     });
@@ -49,7 +49,7 @@ function useTasks() {
       location: t.location || "", trade: t.trade || "",
       assignee: t.assignee_name || "Unassigned",
       priority: t.priority || "Medium", status: t.status || "Open",
-      due: t.due_date || null, created: t.created_at,
+      due: t.due_date || null,
     })));
     setLoading(false);
   };
@@ -64,8 +64,8 @@ function useTasks() {
     await fetchTasks(); return true;
   };
   const updateTaskStatus = async (taskId, newStatus) => {
-    const { error } = await supabase.from("tasks").update({ status: newStatus, updated_at: new Date() }).eq("id", taskId);
-    if (error) { console.error("Update task error:", error); return false; }
+    const { error } = await supabase.from("tasks").update({ status: newStatus }).eq("id", taskId);
+    if (error) return false;
     await fetchTasks(); return true;
   };
   return { tasks, loading, addTask, updateTaskStatus };
@@ -102,33 +102,54 @@ function useSnags() {
     await fetchSnags(); return true;
   };
   const updateSnagStatus = async (snagId, newStatus) => {
-    const { error } = await supabase.from("snag_items").update({ status: newStatus, updated_at: new Date() }).eq("id", snagId);
-    if (error) { console.error("Update snag error:", error); return false; }
+    const { error } = await supabase.from("snag_items").update({ status: newStatus }).eq("id", snagId);
+    if (error) return false;
     await fetchSnags(); return true;
   };
   return { snags, loading, addSnag, updateSnagStatus };
 }
 
+function useDailyReports() {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const fetchReports = async () => {
+    const { data, error } = await supabase.from("daily_reports").select("*").order("report_date", { ascending: false });
+    if (error) console.error("Reports error:", error);
+    if (data) setReports(data.map(r => ({
+      id: r.id, pid: r.project_id, date: r.report_date,
+      weather: r.weather || "", temp: r.temperature_high ? r.temperature_high + "C" : "",
+      manpower: r.manpower_total || 0, activities: r.work_activities || "",
+      status: r.status || "Draft", preparedBy: r.prepared_by_name || "",
+    })));
+    setLoading(false);
+  };
+  useEffect(() => { fetchReports(); }, []);
+  const addReport = async (form) => {
+    const { error } = await supabase.from("daily_reports").insert([{
+      project_id: form.project_id, report_date: form.report_date,
+      weather: form.weather, temperature_high: parseInt(form.temperature) || null,
+      manpower_total: parseInt(form.manpower) || 0,
+      work_activities: form.activities, work_completed: form.completed,
+      issues_delays: form.issues, status: "Draft",
+      prepared_by_name: form.preparedBy,
+    }]);
+    if (error) { console.error("Add report error:", error); return false; }
+    await fetchReports(); return true;
+  };
+  return { reports, loading, addReport };
+}
+
 const INSPECTIONS = [
-  { id:"ir1", pid:"p1", num:"WIR/AGBC/001/25", type:"WIR", desc:"Reinforcement inspection before concrete pour — Grade Slab Block A", location:"Ground Floor – Block A", submitted:"2025-01-20", inspection:"2025-01-22", status:"Approved", remarks:"All reinforcement checked, approved with minor comment on cover" },
-  { id:"ir2", pid:"p1", num:"WIR/AGBC/002/25", type:"WIR", desc:"Blockwork inspection — Level 3 internal partitions", location:"Level 3 – All Zones", submitted:"2025-01-23", inspection:"2025-01-27", status:"Submitted", remarks:"" },
-  { id:"ir3", pid:"p1", num:"MIR/AGBC/001/25", type:"MIR", desc:"Concrete delivery inspection — 35 MPa ready-mix", location:"Block A – Ground", submitted:"2025-01-21", inspection:"2025-01-21", status:"Approved", remarks:"Slump 120mm, cube samples taken" },
-  { id:"ir4", pid:"p2", num:"WIR/AGBC/003/25", type:"WIR", desc:"First fix MEP inspection before plaster — Level 3", location:"Level 3 – All Apartments", submitted:"2025-01-25", inspection:"2025-01-30", status:"Rejected", remarks:"Incomplete conduit installation in apartments 301-305" },
-  { id:"ir5", pid:"p2", num:"WIR/AGBC/004/25", type:"WIR", desc:"Formwork inspection before slab pour — Level 4", location:"Level 4 – Full Floor", submitted:"2025-01-26", inspection:null, status:"Draft", remarks:"" },
+  { id:"ir1", pid:"p1", num:"WIR/AGBC/001/25", type:"WIR", desc:"Reinforcement inspection — Grade Slab Block A", location:"Ground Floor", submitted:"2025-01-20", inspection:"2025-01-22", status:"Approved", remarks:"Approved with minor comment" },
+  { id:"ir2", pid:"p1", num:"WIR/AGBC/002/25", type:"WIR", desc:"Blockwork inspection — Level 3", location:"Level 3", submitted:"2025-01-23", inspection:"2025-01-27", status:"Submitted", remarks:"" },
+  { id:"ir3", pid:"p2", num:"WIR/AGBC/003/25", type:"WIR", desc:"First fix MEP inspection — Level 3", location:"Level 3", submitted:"2025-01-25", inspection:"2025-01-30", status:"Rejected", remarks:"Incomplete conduit installation" },
 ];
 
 const DRAWINGS = [
   { id:"d1", pid:"p1", num:"AGBC-001-AR-001", title:"Ground Floor Plan", rev:"C", discipline:"Architectural", received:"2024-11-10", latest:true },
-  { id:"d2", pid:"p1", num:"AGBC-001-AR-002", title:"Typical Floor Plan", rev:"B", discipline:"Architectural", received:"2024-11-10", latest:true },
-  { id:"d3", pid:"p1", num:"AGBC-001-ST-001", title:"Foundation Layout Plan", rev:"D", discipline:"Structural", received:"2024-12-01", latest:true },
-  { id:"d4", pid:"p1", num:"AGBC-001-ME-001", title:"HVAC Ductwork Layout", rev:"A", discipline:"MEP", received:"2025-01-05", latest:true },
-  { id:"d5", pid:"p2", num:"AGBC-002-AR-001", title:"Ground Floor Plan", rev:"B", discipline:"Architectural", received:"2024-09-15", latest:true },
-];
-
-const DAILY_REPORTS = [
-  { id:"dr1", pid:"p1", date:"2025-01-27", weather:"Sunny", temp:"24C", manpower:87, status:"Submitted", preparedBy:"Ravi Kumar", activities:"Grade slab concrete pour Block A completed. Level 3 blockwork in progress." },
-  { id:"dr2", pid:"p1", date:"2025-01-26", weather:"Partly Cloudy", temp:"22C", manpower:79, status:"Approved", preparedBy:"Ravi Kumar", activities:"Reinforcement fixing for grade slab. Level 3 MEP first fix conduit." },
-  { id:"dr3", pid:"p2", date:"2025-01-27", weather:"Sunny", temp:"25C", manpower:63, status:"Draft", preparedBy:"Sunil Menon", activities:"Level 4 blockwork 60% complete. Level 3 MEP conduit pending." },
+  { id:"d2", pid:"p1", num:"AGBC-001-ST-001", title:"Foundation Layout Plan", rev:"D", discipline:"Structural", received:"2024-12-01", latest:true },
+  { id:"d3", pid:"p1", num:"AGBC-001-ME-001", title:"HVAC Ductwork Layout", rev:"A", discipline:"MEP", received:"2025-01-05", latest:true },
+  { id:"d4", pid:"p2", num:"AGBC-002-AR-001", title:"Ground Floor Plan", rev:"B", discipline:"Architectural", received:"2024-09-15", latest:true },
 ];
 
 const SUBCONTRACTORS = [
@@ -136,7 +157,6 @@ const SUBCONTRACTORS = [
   { id:"sub2", name:"Green Emirates Contracting", contact:"Suresh Kumar", phone:"+971-55-9876543", email:"suresh@greenuae.com", trades:["Civil","Masonry","Plastering"], active:true, projects:2, openTasks:3, openSnags:3 },
   { id:"sub3", name:"Gulf Tile & Marble", contact:"Praveen Nair", phone:"+971-50-5551234", email:"praveen@gulftile.com", trades:["Tiling","Marble","Flooring"], active:true, projects:1, openTasks:2, openSnags:1 },
   { id:"sub4", name:"Al Madina Aluminum", contact:"Mohammed Al Balushi", phone:"+971-56-7778899", email:"info@almadina-al.com", trades:["Aluminum","Glazing","Cladding"], active:true, projects:2, openTasks:4, openSnags:1 },
-  { id:"sub5", name:"Desert Rose Painting", contact:"Raj Sharma", phone:"+971-52-3334455", email:"raj@desertrose.ae", trades:["Painting","Waterproofing"], active:false, projects:1, openTasks:0, openSnags:1 },
 ];
 
 const fmtNum = (n) => n ? Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—";
@@ -225,7 +245,7 @@ const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => (
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
         </svg>
       </div>
-      {!collapsed && <div><div className="text-sm font-bold text-white leading-tight">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>}
+      {!collapsed && <div><div className="text-sm font-bold text-white">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>}
     </div>
     <nav className="flex-1 py-3 overflow-y-auto">
       {NAV.map(n => (
@@ -240,7 +260,7 @@ const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => (
       {!collapsed && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0">{getInitials(user?.email)}</div>
+            <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold text-white">{getInitials(user?.email)}</div>
             <div className="min-w-0"><div className="text-xs font-semibold text-white truncate">{user?.email}</div><div className="text-xs text-slate-400">Al Ghaith Building</div></div>
           </div>
           <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500 px-3 py-2 rounded-lg transition-colors">
@@ -281,7 +301,6 @@ const Dashboard = ({ projects, tasks, snags }) => {
   const openTasks = tasks.filter(t => t.status !== "Completed" && t.status !== "Closed").length;
   const overdueTasks = tasks.filter(t => isOverdue(t.due) && t.status !== "Completed").length;
   const openSnags = snags.filter(s => s.status !== "Closed").length;
-  const pendingIR = INSPECTIONS.filter(i => i.status === "Submitted" || i.status === "Draft").length;
   const activeProjects = projects.filter(p => p.status === "Active").length;
   return (
     <div className="p-6 space-y-6">
@@ -291,8 +310,8 @@ const Dashboard = ({ projects, tasks, snags }) => {
         <StatCard label="Open Tasks" value={openTasks} sub={`${tasks.length} total`} color="bg-amber-500" icon="tasks" />
         <StatCard label="Overdue Tasks" value={overdueTasks} sub="Needs attention" color="bg-red-500" icon="warn" />
         <StatCard label="Open Snags" value={openSnags} sub={`${snags.length} total`} color="bg-orange-500" icon="snags" />
-        <StatCard label="Pending IR/WIR" value={pendingIR} sub="Awaiting response" color="bg-purple-500" icon="inspections" />
-        <StatCard label="Reports Today" value={2} sub="1 draft pending" color="bg-green-500" icon="reports" />
+        <StatCard label="Pending IR/WIR" value={2} sub="Awaiting response" color="bg-purple-500" icon="inspections" />
+        <StatCard label="Reports Today" value={0} sub="No reports yet" color="bg-green-500" icon="reports" />
       </div>
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -301,9 +320,7 @@ const Dashboard = ({ projects, tasks, snags }) => {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50"><tr>{["Project","Location","Consultant","Duration","Open Tasks","Snags","Status"].map(h=>(
-              <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-            ))}</tr></thead>
+            <thead className="bg-slate-50"><tr>{["Project","Location","Consultant","Duration","Open Tasks","Snags","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {projects.map(p=>(
                 <tr key={p.id} className="hover:bg-slate-50">
@@ -327,7 +344,7 @@ const Dashboard = ({ projects, tasks, snags }) => {
           <div className="divide-y divide-slate-100">
             {tasks.slice(0,5).map(t=>(
               <div key={t.id} className="px-5 py-3 flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${t.status==="Completed"?"bg-green-500":t.status==="In Progress"?"bg-blue-500":t.status==="On Hold"?"bg-amber-500":"bg-slate-300"}`}></div>
+                <div className={`w-2 h-2 rounded-full shrink-0 ${t.status==="Completed"?"bg-green-500":t.status==="In Progress"?"bg-blue-500":"bg-slate-300"}`}></div>
                 <div className="flex-1 min-w-0"><div className="text-sm font-medium text-slate-700 truncate">{t.title}</div><div className="text-xs text-slate-400">{t.location}</div></div>
                 <Badge text={t.priority} colorClass={PRIORITY_COLORS[t.priority]} />
               </div>
@@ -340,7 +357,7 @@ const Dashboard = ({ projects, tasks, snags }) => {
           <div className="divide-y divide-slate-100">
             {snags.filter(s=>s.status!=="Closed").slice(0,5).map(s=>(
               <div key={s.id} className="px-5 py-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-amber-600">{s.num}</div><div className="text-sm font-medium text-slate-700 truncate">{s.title}</div><div className="text-xs text-slate-400">{s.location}</div></div>
+                <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-amber-600">{s.num}</div><div className="text-sm font-medium text-slate-700 truncate">{s.title}</div></div>
                 <Badge text={s.status} />
               </div>
             ))}
@@ -362,19 +379,13 @@ const Projects = ({ projects, loading }) => {
         <h2 className="text-xl font-bold text-slate-800">Projects ({projects.length})</h2>
         <button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Project</button>
       </div>
-      <div className="relative max-w-sm">
-        <Icon name="search" cls="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..." className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" />
-      </div>
+      <div className="relative max-w-sm"><Icon name="search" cls="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..." className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {filtered.map(p=>(
           <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1"><span className="text-xs text-slate-400 font-mono font-bold">{p.number}</span><Badge text={p.status} /></div>
-                <h3 className="font-semibold text-slate-800 leading-tight">{p.name}</h3>
-              </div>
-              {p.mapUrl&&<a href={p.mapUrl} target="_blank" rel="noreferrer" className="shrink-0 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 px-2 py-1 rounded-lg"><Icon name="map" cls="w-3.5 h-3.5" /> Map</a>}
+              <div><div className="flex items-center gap-2 mb-1"><span className="text-xs text-slate-400 font-mono font-bold">{p.number}</span><Badge text={p.status} /></div><h3 className="font-semibold text-slate-800 leading-tight">{p.name}</h3></div>
+              {p.mapUrl&&<a href={p.mapUrl} target="_blank" rel="noreferrer" className="shrink-0 flex items-center gap-1 text-xs text-blue-600 border border-blue-200 px-2 py-1 rounded-lg"><Icon name="map" cls="w-3.5 h-3.5" /> Map</a>}
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-600 mb-4">
               <div><span className="text-slate-400">Location: </span>{p.location}</div>
@@ -384,18 +395,12 @@ const Projects = ({ projects, loading }) => {
               {p.plotArea&&<div><span className="text-slate-400">Plot Area: </span>{fmtNum(p.plotArea)} sqft</div>}
               {p.bua&&<div><span className="text-slate-400">BUA: </span>{fmtNum(p.bua)} sqft</div>}
             </div>
-            <div className="mb-4">
-              <div className="flex justify-between text-xs text-slate-500 mb-1"><span>Progress</span><span>{p.progress}%</span></div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-amber-500 rounded-full" style={{width:`${p.progress}%`}}></div></div>
-            </div>
             <div className="flex items-center gap-4 text-xs">
               <span className="flex items-center gap-1 text-amber-600 font-semibold"><Icon name="tasks" cls="w-3.5 h-3.5" /> {p.openTasks} Tasks</span>
               <span className="flex items-center gap-1 text-red-600 font-semibold"><Icon name="snags" cls="w-3.5 h-3.5" /> {p.openSnags} Snags</span>
-              <span className="flex items-center gap-1 text-purple-600 font-semibold"><Icon name="inspections" cls="w-3.5 h-3.5" /> {p.pendingIR} IRs</span>
             </div>
           </div>
         ))}
-        {filtered.length===0&&<div className="col-span-2 text-center py-16 text-slate-400 bg-white rounded-xl border border-slate-200">No projects found</div>}
       </div>
     </div>
   );
@@ -409,14 +414,12 @@ const Tasks = ({ projects, tasks, loading, onAddTask, onUpdateStatus }) => {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ project_id:"", title:"", description:"", location:"", trade:"", assignee:"", priority:"Medium", due_date:"" });
-
   const filtered = tasks.filter(t => {
     if (filterStatus !== "All" && t.status !== filterStatus) return false;
     if (filterProject !== "All" && t.pid !== filterProject) return false;
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-
   const handleSubmit = async () => {
     if (!form.title || !form.project_id) { alert("Please fill in Task Title and Project"); return; }
     setSaving(true);
@@ -424,56 +427,42 @@ const Tasks = ({ projects, tasks, loading, onAddTask, onUpdateStatus }) => {
     setSaving(false);
     if (ok) { setShowForm(false); setForm({ project_id:"", title:"", description:"", location:"", trade:"", assignee:"", priority:"Medium", due_date:"" }); }
   };
-
   if (showForm) return (
     <div className="p-6 space-y-5 max-w-2xl">
-      <div className="flex items-center gap-3"><button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Task</h2></div>
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Task</h2></div>
       <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label>
-          <select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">
-            <option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</select></div>
-        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Task Title *</label>
-          <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Pour Grade Slab — Block A" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
-        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Description</label>
-          <textarea rows={3} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Task details..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" /></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label><select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</select></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Task Title *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Pour Grade Slab — Block A" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Description</label><textarea rows={3} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Task details..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" /></div>
         <div className="grid grid-cols-2 gap-4">
           <div><label className="text-xs font-semibold text-slate-600 block mb-1">Location</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="e.g. Level 3" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
-          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Trade</label>
-            <select value={form.trade} onChange={e=>setForm({...form,trade:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">
-              <option value="">Select...</option>{["Civil / Structural","Civil / Masonry","Civil / Waterproofing","MEP / HVAC","MEP / Electrical","MEP / Plumbing","Finishing","Aluminum / Glazing","Aluminum / Cladding","Safety"].map(t=><option key={t}>{t}</option>)}</select></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Trade</label><select value={form.trade} onChange={e=>setForm({...form,trade:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select...</option>{["Civil / Structural","Civil / Masonry","MEP / HVAC","MEP / Electrical","MEP / Plumbing","Finishing","Aluminum / Glazing","Safety"].map(t=><option key={t}>{t}</option>)}</select></div>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div><label className="text-xs font-semibold text-slate-600 block mb-1">Assignee</label><input value={form.assignee} onChange={e=>setForm({...form,assignee:e.target.value})} placeholder="Engineer name" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
-          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Priority</label>
-            <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">
-              {["Low","Medium","High","Critical"].map(p=><option key={p}>{p}</option>)}</select></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Priority</label><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">{["Low","Medium","High","Critical"].map(p=><option key={p}>{p}</option>)}</select></div>
           <div><label className="text-xs font-semibold text-slate-600 block mb-1">Due Date</label><input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
         </div>
         <div className="flex gap-3 pt-2">
-          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
-            {saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save Task"}</button>
+          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">{saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save Task"}</button>
           <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
         </div>
       </div>
     </div>
   );
-
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Tasks <span className="text-sm font-normal text-slate-400">({tasks.length})</span></h2>
-        <button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Task</button>
-      </div>
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Tasks ({tasks.length})</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Task</button></div>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative"><Icon name="search" cls="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 w-48" /></div>
-        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="All">All Status</option>{["Open","In Progress","On Hold","Completed","Closed"].map(s=><option key={s}>{s}</option>)}</select>
-        <select value={filterProject} onChange={e=>setFilterProject(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</select>
+        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-2"><option value="All">All Status</option>{["Open","In Progress","On Hold","Completed","Closed"].map(s=><option key={s}>{s}</option>)}</select>
+        <select value={filterProject} onChange={e=>setFilterProject(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-2"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</select>
         <div className="ml-auto flex gap-1 bg-slate-100 p-1 rounded-lg">
           <button onClick={()=>setView("list")} className={`p-1.5 rounded ${view==="list"?"bg-white shadow-sm text-amber-600":"text-slate-400"}`}><Icon name="list" cls="w-4 h-4"/></button>
           <button onClick={()=>setView("kanban")} className={`p-1.5 rounded ${view==="kanban"?"bg-white shadow-sm text-amber-600":"text-slate-400"}`}><Icon name="kanban" cls="w-4 h-4"/></button>
         </div>
       </div>
-      {loading ? <Spinner /> : view==="list" ? (
+      {loading ? <Spinner /> : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Task","Project","Location","Trade","Assignee","Priority","Due Date","Status","Action"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
@@ -481,43 +470,18 @@ const Tasks = ({ projects, tasks, loading, onAddTask, onUpdateStatus }) => {
                 <tr key={t.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3"><div className="font-medium text-slate-800 text-sm max-w-[200px] leading-tight">{t.title}</div><div className="text-xs text-slate-400 mt-0.5 max-w-[200px] truncate">{t.desc}</div></td>
                   <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===t.pid)?.number||"—"}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600 max-w-[120px]">{t.location}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{t.location}</td>
                   <td className="px-4 py-3 text-xs text-slate-600">{t.trade}</td>
                   <td className="px-4 py-3 text-xs text-slate-700 font-medium">{t.assignee}</td>
                   <td className="px-4 py-3"><Badge text={t.priority} colorClass={PRIORITY_COLORS[t.priority]} /></td>
-                  <td className="px-4 py-3"><span className={`text-xs font-medium ${isOverdue(t.due)&&t.status!=="Completed"?"text-red-600":"text-slate-600"}`}>{fmtDate(t.due)}</span>{isOverdue(t.due)&&t.status!=="Completed"&&<div className="text-xs text-red-500">Overdue</div>}</td>
+                  <td className="px-4 py-3"><span className={`text-xs font-medium ${isOverdue(t.due)&&t.status!=="Completed"?"text-red-600":"text-slate-600"}`}>{fmtDate(t.due)}</span></td>
                   <td className="px-4 py-3"><Badge text={t.status} /></td>
-                  <td className="px-4 py-3"><select value={t.status} onChange={e=>onUpdateStatus(t.id,e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400">{["Open","In Progress","On Hold","Completed","Closed"].map(s=><option key={s}>{s}</option>)}</select></td>
+                  <td className="px-4 py-3"><select value={t.status} onChange={e=>onUpdateStatus(t.id,e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1">{["Open","In Progress","On Hold","Completed","Closed"].map(s=><option key={s}>{s}</option>)}</select></td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {filtered.length===0&&<div className="text-center py-16 text-slate-400"><Icon name="tasks" cls="w-10 h-10 mx-auto mb-3 text-slate-200" /><p>No tasks — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first task</button></p></div>}
-        </div>
-      ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {["Open","In Progress","On Hold","Completed"].map(col=>{
-            const colTasks=filtered.filter(t=>t.status===col);
-            return (
-              <div key={col} className="min-w-[260px] w-[260px] shrink-0">
-                <div className={`px-3 py-2 rounded-lg mb-3 flex items-center justify-between ${STATUS_COLORS[col]} border`}><span className="text-xs font-bold uppercase tracking-wide">{col}</span><span className="text-xs font-bold bg-white bg-opacity-60 rounded-full px-1.5 py-0.5">{colTasks.length}</span></div>
-                <div className="space-y-3">
-                  {colTasks.map(t=>(
-                    <div key={t.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between gap-2 mb-2"><p className="text-sm font-semibold text-slate-800 leading-tight">{t.title}</p><Badge text={t.priority} colorClass={PRIORITY_COLORS[t.priority]} /></div>
-                      <div className="text-xs text-slate-500 mb-1">{t.location}</div>
-                      <div className="text-xs text-slate-400 mb-3">{t.trade}</div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center text-white text-xs font-bold">{(t.assignee||"?").charAt(0)}</div><span className="text-xs text-slate-600 truncate max-w-[80px]">{t.assignee}</span></div>
-                        <select value={t.status} onChange={e=>onUpdateStatus(t.id,e.target.value)} className="text-xs border border-slate-200 rounded px-1 py-0.5 focus:outline-none">{["Open","In Progress","On Hold","Completed","Closed"].map(s=><option key={s}>{s}</option>)}</select>
-                      </div>
-                    </div>
-                  ))}
-                  {colTasks.length===0&&<div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center text-xs text-slate-400">No tasks</div>}
-                </div>
-              </div>
-            );
-          })}
+          {filtered.length===0&&<div className="text-center py-16 text-slate-400"><p>No tasks — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first task</button></p></div>}
         </div>
       )}
     </div>
@@ -531,13 +495,11 @@ const Snags = ({ projects, snags, loading, onAddSnag, onUpdateStatus }) => {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ project_id:"", title:"", description:"", location:"", category:"", sub:"", engineer:"", due_date:"" });
   const SNAG_STATUSES = ["Open","Under Rectification","Ready for Review","Closed","Rejected"];
-
   const filtered = snags.filter(s => {
     if (filterStatus !== "All" && s.status !== filterStatus) return false;
     if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-
   const handleSubmit = async () => {
     if (!form.title || !form.project_id) { alert("Please fill Title and Project"); return; }
     setSaving(true);
@@ -545,21 +507,16 @@ const Snags = ({ projects, snags, loading, onAddSnag, onUpdateStatus }) => {
     setSaving(false);
     if (ok) { setShowForm(false); setForm({ project_id:"", title:"", description:"", location:"", category:"", sub:"", engineer:"", due_date:"" }); }
   };
-
   if (showForm) return (
     <div className="p-6 space-y-5 max-w-2xl">
-      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Snag / Punch Item</h2></div>
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Snag</h2></div>
       <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label>
-          <select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">
-            <option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</select></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label><select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</select></div>
         <div><label className="text-xs font-semibold text-slate-600 block mb-1">Snag Title *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Plastering crack — Column C7" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
         <div><label className="text-xs font-semibold text-slate-600 block mb-1">Description</label><textarea rows={3} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe the defect..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" /></div>
         <div className="grid grid-cols-2 gap-4">
-          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Location</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="e.g. Level 2 – Grid C7" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
-          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Category</label>
-            <select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">
-              <option value="">Select...</option>{["Architectural","Structural","MEP","Finishing","Civil","Safety"].map(c=><option key={c}>{c}</option>)}</select></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Location</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="e.g. Level 2" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Category</label><select value={form.category} onChange={e=>setForm({...form,category:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select...</option>{["Architectural","Structural","MEP","Finishing","Civil","Safety"].map(c=><option key={c}>{c}</option>)}</select></div>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div><label className="text-xs font-semibold text-slate-600 block mb-1">Subcontractor</label><input value={form.sub} onChange={e=>setForm({...form,sub:e.target.value})} placeholder="Sub company" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
@@ -567,23 +524,16 @@ const Snags = ({ projects, snags, loading, onAddSnag, onUpdateStatus }) => {
           <div><label className="text-xs font-semibold text-slate-600 block mb-1">Due Date</label><input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
         </div>
         <div className="flex gap-3 pt-2">
-          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
-            {saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save Snag"}</button>
+          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">{saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save Snag"}</button>
           <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
         </div>
       </div>
     </div>
   );
-
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Snag / Punch List <span className="text-sm font-normal text-slate-400">({snags.length})</span></h2>
-        <button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Snag</button>
-      </div>
-      <div className="flex gap-3 flex-wrap">
-        {SNAG_STATUSES.map(s=>{const count=snags.filter(sn=>sn.status===s).length;return <button key={s} onClick={()=>setFilterStatus(filterStatus===s?"All":s)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterStatus===s?(STATUS_COLORS[s]||"bg-slate-200"):"bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{s} ({count})</button>;})}
-      </div>
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Snag / Punch List ({snags.length})</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Snag</button></div>
+      <div className="flex gap-3 flex-wrap">{SNAG_STATUSES.map(s=>{const count=snags.filter(sn=>sn.status===s).length;return <button key={s} onClick={()=>setFilterStatus(filterStatus===s?"All":s)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterStatus===s?(STATUS_COLORS[s]||"bg-slate-200"):"bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{s} ({count})</button>;})}</div>
       <div className="relative max-w-sm"><Icon name="search" cls="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search snags..." className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
       {loading ? <Spinner /> : (
         <div className="space-y-3">
@@ -598,21 +548,74 @@ const Snags = ({ projects, snags, loading, onAddSnag, onUpdateStatus }) => {
                     <div><span className="text-slate-400">Location: </span>{s.location}</div>
                     <div><span className="text-slate-400">Sub: </span>{s.sub||"—"}</div>
                     <div><span className="text-slate-400">Engineer: </span>{s.engineer||"—"}</div>
-                    <div className={isOverdue(s.due)&&s.status!=="Closed"?"text-red-500 font-semibold":""}><span className="text-slate-400">Due: </span>{fmtDate(s.due)}</div>
+                    <div><span className="text-slate-400">Due: </span>{fmtDate(s.due)}</div>
                   </div>
-                  {s.consultant&&<div className="mt-2 text-xs bg-amber-50 border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg">{s.consultant}</div>}
                 </div>
                 <div className="flex flex-col items-end gap-2 shrink-0">
-                  <select value={s.status} onChange={e=>onUpdateStatus(s.id,e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400">{SNAG_STATUSES.map(st=><option key={st}>{st}</option>)}</select>
-                  <div className="flex gap-2 text-xs">
-                    <span className={`flex items-center gap-0.5 ${s.before?"text-green-600":"text-slate-300"}`}><Icon name="photos" cls="w-3.5 h-3.5" /> Before</span>
-                    <span className={`flex items-center gap-0.5 ${s.after?"text-green-600":"text-slate-300"}`}><Icon name="photos" cls="w-3.5 h-3.5" /> After</span>
-                  </div>
+                  <select value={s.status} onChange={e=>onUpdateStatus(s.id,e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1">{SNAG_STATUSES.map(st=><option key={st}>{st}</option>)}</select>
                 </div>
               </div>
             </div>
           ))}
-          {filtered.length===0&&<div className="text-center py-16 text-slate-400 bg-white rounded-xl border border-slate-200"><Icon name="snags" cls="w-10 h-10 mx-auto mb-3 text-slate-200" /><p>No snags — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first snag</button></p></div>}
+          {filtered.length===0&&<div className="text-center py-16 text-slate-400 bg-white rounded-xl border border-slate-200"><p>No snags — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first snag</button></p></div>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DailyReports = ({ projects, reports, loading, onAddReport }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ project_id:"", report_date:"", weather:"Sunny", temperature:"", manpower:"", activities:"", completed:"", issues:"", preparedBy:"" });
+  const handleSubmit = async () => {
+    if (!form.project_id || !form.report_date) { alert("Please select Project and Date"); return; }
+    setSaving(true);
+    const ok = await onAddReport(form);
+    setSaving(false);
+    if (ok) { setShowForm(false); setForm({ project_id:"", report_date:"", weather:"Sunny", temperature:"", manpower:"", activities:"", completed:"", issues:"", preparedBy:"" }); }
+  };
+  if (showForm) return (
+    <div className="p-6 space-y-5">
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Daily Site Report</h2></div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5 max-w-3xl space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label><select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</select></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Date *</label><input type="date" value={form.report_date} onChange={e=>setForm({...form,report_date:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Weather</label><input value={form.weather} onChange={e=>setForm({...form,weather:e.target.value})} placeholder="e.g. Sunny" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Temperature (C)</label><input value={form.temperature} onChange={e=>setForm({...form,temperature:e.target.value})} placeholder="e.g. 32" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Total Manpower</label><input value={form.manpower} onChange={e=>setForm({...form,manpower:e.target.value})} placeholder="e.g. 45" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Prepared By</label><input value={form.preparedBy} onChange={e=>setForm({...form,preparedBy:e.target.value})} placeholder="Your name" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        </div>
+        {[["Work Activities Today","activities"],["Work Completed","completed"],["Issues / Delays","issues"]].map(([label,key])=>(
+          <div key={key}><label className="text-xs font-semibold text-slate-600 block mb-1">{label}</label><textarea rows={3} value={form[key]} onChange={e=>setForm({...form,[key]:e.target.value})} placeholder={`Enter ${label.toLowerCase()}...`} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" /></div>
+        ))}
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">{saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save Report"}</button>
+          <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Daily Site Reports ({reports.length})</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Report</button></div>
+      {loading ? <Spinner /> : reports.length === 0 ? (
+        <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200"><Icon name="reports" cls="w-10 h-10 mx-auto mb-3 text-slate-200" /><p>No reports yet — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first report</button></p></div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {reports.map(r=>(
+            <div key={r.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-3 mb-3"><div><div className="font-bold text-slate-800">{fmtDate(r.date)}</div><div className="text-xs text-slate-500">{projects.find(p=>p.id===r.pid)?.name||"—"}</div></div><Badge text={r.status} /></div>
+              <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+                <div className="bg-blue-50 rounded-lg p-2"><div className="text-lg font-bold text-blue-700">{r.manpower}</div><div className="text-xs text-blue-500">Manpower</div></div>
+                <div className="bg-amber-50 rounded-lg p-2"><div className="text-sm font-bold text-amber-700">{r.weather}</div><div className="text-xs text-amber-500">Weather</div></div>
+                <div className="bg-green-50 rounded-lg p-2"><div className="text-sm font-bold text-green-700">{r.temp}</div><div className="text-xs text-green-500">Temp</div></div>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed mb-3">{r.activities}</p>
+              <div className="text-xs text-slate-400">By: <strong className="text-slate-600">{r.preparedBy}</strong></div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -627,9 +630,9 @@ const Inspections = ({ projects }) => {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Inspection Request Tracker</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New IR/WIR</button></div>
-      <div className="flex gap-2 flex-wrap">{["All",...IR_STATUSES].map(s=>{const count=s==="All"?INSPECTIONS.length:INSPECTIONS.filter(i=>i.status===s).length;return <button key={s} onClick={()=>setFilterStatus(s)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${filterStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{s} ({count})</button>;})}</div>
+      <div className="flex gap-2 flex-wrap">{["All",...IR_STATUSES].map(s=>{const count=s==="All"?INSPECTIONS.length:INSPECTIONS.filter(i=>i.status===s).length;return <button key={s} onClick={()=>setFilterStatus(s)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${filterStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600"}`}>{s} ({count})</button>;})}</div>
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["IR Number","Type","Description","Project","Location","Submitted","Inspection Date","Status","Remarks"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
+        <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["IR Number","Type","Description","Project","Location","Submitted","Inspection Date","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map(i=>(
               <tr key={i.id} className="hover:bg-slate-50">
@@ -637,11 +640,10 @@ const Inspections = ({ projects }) => {
                 <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${typeColors[i.type]||"bg-slate-100 text-slate-600"}`}>{i.type}</span></td>
                 <td className="px-4 py-3 text-xs text-slate-700 max-w-[180px] leading-tight">{i.desc}</td>
                 <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===i.pid)?.number||"—"}</td>
-                <td className="px-4 py-3 text-xs text-slate-600 max-w-[100px]">{i.location}</td>
+                <td className="px-4 py-3 text-xs text-slate-600">{i.location}</td>
                 <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(i.submitted)}</td>
                 <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{i.inspection?fmtDate(i.inspection):<span className="text-slate-300">TBD</span>}</td>
                 <td className="px-4 py-3"><Badge text={i.status} /></td>
-                <td className="px-4 py-3 text-xs text-slate-500 max-w-[140px] leading-tight">{i.remarks||<span className="text-slate-300">—</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -653,22 +655,14 @@ const Inspections = ({ projects }) => {
 
 const Drawings = ({ projects }) => {
   const [filterDisc, setFilterDisc] = useState("All");
-  const [search, setSearch] = useState("");
   const DISCIPLINES = ["Architectural","Structural","MEP","Civil"];
-  const filtered = DRAWINGS.filter(d => {
-    if (filterDisc !== "All" && d.discipline !== filterDisc) return false;
-    if (search && !(d.num+d.title).toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  const filtered = DRAWINGS.filter(d => filterDisc === "All" || d.discipline === filterDisc);
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Drawing Register</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Upload Drawing</button></div>
-      <div className="flex flex-wrap gap-3">
-        <div className="relative"><Icon name="search" cls="w-4 h-4 absolute left-3 top-2.5 text-slate-400" /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search drawings..." className="pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 w-48" /></div>
-        <div className="flex gap-1">{["All",...DISCIPLINES].map(d=><button key={d} onClick={()=>setFilterDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${filterDisc===d?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{d}</button>)}</div>
-      </div>
+      <div className="flex gap-1">{["All",...DISCIPLINES].map(d=><button key={d} onClick={()=>setFilterDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border ${filterDisc===d?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600"}`}>{d}</button>)}</div>
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Drawing No.","Title","Discipline","Rev","Project","Date Received","Latest",""].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
+        <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Drawing No.","Title","Discipline","Rev","Project","Date Received","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map(d=>(
               <tr key={d.id} className="hover:bg-slate-50">
@@ -678,45 +672,11 @@ const Drawings = ({ projects }) => {
                 <td className="px-4 py-3"><span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">Rev {d.rev}</span></td>
                 <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===d.pid)?.number||"—"}</td>
                 <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(d.received)}</td>
-                <td className="px-4 py-3">{d.latest?<span className="flex items-center gap-1 text-xs text-green-600 font-semibold"><Icon name="check" cls="w-3.5 h-3.5" />Current</span>:<span className="text-xs text-slate-400">Superseded</span>}</td>
-                <td className="px-4 py-3"><button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"><Icon name="eye" cls="w-3.5 h-3.5" /> View</button></td>
+                <td className="px-4 py-3">{d.latest?<span className="text-xs text-green-600 font-semibold">Current</span>:<span className="text-xs text-slate-400">Superseded</span>}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-};
-
-const DailyReports = ({ projects }) => {
-  const [showForm, setShowForm] = useState(false);
-  if (showForm) return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Daily Site Report</h2></div>
-      <div className="bg-white rounded-xl border border-slate-200 p-5 max-w-3xl space-y-5">
-        <div className="grid grid-cols-2 gap-4">{[["Date","date",""],["Project","text",""],["Weather","text","Sunny"],["Temperature","text",""],["Total Manpower","number",""]].map(([label,type,def])=><div key={label}><label className="text-xs font-semibold text-slate-600 block mb-1">{label}</label><input type={type} defaultValue={def} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>)}</div>
-        {["Work Activities Today","Work Completed","Issues / Delays","Inspections Done","Materials Received","Safety Observations"].map(field=><div key={field}><label className="text-xs font-semibold text-slate-600 block mb-1">{field}</label><textarea rows={3} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" placeholder={`Enter ${field.toLowerCase()}...`} /></div>)}
-        <div className="flex gap-3"><button className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm px-6 py-2.5 rounded-lg">Submit Report</button><button className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Save Draft</button></div>
-      </div>
-    </div>
-  );
-  return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Daily Site Reports</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New Report</button></div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {DAILY_REPORTS.map(r=>(
-          <div key={r.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
-            <div className="flex items-start justify-between gap-3 mb-3"><div><div className="font-bold text-slate-800">{fmtDate(r.date)}</div><div className="text-xs text-slate-500">{projects.find(p=>p.id===r.pid)?.name||"—"}</div></div><Badge text={r.status} /></div>
-            <div className="grid grid-cols-3 gap-3 mb-3 text-center">
-              <div className="bg-blue-50 rounded-lg p-2"><div className="text-lg font-bold text-blue-700">{r.manpower}</div><div className="text-xs text-blue-500">Manpower</div></div>
-              <div className="bg-amber-50 rounded-lg p-2"><div className="text-sm font-bold text-amber-700">{r.weather}</div><div className="text-xs text-amber-500">Weather</div></div>
-              <div className="bg-green-50 rounded-lg p-2"><div className="text-sm font-bold text-green-700">{r.temp}</div><div className="text-xs text-green-500">Temp</div></div>
-            </div>
-            <p className="text-xs text-slate-600 leading-relaxed mb-3">{r.activities}</p>
-            <div className="flex items-center justify-between text-xs text-slate-400"><span>By: <strong className="text-slate-600">{r.preparedBy}</strong></span><button className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium"><Icon name="eye" cls="w-3.5 h-3.5" /> View Full</button></div>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -727,7 +687,7 @@ const Subcontractors = () => (
     <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Subcontractors</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Add Subcontractor</button></div>
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
       {SUBCONTRACTORS.map(s=>(
-        <div key={s.id} className={`bg-white rounded-xl border p-4 hover:shadow-md transition-shadow ${s.active?"border-slate-200":"border-slate-200 opacity-60"}`}>
+        <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
           <div className="flex items-start justify-between gap-3 mb-3"><div><div className="font-semibold text-slate-800">{s.name}</div><div className="text-xs text-slate-500">{s.contact}</div></div><span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${s.active?"bg-green-100 text-green-700 border-green-200":"bg-slate-100 text-slate-500 border-slate-200"}`}>{s.active?"Active":"Inactive"}</span></div>
           <div className="flex flex-wrap gap-1 mb-3">{s.trades.map(t=><span key={t} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{t}</span>)}</div>
           <div className="grid grid-cols-3 gap-3 text-center text-xs mb-3">
@@ -735,7 +695,7 @@ const Subcontractors = () => (
             <div className="bg-amber-50 rounded-lg p-2"><div className="font-bold text-amber-700">{s.openTasks}</div><div className="text-amber-500">Open Tasks</div></div>
             <div className="bg-red-50 rounded-lg p-2"><div className="font-bold text-red-600">{s.openSnags}</div><div className="text-red-400">Open Snags</div></div>
           </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500"><a href={`tel:${s.phone}`} className="hover:text-blue-600">{s.phone}</a><a href={`mailto:${s.email}`} className="hover:text-blue-600 truncate">{s.email}</a></div>
+          <div className="flex items-center gap-4 text-xs text-slate-500"><span>{s.phone}</span><span className="truncate">{s.email}</span></div>
         </div>
       ))}
     </div>
@@ -744,21 +704,19 @@ const Subcontractors = () => (
 
 const Photos = () => {
   const mockPhotos = [
-    { id:1, caption:"Grade slab concrete pour — Block A", area:"Ground Floor Block A", date:"27 Jan 2025", trade:"Civil / Structural", color:"bg-blue-100" },
-    { id:2, caption:"Level 3 blockwork in progress", area:"Level 3 All Zones", date:"27 Jan 2025", trade:"Civil / Masonry", color:"bg-amber-100" },
-    { id:3, caption:"HVAC ductwork installation — Level 2", area:"Level 2 Zone C", date:"26 Jan 2025", trade:"MEP / HVAC", color:"bg-green-100" },
-    { id:4, caption:"External scaffolding — North Elevation", area:"External North", date:"25 Jan 2025", trade:"Civil", color:"bg-purple-100" },
-    { id:5, caption:"Floor tile installation — Level 1 lobby", area:"Level 1 Lobby", date:"24 Jan 2025", trade:"Finishing / Tiling", color:"bg-orange-100" },
-    { id:6, caption:"Roof waterproofing — main roof", area:"Roof Level", date:"22 Jan 2025", trade:"Civil / Waterproofing", color:"bg-teal-100" },
+    { id:1, caption:"Grade slab concrete pour — Block A", area:"Ground Floor Block A", date:"27 Jan 2025", color:"bg-blue-100" },
+    { id:2, caption:"Level 3 blockwork in progress", area:"Level 3 All Zones", date:"27 Jan 2025", color:"bg-amber-100" },
+    { id:3, caption:"HVAC ductwork installation — Level 2", area:"Level 2 Zone C", date:"26 Jan 2025", color:"bg-green-100" },
+    { id:4, caption:"External scaffolding — North Elevation", area:"External North", date:"25 Jan 2025", color:"bg-purple-100" },
   ];
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Progress Photos</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Upload Photos</button></div>
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
         {mockPhotos.map(p=>(
-          <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer group">
-            <div className={`${p.color} h-40 flex items-center justify-center relative`}><Icon name="photos" cls="w-10 h-10 text-slate-400" /><div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-colors"></div></div>
-            <div className="p-3"><div className="text-xs font-semibold text-slate-700 leading-tight mb-1">{p.caption}</div><div className="text-xs text-slate-400">{p.area}</div><div className="flex items-center justify-between mt-2 text-xs text-slate-400"><span>{p.date}</span><span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{p.trade}</span></div></div>
+          <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
+            <div className={`${p.color} h-40 flex items-center justify-center`}><Icon name="photos" cls="w-10 h-10 text-slate-400" /></div>
+            <div className="p-3"><div className="text-xs font-semibold text-slate-700 leading-tight mb-1">{p.caption}</div><div className="text-xs text-slate-400">{p.area}</div><div className="text-xs text-slate-400 mt-1">{p.date}</div></div>
           </div>
         ))}
       </div>
@@ -778,6 +736,7 @@ export default function App() {
   const { projects, loading: projectsLoading } = useProjects();
   const { tasks, loading: tasksLoading, addTask, updateTaskStatus } = useTasks();
   const { snags, loading: snagsLoading, addSnag, updateSnagStatus } = useSnags();
+  const { reports, loading: reportsLoading, addReport } = useDailyReports();
   const [page, setPage] = useState("dashboard");
   const [collapsed, setCollapsed] = useState(false);
 
@@ -797,7 +756,7 @@ export default function App() {
       case "projects":       return <Projects       projects={projects} loading={projectsLoading} />;
       case "tasks":          return <Tasks          projects={projects} tasks={tasks} loading={tasksLoading} onAddTask={addTask} onUpdateStatus={updateTaskStatus} />;
       case "snags":          return <Snags          projects={projects} snags={snags} loading={snagsLoading} onAddSnag={addSnag} onUpdateStatus={updateSnagStatus} />;
-      case "reports":        return <DailyReports   projects={projects} />;
+      case "reports":        return <DailyReports   projects={projects} reports={reports} loading={reportsLoading} onAddReport={addReport} />;
       case "inspections":    return <Inspections    projects={projects} />;
       case "drawings":       return <Drawings       projects={projects} />;
       case "photos":         return <Photos />;
