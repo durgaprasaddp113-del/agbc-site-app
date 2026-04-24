@@ -187,6 +187,10 @@ const Sidebar = ({ active, onNav, collapsed }) => (
     </nav>
     <div className="p-4 border-t border-slate-700">
       {!collapsed && <div className="flex items-center gap-2">
+        <button onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }}
+        className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors">
+        Sign Out
+</button>
         <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold text-white">AM</div>
         <div>
           <div className="text-xs font-semibold text-white">Ahmed Al Mansoori</div>
