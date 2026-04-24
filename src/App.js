@@ -702,24 +702,88 @@ const Subcontractors = () => (
   </div>
 );
 
-const Photos = () => {
-  const mockPhotos = [
-    { id:1, caption:"Grade slab concrete pour — Block A", area:"Ground Floor Block A", date:"27 Jan 2025", color:"bg-blue-100" },
-    { id:2, caption:"Level 3 blockwork in progress", area:"Level 3 All Zones", date:"27 Jan 2025", color:"bg-amber-100" },
-    { id:3, caption:"HVAC ductwork installation — Level 2", area:"Level 2 Zone C", date:"26 Jan 2025", color:"bg-green-100" },
-    { id:4, caption:"External scaffolding — North Elevation", area:"External North", date:"25 Jan 2025", color:"bg-purple-100" },
-  ];
+const Photos = ({ projects }) => {
+  const [photos, setPhotos] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ project_id:"", caption:"", area:"", file:null });
+
+  const fetchPhotos = async () => {
+    const { data, error } = await supabase.from("project_photos").select("*").order("uploaded_at", { ascending: false });
+    if (error) console.error("Photos error:", error);
+    if (data) setPhotos(data);
+  };
+
+  useEffect(() => { fetchPhotos(); }, []);
+
+  const handleUpload = async () => {
+    if (!form.file || !form.project_id) { alert("Please select a project and photo"); return; }
+    setUploading(true);
+    const fileExt = form.file.name.split(".").pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("site-photos").upload(fileName, form.file);
+    if (uploadError) { console.error("Upload error:", uploadError); setUploading(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(fileName);
+    await supabase.from("project_photos").insert([{
+      project_id: form.project_id, file_url: publicUrl,
+      caption: form.caption, area: form.area,
+    }]);
+    await fetchPhotos();
+    setUploading(false);
+    setShowForm(false);
+    setForm({ project_id:"", caption:"", area:"", file:null });
+  };
+
+  if (showForm) return (
+    <div className="p-6 space-y-5 max-w-lg">
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">Upload Photo</h2></div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label>
+          <select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">
+            <option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</select></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Caption</label>
+          <input value={form.caption} onChange={e=>setForm({...form,caption:e.target.value})} placeholder="e.g. Grade slab pour — Block A" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Area / Location</label>
+          <input value={form.area} onChange={e=>setForm({...form,area:e.target.value})} placeholder="e.g. Ground Floor Block A" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Photo *</label>
+          <input type="file" accept="image/*" onChange={e=>setForm({...form,file:e.target.files[0]})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleUpload} disabled={uploading} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
+            {uploading?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Uploading...</>:"Upload Photo"}</button>
+          <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Progress Photos</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Upload Photos</button></div>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-        {mockPhotos.map(p=>(
-          <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer">
-            <div className={`${p.color} h-40 flex items-center justify-center`}><Icon name="photos" cls="w-10 h-10 text-slate-400" /></div>
-            <div className="p-3"><div className="text-xs font-semibold text-slate-700 leading-tight mb-1">{p.caption}</div><div className="text-xs text-slate-400">{p.area}</div><div className="text-xs text-slate-400 mt-1">{p.date}</div></div>
-          </div>
-        ))}
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-800">Progress Photos ({photos.length})</h2>
+        <button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Upload Photos</button>
       </div>
+      {photos.length === 0 ? (
+        <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+          <Icon name="photos" cls="w-10 h-10 mx-auto mb-3 text-slate-200" />
+          <p>No photos yet — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Upload first photo</button></p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {photos.map(p=>(
+            <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer group">
+              <div className="h-40 overflow-hidden bg-slate-100">
+                <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+              </div>
+              <div className="p-3">
+                <div className="text-xs font-semibold text-slate-700 leading-tight mb-1">{p.caption||"No caption"}</div>
+                <div className="text-xs text-slate-400">{p.area}</div>
+                <div className="text-xs text-slate-400 mt-1">{fmtDate(p.uploaded_at?.split("T")[0])}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -759,7 +823,7 @@ export default function App() {
       case "reports":        return <DailyReports   projects={projects} reports={reports} loading={reportsLoading} onAddReport={addReport} />;
       case "inspections":    return <Inspections    projects={projects} />;
       case "drawings":       return <Drawings       projects={projects} />;
-      case "photos":         return <Photos />;
+      case "photos":         return <Photos         projects={projects} />;
       case "subcontractors": return <Subcontractors />;
       default: return <div className="p-12 text-center text-slate-400"><p className="text-lg font-semibold">Module coming soon</p></div>;
     }
