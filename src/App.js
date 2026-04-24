@@ -139,11 +139,96 @@ function useDailyReports() {
   return { reports, loading, addReport };
 }
 
-const INSPECTIONS = [
-  { id:"ir1", pid:"p1", num:"WIR/AGBC/001/25", type:"WIR", desc:"Reinforcement inspection — Grade Slab Block A", location:"Ground Floor", submitted:"2025-01-20", inspection:"2025-01-22", status:"Approved", remarks:"Approved with minor comment" },
-  { id:"ir2", pid:"p1", num:"WIR/AGBC/002/25", type:"WIR", desc:"Blockwork inspection — Level 3", location:"Level 3", submitted:"2025-01-23", inspection:"2025-01-27", status:"Submitted", remarks:"" },
-  { id:"ir3", pid:"p2", num:"WIR/AGBC/003/25", type:"WIR", desc:"First fix MEP inspection — Level 3", location:"Level 3", submitted:"2025-01-25", inspection:"2025-01-30", status:"Rejected", remarks:"Incomplete conduit installation" },
-];
+function useInspections() {
+  const [inspections, setInspections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const fetchInspections = async () => {
+    const { data, error } = await supabase.from("inspections").select("*").order("created_at", { ascending: false });
+    if (error) console.error("Inspections error:", error);
+    if (data) setInspections(data.map(i => ({
+      id: i.id, pid: i.project_id, num: i.request_number,
+      type: i.type || "WIR", desc: i.description || "",
+      location: i.location || "", trade: i.trade || "",
+      submitted: i.submitted_date, inspection: i.inspection_date,
+      status: i.consultant_status || "Draft", remarks: i.remarks || "",
+      submittedBy: i.submitted_by_name || "",
+    })));
+    setLoading(false);
+  };
+  useEffect(() => { fetchInspections(); }, []);
+  const addInspection = async (form) => {
+    const { data: existing } = await supabase.from("inspections").select("request_number").order("created_at", { ascending: false }).limit(1);
+    const lastNum = existing?.[0]?.request_number || "WIR/AGBC/000/25";
+    const parts = lastNum.split("/");
+    const nextNum = `${form.type}/AGBC/${String(parseInt(parts[2] || 0) + 1).padStart(3, "0")}/25`;
+    const { error } = await supabase.from("inspections").insert([{
+      request_number: nextNum, project_id: form.project_id,
+      type: form.type, description: form.description,
+      location: form.location, trade: form.trade,
+      submitted_date: form.submitted_date,
+      inspection_date: form.inspection_date || null,
+      consultant_status: "Draft",
+      submitted_by_name: form.submittedBy,
+    }]);
+    if (error) { console.error("Add inspection error:", error); return false; }
+    await fetchInspections(); return true;
+  };
+  return { inspections, loading, addInspection };
+}
+
+function useDrawings() {
+  const [drawings, setDrawings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const fetchDrawings = async () => {
+    const { data, error } = await supabase.from("drawings").select("*").order("created_at", { ascending: false });
+    if (error) console.error("Drawings error:", error);
+    if (data) setDrawings(data.map(d => ({
+      id: d.id, pid: d.project_id, num: d.drawing_number,
+      title: d.drawing_title, rev: d.revision || "A",
+      discipline: d.discipline || "", received: d.date_received,
+      latest: d.is_latest !== false, fileUrl: d.file_url,
+    })));
+    setLoading(false);
+  };
+  useEffect(() => { fetchDrawings(); }, []);
+  const addDrawing = async (form) => {
+    const { error } = await supabase.from("drawings").insert([{
+      project_id: form.project_id, drawing_number: form.drawing_number,
+      drawing_title: form.drawing_title, revision: form.revision,
+      discipline: form.discipline, date_received: form.date_received,
+      is_latest: true, remarks: form.remarks,
+    }]);
+    if (error) { console.error("Add drawing error:", error); return false; }
+    await fetchDrawings(); return true;
+  };
+  return { drawings, loading, addDrawing };
+}
+
+function useSubcontractors() {
+  const [subs, setSubs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const fetchSubs = async () => {
+    const { data, error } = await supabase.from("subcontractors").select("*").order("created_at", { ascending: false });
+    if (error) console.error("Subs error:", error);
+    if (data) setSubs(data.map(s => ({
+      id: s.id, name: s.company_name, contact: s.contact_person,
+      phone: s.phone || "", email: s.email || "",
+      trades: s.trade || [], active: s.is_active !== false,
+    })));
+    setLoading(false);
+  };
+  useEffect(() => { fetchSubs(); }, []);
+  const addSub = async (form) => {
+    const { error } = await supabase.from("subcontractors").insert([{
+      company_name: form.name, contact_person: form.contact,
+      phone: form.phone, email: form.email,
+      trade: form.trades, is_active: true,
+    }]);
+    if (error) { console.error("Add sub error:", error); return false; }
+    await fetchSubs(); return true;
+  };
+  return { subs, loading, addSub };
+}
 
 const DRAWINGS = [
   { id:"d1", pid:"p1", num:"AGBC-001-AR-001", title:"Ground Floor Plan", rev:"C", discipline:"Architectural", received:"2024-11-10", latest:true },
@@ -622,85 +707,182 @@ const DailyReports = ({ projects, reports, loading, onAddReport }) => {
   );
 };
 
-const Inspections = ({ projects }) => {
+const Inspections = ({ projects, inspections, loading, onAddInspection }) => {
   const [filterStatus, setFilterStatus] = useState("All");
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ project_id:"", type:"WIR", description:"", location:"", trade:"", submitted_date:"", inspection_date:"", submittedBy:"" });
   const IR_STATUSES = ["Draft","Submitted","Approved","Rejected","Resubmitted"];
-  const filtered = INSPECTIONS.filter(i => filterStatus === "All" || i.status === filterStatus);
-  const typeColors = { WIR:"bg-blue-100 text-blue-700", MIR:"bg-green-100 text-green-700" };
-  return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Inspection Request Tracker</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New IR/WIR</button></div>
-      <div className="flex gap-2 flex-wrap">{["All",...IR_STATUSES].map(s=>{const count=s==="All"?INSPECTIONS.length:INSPECTIONS.filter(i=>i.status===s).length;return <button key={s} onClick={()=>setFilterStatus(s)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${filterStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600"}`}>{s} ({count})</button>;})}</div>
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["IR Number","Type","Description","Project","Location","Submitted","Inspection Date","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(i=>(
-              <tr key={i.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono text-xs font-semibold text-amber-700">{i.num}</td>
-                <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${typeColors[i.type]||"bg-slate-100 text-slate-600"}`}>{i.type}</span></td>
-                <td className="px-4 py-3 text-xs text-slate-700 max-w-[180px] leading-tight">{i.desc}</td>
-                <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===i.pid)?.number||"—"}</td>
-                <td className="px-4 py-3 text-xs text-slate-600">{i.location}</td>
-                <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(i.submitted)}</td>
-                <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{i.inspection?fmtDate(i.inspection):<span className="text-slate-300">TBD</span>}</td>
-                <td className="px-4 py-3"><Badge text={i.status} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-const Drawings = ({ projects }) => {
-  const [filterDisc, setFilterDisc] = useState("All");
-  const DISCIPLINES = ["Architectural","Structural","MEP","Civil"];
-  const filtered = DRAWINGS.filter(d => filterDisc === "All" || d.discipline === filterDisc);
-  return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Drawing Register</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Upload Drawing</button></div>
-      <div className="flex gap-1">{["All",...DISCIPLINES].map(d=><button key={d} onClick={()=>setFilterDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border ${filterDisc===d?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600"}`}>{d}</button>)}</div>
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Drawing No.","Title","Discipline","Rev","Project","Date Received","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {filtered.map(d=>(
-              <tr key={d.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">{d.num}</td>
-                <td className="px-4 py-3 text-sm text-slate-800 font-medium">{d.title}</td>
-                <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${DISC_COLORS[d.discipline]||"bg-slate-100 text-slate-600"}`}>{d.discipline}</span></td>
-                <td className="px-4 py-3"><span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">Rev {d.rev}</span></td>
-                <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===d.pid)?.number||"—"}</td>
-                <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(d.received)}</td>
-                <td className="px-4 py-3">{d.latest?<span className="text-xs text-green-600 font-semibold">Current</span>:<span className="text-xs text-slate-400">Superseded</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-const Subcontractors = () => (
-  <div className="p-6 space-y-4">
-    <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Subcontractors</h2><button className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Add Subcontractor</button></div>
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      {SUBCONTRACTORS.map(s=>(
-        <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between gap-3 mb-3"><div><div className="font-semibold text-slate-800">{s.name}</div><div className="text-xs text-slate-500">{s.contact}</div></div><span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${s.active?"bg-green-100 text-green-700 border-green-200":"bg-slate-100 text-slate-500 border-slate-200"}`}>{s.active?"Active":"Inactive"}</span></div>
-          <div className="flex flex-wrap gap-1 mb-3">{s.trades.map(t=><span key={t} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{t}</span>)}</div>
-          <div className="grid grid-cols-3 gap-3 text-center text-xs mb-3">
-            <div className="bg-slate-50 rounded-lg p-2"><div className="font-bold text-slate-800">{s.projects}</div><div className="text-slate-400">Projects</div></div>
-            <div className="bg-amber-50 rounded-lg p-2"><div className="font-bold text-amber-700">{s.openTasks}</div><div className="text-amber-500">Open Tasks</div></div>
-            <div className="bg-red-50 rounded-lg p-2"><div className="font-bold text-red-600">{s.openSnags}</div><div className="text-red-400">Open Snags</div></div>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500"><span>{s.phone}</span><span className="truncate">{s.email}</span></div>
+  const typeColors = { WIR:"bg-blue-100 text-blue-700", MIR:"bg-green-100 text-green-700", IR:"bg-purple-100 text-purple-700", MSIR:"bg-orange-100 text-orange-700" };
+  const filtered = inspections.filter(i => filterStatus === "All" || i.status === filterStatus);
+  const handleSubmit = async () => {
+    if (!form.project_id || !form.description) { alert("Please fill Project and Description"); return; }
+    setSaving(true); const ok = await onAddInspection(form); setSaving(false);
+    if (ok) { setShowForm(false); setForm({ project_id:"", type:"WIR", description:"", location:"", trade:"", submitted_date:"", inspection_date:"", submittedBy:"" }); }
+  };
+  if (showForm) return (
+    <div className="p-6 space-y-5 max-w-2xl">
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">New Inspection Request</h2></div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label><select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</select></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Type</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400">{["WIR","MIR","IR","MSIR"].map(t=><option key={t}>{t}</option>)}</select></div>
         </div>
-      ))}
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Description *</label><textarea rows={3} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Describe what is being inspected..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Location</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} placeholder="e.g. Level 3" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Trade</label><select value={form.trade} onChange={e=>setForm({...form,trade:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select...</option>{["Civil / Structural","MEP","Finishing","Aluminum","Safety"].map(t=><option key={t}>{t}</option>)}</select></div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Submit Date</label><input type="date" value={form.submitted_date} onChange={e=>setForm({...form,submitted_date:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Inspection Date</label><input type="date" value={form.inspection_date} onChange={e=>setForm({...form,inspection_date:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Submitted By</label><input value={form.submittedBy} onChange={e=>setForm({...form,submittedBy:e.target.value})} placeholder="Your name" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        </div>
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">{saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Submit IR"}</button>
+          <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Inspection Requests ({inspections.length})</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> New IR/WIR</button></div>
+      <div className="flex gap-2 flex-wrap">{["All",...IR_STATUSES].map(s=>{const count=s==="All"?inspections.length:inspections.filter(i=>i.status===s).length;return <button key={s} onClick={()=>setFilterStatus(s)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${filterStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600"}`}>{s} ({count})</button>;})}</div>
+      {loading ? <Spinner /> : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["IR Number","Type","Description","Project","Location","Submitted","Inspection Date","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(i=>(
+                <tr key={i.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-amber-700">{i.num}</td>
+                  <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${typeColors[i.type]||"bg-slate-100 text-slate-600"}`}>{i.type}</span></td>
+                  <td className="px-4 py-3 text-xs text-slate-700 max-w-[200px] leading-tight">{i.desc}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===i.pid)?.number||"—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{i.location}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(i.submitted)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{i.inspection?fmtDate(i.inspection):<span className="text-slate-300">TBD</span>}</td>
+                  <td className="px-4 py-3"><Badge text={i.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length===0&&<div className="text-center py-16 text-slate-400"><p>No inspections — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first IR</button></p></div>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Drawings = ({ projects, drawings, loading, onAddDrawing }) => {
+  const [filterDisc, setFilterDisc] = useState("All");
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ project_id:"", drawing_number:"", drawing_title:"", revision:"A", discipline:"", date_received:"", remarks:"" });
+  const DISCIPLINES = ["Architectural","Structural","MEP","Civil"];
+  const filtered = drawings.filter(d => filterDisc === "All" || d.discipline === filterDisc);
+  const handleSubmit = async () => {
+    if (!form.project_id || !form.drawing_number || !form.drawing_title) { alert("Please fill Project, Drawing Number and Title"); return; }
+    setSaving(true); const ok = await onAddDrawing(form); setSaving(false);
+    if (ok) { setShowForm(false); setForm({ project_id:"", drawing_number:"", drawing_title:"", revision:"A", discipline:"", date_received:"", remarks:"" }); }
+  };
+  if (showForm) return (
+    <div className="p-6 space-y-5 max-w-2xl">
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">Add Drawing</h2></div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Project *</label><select value={form.project_id} onChange={e=>setForm({...form,project_id:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</select></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Drawing Number *</label><input value={form.drawing_number} onChange={e=>setForm({...form,drawing_number:e.target.value})} placeholder="e.g. AGBC-001-AR-001" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Revision</label><input value={form.revision} onChange={e=>setForm({...form,revision:e.target.value})} placeholder="e.g. A" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        </div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Drawing Title *</label><input value={form.drawing_title} onChange={e=>setForm({...form,drawing_title:e.target.value})} placeholder="e.g. Ground Floor Plan" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Discipline</label><select value={form.discipline} onChange={e=>setForm({...form,discipline:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"><option value="">Select...</option>{DISCIPLINES.map(d=><option key={d}>{d}</option>)}</select></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Date Received</label><input type="date" value={form.date_received} onChange={e=>setForm({...form,date_received:e.target.value})} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        </div>
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">{saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save Drawing"}</button>
+          <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Drawing Register ({drawings.length})</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Add Drawing</button></div>
+      <div className="flex gap-1">{["All",...DISCIPLINES].map(d=><button key={d} onClick={()=>setFilterDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border ${filterDisc===d?"bg-amber-500 text-white border-amber-500":"bg-white border-slate-200 text-slate-600"}`}>{d}</button>)}</div>
+      {loading ? <Spinner /> : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Drawing No.","Title","Discipline","Rev","Project","Date Received","Status"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(d=>(
+                <tr key={d.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">{d.num}</td>
+                  <td className="px-4 py-3 text-sm text-slate-800 font-medium">{d.title}</td>
+                  <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${DISC_COLORS[d.discipline]||"bg-slate-100 text-slate-600"}`}>{d.discipline}</span></td>
+                  <td className="px-4 py-3"><span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">Rev {d.rev}</span></td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p=>p.id===d.pid)?.number||"—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(d.received)}</td>
+                  <td className="px-4 py-3">{d.latest?<span className="text-xs text-green-600 font-semibold">Current</span>:<span className="text-xs text-slate-400">Superseded</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length===0&&<div className="text-center py-16 text-slate-400"><p>No drawings — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first drawing</button></p></div>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Subcontractors = ({ subs, loading, onAddSub }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name:"", contact:"", phone:"", email:"", trades:"" });
+  const handleSubmit = async () => {
+    if (!form.name) { alert("Please enter company name"); return; }
+    setSaving(true);
+    const ok = await onAddSub({ ...form, trades: form.trades.split(",").map(t=>t.trim()).filter(Boolean) });
+    setSaving(false);
+    if (ok) { setShowForm(false); setForm({ name:"", contact:"", phone:"", email:"", trades:"" }); }
+  };
+  if (showForm) return (
+    <div className="p-6 space-y-5 max-w-lg">
+      <div className="flex items-center gap-3"><button onClick={()=>setShowForm(false)} className="text-slate-400 hover:text-slate-700 text-sm">Back</button><h2 className="text-xl font-bold text-slate-800">Add Subcontractor</h2></div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Company Name *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="e.g. Al Futtaim MEP" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Contact Person</label><input value={form.contact} onChange={e=>setForm({...form,contact:e.target.value})} placeholder="Contact name" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Phone</label><input value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="+971-50-..." className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+          <div><label className="text-xs font-semibold text-slate-600 block mb-1">Email</label><input value={form.email} onChange={e=>setForm({...form,email:e.target.value})} placeholder="email@company.com" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        </div>
+        <div><label className="text-xs font-semibold text-slate-600 block mb-1">Trades (comma separated)</label><input value={form.trades} onChange={e=>setForm({...form,trades:e.target.value})} placeholder="e.g. MEP, HVAC, Plumbing" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400" /></div>
+        <div className="flex gap-3 pt-2">
+          <button onClick={handleSubmit} disabled={saving} className="bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">{saving?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Saving...</>:"Save"}</button>
+          <button onClick={()=>setShowForm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm px-6 py-2.5 rounded-lg">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-800">Subcontractors ({subs.length})</h2><button onClick={()=>setShowForm(true)} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg"><Icon name="plus" cls="w-4 h-4" /> Add Subcontractor</button></div>
+      {loading ? <Spinner /> : subs.length === 0 ? (
+        <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200"><p>No subcontractors — <button onClick={()=>setShowForm(true)} className="text-amber-500 font-semibold">Add first</button></p></div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {subs.map(s=>(
+            <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-3 mb-3"><div><div className="font-semibold text-slate-800">{s.name}</div><div className="text-xs text-slate-500">{s.contact}</div></div><span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${s.active?"bg-green-100 text-green-700 border-green-200":"bg-slate-100 text-slate-500 border-slate-200"}`}>{s.active?"Active":"Inactive"}</span></div>
+              <div className="flex flex-wrap gap-1 mb-3">{(s.trades||[]).map((t,i)=><span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{t}</span>)}</div>
+              <div className="flex items-center gap-4 text-xs text-slate-500"><span>{s.phone}</span><span className="truncate">{s.email}</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Photos = ({ projects }) => {
   const [photos, setPhotos] = useState([]);
@@ -801,6 +983,9 @@ export default function App() {
   const { tasks, loading: tasksLoading, addTask, updateTaskStatus } = useTasks();
   const { snags, loading: snagsLoading, addSnag, updateSnagStatus } = useSnags();
   const { reports, loading: reportsLoading, addReport } = useDailyReports();
+  const { inspections, loading: inspectionsLoading, addInspection } = useInspections();
+  const { drawings, loading: drawingsLoading, addDrawing } = useDrawings();
+  const { subs, loading: subsLoading, addSub } = useSubcontractors();
   const [page, setPage] = useState("dashboard");
   const [collapsed, setCollapsed] = useState(false);
 
@@ -821,10 +1006,10 @@ export default function App() {
       case "tasks":          return <Tasks          projects={projects} tasks={tasks} loading={tasksLoading} onAddTask={addTask} onUpdateStatus={updateTaskStatus} />;
       case "snags":          return <Snags          projects={projects} snags={snags} loading={snagsLoading} onAddSnag={addSnag} onUpdateStatus={updateSnagStatus} />;
       case "reports":        return <DailyReports   projects={projects} reports={reports} loading={reportsLoading} onAddReport={addReport} />;
-      case "inspections":    return <Inspections    projects={projects} />;
-      case "drawings":       return <Drawings       projects={projects} />;
+      case "inspections":    return <Inspections    projects={projects} inspections={inspections} loading={inspectionsLoading} onAddInspection={addInspection} />;
+      case "drawings":       return <Drawings       projects={projects} drawings={drawings} loading={drawingsLoading} onAddDrawing={addDrawing} />;
       case "photos":         return <Photos         projects={projects} />;
-      case "subcontractors": return <Subcontractors />;
+      case "subcontractors": return <Subcontractors subs={subs} loading={subsLoading} onAddSub={addSub} />;
       default: return <div className="p-12 text-center text-slate-400"><p className="text-lg font-semibold">Module coming soon</p></div>;
     }
   };
