@@ -47,68 +47,104 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
     const doc = new jsPDF({ orientation, format: "a4", compress: true });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
+    const isPortrait = pageW < pageH;
     const MARGIN = 10;
 
-    // ── Draw header on every page ──────────────────────────────────────────
+    // ── LOGO DIMENSIONS ────────────────────────────────────────────────────
+    // Logo aspect ratio = width:height ≈ 4.7:1 (wide banner)
+    // Portrait A4 usable = 190mm, Landscape = 277mm
+    // Logo takes left ~60%, title on right ~38%
+    const LOGO_ASPECT = 4.7;
+    const HDR_H = isPortrait ? 36 : 40;           // header bar height
+    const LOGO_H = HDR_H - 8;                     // logo height with 4mm top/bottom padding
+    const LOGO_MAX_W = (pageW - MARGIN * 2) * 0.58; // max 58% of usable width
+    const LOGO_W = Math.min(LOGO_H * LOGO_ASPECT, LOGO_MAX_W);
+    const LOGO_X = MARGIN;
+    const LOGO_Y = (HDR_H - LOGO_H) / 2;          // vertically centred
+    const TITLE_X = LOGO_X + LOGO_W + 5;           // title starts after logo
+    const TITLE_W = pageW - MARGIN - TITLE_X;      // remaining width for title
+
+    // ── DRAW HEADER (called on every page) ─────────────────────────────────
     const drawHeader = () => {
-      // Full-width dark background
+      // Dark background
       doc.setFillColor(...DARK_COLOR);
-      doc.rect(0, 0, pageW, 38, "F");
-      // Amber accent line
+      doc.rect(0, 0, pageW, HDR_H, "F");
+      // Amber accent bar
       doc.setFillColor(...AMBER_COLOR);
-      doc.rect(0, 38, pageW, 2.5, "F");
-      // Full-width logo (left-aligned, preserving aspect ratio)
+      doc.rect(0, HDR_H, pageW, 2.5, "F");
+
+      // Company logo (left side)
       try {
-        const logoH = 30;
-        const logoW = logoH * (5.5); // logo ratio approx 5.5:1
-        doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", MARGIN, 4, logoW, logoH);
+        doc.addImage(
+          "data:image/jpeg;base64," + AGBC_LOGO_B64,
+          "JPEG", LOGO_X, LOGO_Y, LOGO_W, LOGO_H
+        );
       } catch(e) {
-        // fallback text if logo fails
         doc.setTextColor(245, 158, 11);
-        doc.setFontSize(14);
+        doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
-        doc.text("AGBC", MARGIN, 20);
+        doc.text("AGBC", LOGO_X + 2, HDR_H / 2 + 4);
       }
-      // Report title (right of logo)
+
+      // Report title — right-aligned in remaining space, vertically centred
+      const titleFontSize = isPortrait ? 10 : 12;
+      const subFontSize = 6.5;
+      const titleLines = doc.splitTextToSize(title, TITLE_W);
+      const titleY = titleLines.length > 1
+        ? HDR_H / 2 - (titleLines.length * titleFontSize * 0.3528 / 2)
+        : HDR_H / 2 - 1;
+
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(13);
+      doc.setFontSize(titleFontSize);
       doc.setFont("helvetica", "bold");
-      doc.text(title, pageW - MARGIN, 15, { align: "right" });
-      // Company name
-      doc.setFontSize(7.5);
+      titleLines.forEach((line, i) => {
+        doc.text(line, pageW - MARGIN, titleY + i * (titleFontSize * 0.4), { align: "right" });
+      });
+
+      // Date & count (subtle, small)
+      doc.setFontSize(subFontSize);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(200, 200, 200);
-      doc.text(AGBC_COMPANY, pageW - MARGIN, 23, { align: "right" });
-      // Date & record count
-      doc.setFontSize(7);
       doc.setTextColor(160, 160, 160);
-      doc.text(`${now}  ·  ${data.length} record${data.length !== 1 ? "s" : ""}`, pageW - MARGIN, 31, { align: "right" });
+      doc.text(`${now}  ·  ${data.length} records`, pageW - MARGIN, HDR_H - 5, { align: "right" });
     };
 
     drawHeader();
 
-    // ── Table ──────────────────────────────────────────────────────────────
+    // ── TABLE SETUP ────────────────────────────────────────────────────────
     const heads = [columns.map(c => c.header)];
     const rows = data.map(row => columns.map(c => {
       const v = row[c.key];
       if (v === null || v === undefined || v === "") return "—";
-      if (c.type === "date") { try { return new Date(v).toLocaleDateString("en-GB"); } catch { return String(v); } }
+      if (c.type === "date") {
+        try { return new Date(v).toLocaleDateString("en-GB"); } catch { return String(v); }
+      }
       if (c.type === "array") return Array.isArray(v) ? v.join(", ") : String(v);
       return String(v);
     }));
 
-    // Auto font size based on column count
+    // Auto-scale: more columns → smaller font on portrait
     const colCount = columns.length;
-    const autoFont = colCount > 10 ? 6.5 : colCount > 7 ? 7 : 7.5;
-    const autoPad = colCount > 10 ? 2.5 : 3;
+    const autoFont = isPortrait
+      ? (colCount > 8 ? 6 : colCount > 5 ? 6.5 : 7.5)
+      : (colCount > 10 ? 6.5 : colCount > 7 ? 7 : 7.5);
+    const autoPad = autoFont < 7 ? 2 : 3;
+
+    // If pdfWidth columns defined → use them, else let autoTable distribute evenly
+    const hasPdfWidths = columns.some(c => c.pdfWidth);
+    const colStyles = columns.reduce((acc, c, i) => {
+      if (hasPdfWidths && c.pdfWidth) acc[i] = { cellWidth: c.pdfWidth };
+      if (c.align) acc[i] = { ...(acc[i] || {}), halign: c.align };
+      return acc;
+    }, {});
 
     doc.autoTable({
-      startY: 43,
-      margin: { left: MARGIN, right: MARGIN, bottom: 15 },
+      startY: HDR_H + 5,
+      margin: { left: MARGIN, right: MARGIN, bottom: 14 },
       head: heads,
       body: rows,
       theme: "grid",
-      tableWidth: "auto",
+      // "auto" = shrink to content; "wrap" = fill full table width
+      tableWidth: hasPdfWidths ? "auto" : "wrap",
       styles: {
         fontSize: autoFont,
         cellPadding: { top: autoPad, bottom: autoPad, left: 3, right: 3 },
@@ -117,6 +153,7 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
         textColor: [30, 41, 59],
         lineColor: [220, 220, 220],
         lineWidth: 0.2,
+        minCellWidth: 10,
       },
       headStyles: {
         fillColor: AMBER_COLOR,
@@ -127,25 +164,18 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
         cellPadding: { top: autoPad + 1, bottom: autoPad + 1, left: 3, right: 3 },
       },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      columnStyles: columns.reduce((acc, c, i) => {
-        if (c.pdfWidth) acc[i] = { cellWidth: c.pdfWidth };
-        if (c.align) acc[i] = { ...(acc[i]||{}), halign: c.align };
-        return acc;
-      }, {}),
+      columnStyles: colStyles,
       didDrawPage: ({ pageNumber }) => {
-        // Redraw header on subsequent pages
         if (pageNumber > 1) drawHeader();
-        // Footer
+        // Footer — page numbers only
         const total = doc.internal.getNumberOfPages();
-        doc.setFontSize(6.5);
-        doc.setTextColor(150);
+        doc.setFontSize(7);
+        doc.setTextColor(160);
         doc.setFont("helvetica", "normal");
-        doc.text(
-          `Page ${pageNumber} of ${total}   ·   ${AGBC_COMPANY}   ·   Exported ${todayExport()}`,
-          pageW / 2, pageH - 6, { align: "center" }
-        );
+        doc.text(`${pageNumber} / ${total}`, pageW / 2, pageH - 5, { align: "center" });
       },
     });
+
     doc.save(fullName);
   } catch(e) { console.error("PDF export error:", e); alert("PDF export failed: " + e.message); }
 };
@@ -158,38 +188,42 @@ const exportDailyReportPDF = (report, projectName) => {
     const doc = new jsPDF({ orientation: "portrait", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    // ── Full-width header ────────────────────────────────────────────────────
+    // ── Header (portrait A4, 210mm wide, usable 190mm) ─────────────────────
+    const DR_HDR_H = 38;
+    const DR_LOGO_ASPECT = 4.7;
+    const DR_LOGO_H = 28;
+    const DR_LOGO_MAX_W = (pageW - 20) * 0.60; // 60% of usable width
+    const DR_LOGO_W = Math.min(DR_LOGO_H * DR_LOGO_ASPECT, DR_LOGO_MAX_W);
+
     doc.setFillColor(...DARK_COLOR);
-    doc.rect(0, 0, pageW, 44, "F");
+    doc.rect(0, 0, pageW, DR_HDR_H, "F");
     doc.setFillColor(...AMBER_COLOR);
-    doc.rect(0, 44, pageW, 3, "F");
-    // Full-width logo
+    doc.rect(0, DR_HDR_H, pageW, 2.5, "F");
+
+    // Logo (left side)
     try {
-      const logoH = 34;
-      const logoW = logoH * 5.5;
-      doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, 5, logoW, logoH);
+      doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, (DR_HDR_H - DR_LOGO_H) / 2, DR_LOGO_W, DR_LOGO_H);
     } catch(e) {
-      doc.setTextColor(245, 158, 11);
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text("AGBC", 14, 22);
+      doc.setTextColor(245, 158, 11); doc.setFontSize(14); doc.setFont("helvetica", "bold");
+      doc.text("AGBC", 12, DR_HDR_H / 2 + 4);
     }
+
+    // Title (right side)
+    const DR_TITLE_X = 10 + DR_LOGO_W + 5;
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(15);
+    doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("DAILY SITE REPORT", pageW - 12, 16, { align: "right" });
-    doc.setTextColor(200, 200, 200);
-    doc.setFontSize(8);
+    doc.text("DAILY SITE REPORT", pageW - 10, 16, { align: "right" });
+    doc.setFontSize(6.5);
     doc.setFont("helvetica", "normal");
-    doc.text(AGBC_COMPANY, pageW - 12, 26, { align: "right" });
-    doc.setFontSize(7.5);
     doc.setTextColor(160, 160, 160);
-    doc.text(new Date().toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short" }), pageW - 12, 36, { align: "right" });
-    let y = 56;
+    doc.text(new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }), pageW - 10, DR_HDR_H - 6, { align: "right" });
+
+    let y = DR_HDR_H + 8;
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.3);
-    doc.roundedRect(14, y, pageW - 28, 30, 3, 3, "FD");
+    doc.roundedRect(14, y, pageW - 28, 32, 3, 3, "FD");
     const infoFmt = d => { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }); } catch { return d; } };
     const infoItems = [["Project", projectName || "—"], ["Report Date", infoFmt(report.date)], ["Prepared By", report.preparedBy || "—"], ["Status", report.status || "Draft"]];
     const halfW = (pageW - 28) / 2;
@@ -230,9 +264,13 @@ const exportDailyReportPDF = (report, projectName) => {
     doc.text(report.preparedBy || "_______________", 14, y + 11);
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i); doc.setFillColor(248, 250, 252); doc.rect(0, pageH - 12, pageW, 12, "F");
-      doc.setFontSize(6.5); doc.setTextColor(120); doc.setFont("helvetica", "normal");
-      doc.text(`Page ${i} of ${totalPages}  ·  ${AGBC_COMPANY}  ·  Daily Site Report — ${today}`, pageW / 2, pageH - 4, { align: "center" });
+      doc.setPage(i);
+      doc.setFillColor(245, 245, 245);
+      doc.rect(0, pageH - 10, pageW, 10, "F");
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${i} / ${totalPages}`, pageW / 2, pageH - 3, { align: "center" });
     }
     doc.save(`Daily_Report_${today}.pdf`);
   } catch(e) { console.error("Daily Report PDF error:", e); alert("PDF export failed: " + e.message); }
@@ -974,6 +1012,8 @@ const Icon = ({ name, cls: c = "w-5 h-5" }) => {
     bell: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
     logout: "M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1",
     map: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
+    mr: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    lpo: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
     eye: "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z",
     warn: "M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z",
     edit: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z",
@@ -996,6 +1036,8 @@ const NAV = [
   { id: "photos", label: "Progress Photos", icon: "photos" },
   { id: "subcontractors", label: "Subcontractors", icon: "subs" },
   { id: "users", label: "Team Members", icon: "subs" },
+  { id: "mr", label: "Material Request", icon: "mr" },
+  { id: "lpo", label: "LPO", icon: "lpo" },
 ];
 
 const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => (
@@ -1059,10 +1101,12 @@ const StatCard = ({ label, value, sub, color, icon }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
-const Dashboard = ({ projects, tasks, snags, inspections, reports }) => {
+const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [] }) => {
   const openTasks = tasks.filter(t => !["Completed", "Closed"].includes(t.status)).length;
   const openSnags = snags.filter(s => s.status !== "Closed").length;
   const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  const pendingMrs = mrs.filter(m => ["Draft","Submitted","Approved"].includes(m.status)).length;
+  const pendingLpos = lpos.filter(l => ["Draft","Issued","Partially Delivered"].includes(l.status)).length;
   return (
     <div className="p-6 space-y-6">
       <div><h2 className="text-xl font-bold text-slate-800">Good morning 👋</h2><p className="text-sm text-slate-400 mt-0.5">{today} — Dubai, UAE</p></div>
@@ -1070,8 +1114,8 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports }) => {
         <StatCard label="Active Projects" value={projects.filter(p => p.status === "Active").length} sub={`${projects.length} total`} color="bg-blue-500" icon="projects" />
         <StatCard label="Open Tasks" value={openTasks} sub={`${tasks.length} total`} color="bg-amber-500" icon="tasks" />
         <StatCard label="Open Snags" value={openSnags} sub={`${snags.length} total`} color="bg-orange-500" icon="snags" />
-        <StatCard label="Pending IR" value={inspections.filter(i => ["Draft", "Submitted"].includes(i.status)).length} sub="Inspection requests" color="bg-purple-500" icon="inspections" />
-        <StatCard label="Reports" value={reports.length} sub="Total submitted" color="bg-green-500" icon="reports" />
+        <StatCard label="Pending MRs" value={pendingMrs} sub={`${mrs.length} total`} color="bg-indigo-500" icon="mr" />
+        <StatCard label="Active LPOs" value={pendingLpos} sub={`${lpos.length} total`} color="bg-teal-500" icon="lpo" />
         <StatCard label="Overdue" value={tasks.filter(t => isOverdue(t.due, t.status)).length} sub="Need attention" color="bg-red-500" icon="warn" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -2377,7 +2421,18 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           { header: "File URL", key: "fileUrl", width: 50 },
         ];
         return <PageTitle title="Progress Photos" count={filtered.length}
-          exportBtn={<ExportButtons data={exportData} excelCols={PH_COLS} fileName="Progress_Photos" pdfTitle="Progress Photos Register" orientation="portrait" />}
+          exportBtn={<ExportButtons
+            data={exportData}
+            excelCols={PH_COLS}
+            pdfCols={[
+              { header: "Caption",      key: "caption",     pdfWidth: 60 },
+              { header: "Area",         key: "area",        pdfWidth: 35 },
+              { header: "Project No.",  key: "projectNum",  pdfWidth: 22 },
+              { header: "Date",         key: "uploaded",    pdfWidth: 28 },
+            ]}
+            fileName="Progress_Photos"
+            pdfTitle="Progress Photos Register"
+            orientation="portrait" />}
           btn={<AddBtn onClick={() => setMode("upload")} label="Upload Photos" />} />;
       })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
@@ -3114,7 +3169,20 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this user?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
       <PageTitle title="Team Members" count={filtered.length}
-        exportBtn={<ExportButtons data={exportData} excelCols={USER_COLS} fileName="Team_Members" pdfTitle="Team Members" orientation="portrait" />}
+        exportBtn={<ExportButtons
+            data={exportData}
+            excelCols={USER_COLS}
+            pdfCols={[
+              { header: "Full Name",  key: "full_name",    pdfWidth: 38 },
+              { header: "Email",      key: "email",        pdfWidth: 52 },
+              { header: "Role",       key: "role",         pdfWidth: 36 },
+              { header: "Phone",      key: "phone",        pdfWidth: 28 },
+              { header: "Projects",   key: "projectNums",  pdfWidth: 22 },
+              { header: "Status",     key: "status",       pdfWidth: 14 },
+            ]}
+            fileName="Team_Members"
+            pdfTitle="Team Members"
+            orientation="portrait" />}
         btn={<AddBtn onClick={openCreate} label="Add User" />} />
       <div className="flex flex-wrap gap-3 mb-4">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email, role..." />
@@ -3156,6 +3224,746 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
   );
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MATERIAL REQUEST HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useMatReqs() {
+  const [mrs, setMrs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("material_requests")
+      .select("*, material_request_items(*)")
+      .order("created_at", { ascending: false });
+    if (error) { console.error("MRs:", error.message); setLoading(false); return; }
+    if (data) setMrs(data.map(r => ({
+      id: r.id,
+      mrNum: r.mr_number || "",
+      pid: r.project_id || "",
+      requestedBy: r.requested_by || "",
+      dept: r.department || "Civil",
+      date: r.date || "",
+      requiredDate: r.required_date || "",
+      priority: r.priority || "Medium",
+      status: r.status || "Draft",
+      lpoStatus: r.lpo_status || "Not Raised",
+      linkedLpoId: r.linked_lpo_id || "",
+      linkedLpoNum: r.linked_lpo_number || "",
+      deliveryStatus: r.delivery_status || "Pending",
+      remarks: r.remarks || "",
+      items: (r.material_request_items || []).map(i => ({
+        id: i.id, desc: i.item_description || "", unit: i.unit || "",
+        qty: i.quantity || 0, spec: i.specification || "",
+        brand: i.preferred_brand || "", remarks: i.remarks || "",
+      })),
+    })));
+    setLoading(false);
+  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const getNextNum = async () => {
+    const { data } = await supabase.from("material_requests").select("mr_number").order("created_at", { ascending: false }).limit(1);
+    const last = data?.[0]?.mr_number || "MR-000";
+    const n = parseInt(last.replace("MR-", "")) || 0;
+    return `MR-${String(n + 1).padStart(3, "0")}`;
+  };
+
+  const add = async (f) => {
+    const mrNum = await getNextNum();
+    const { data: mrData, error } = await supabase.from("material_requests").insert([{
+      mr_number: mrNum, project_id: f.pid, requested_by: f.requestedBy,
+      department: f.dept, date: f.date || null, required_date: f.requiredDate || null,
+      priority: f.priority, status: "Draft", lpo_status: "Not Raised",
+      delivery_status: "Pending", remarks: f.remarks,
+    }]).select().single();
+    if (error) return { ok: false, error: error.message };
+    if (f.items && f.items.length > 0) {
+      const itemRows = f.items.filter(i => i.desc.trim()).map(i => ({
+        mr_id: mrData.id, item_description: i.desc, unit: i.unit,
+        quantity: Number(i.qty) || 0, specification: i.spec,
+        preferred_brand: i.brand, remarks: i.remarks,
+      }));
+      if (itemRows.length > 0) await supabase.from("material_request_items").insert(itemRows);
+    }
+    await loadData(); return { ok: true, mrNum };
+  };
+
+  const update = async (id, f) => {
+    const { error } = await supabase.from("material_requests").update({
+      project_id: f.pid, requested_by: f.requestedBy, department: f.dept,
+      date: f.date || null, required_date: f.requiredDate || null,
+      priority: f.priority, status: f.status, remarks: f.remarks,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    // Replace items
+    await supabase.from("material_request_items").delete().eq("mr_id", id);
+    if (f.items && f.items.length > 0) {
+      const itemRows = f.items.filter(i => i.desc.trim()).map(i => ({
+        mr_id: id, item_description: i.desc, unit: i.unit,
+        quantity: Number(i.qty) || 0, specification: i.spec,
+        preferred_brand: i.brand, remarks: i.remarks,
+      }));
+      if (itemRows.length > 0) await supabase.from("material_request_items").insert(itemRows);
+    }
+    await loadData(); return { ok: true };
+  };
+
+  const remove = async (id) => {
+    await supabase.from("material_request_items").delete().eq("mr_id", id);
+    const { error } = await supabase.from("material_requests").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const updateStatus = async (id, patch) => {
+    const { error } = await supabase.from("material_requests").update(patch).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  return { mrs, loading, add, update, remove, updateStatus, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LPO HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useLPOs() {
+  const [lpos, setLpos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("lpo")
+      .select("*, lpo_items(*)")
+      .order("created_at", { ascending: false });
+    if (error) { console.error("LPOs:", error.message); setLoading(false); return; }
+    if (data) setLpos(data.map(l => ({
+      id: l.id, lpoNum: l.lpo_number || "", pid: l.project_id || "",
+      supplierName: l.supplier_name || "", supplierContact: l.supplier_contact || "",
+      supplierEmail: l.supplier_email || "", supplierAddress: l.supplier_address || "",
+      supplierTrn: l.supplier_trn || "", mrId: l.mr_id || "", mrNum: l.mr_number || "",
+      date: l.date || "", deliveryDate: l.delivery_date || "",
+      paymentTerms: l.payment_terms || "30 Days", status: l.status || "Draft",
+      deliveryStatus: l.delivery_status || "Not Delivered",
+      deliveryNotes: l.delivery_notes || "", deliveryAttachUrl: l.delivery_attachment_url || "",
+      totalAmount: l.total_amount || 0, remarks: l.remarks || "",
+      items: (l.lpo_items || []).map(i => ({
+        id: i.id, desc: i.item_description || "", unit: i.unit || "",
+        qty: Number(i.quantity) || 0, rate: Number(i.rate) || 0,
+        amount: Number(i.amount) || 0,
+        deliveredQty: Number(i.delivered_quantity) || 0,
+        pendingQty: Number(i.pending_quantity) || 0,
+        itemDeliveryStatus: i.delivery_status || "Not Delivered",
+      })),
+    })));
+    setLoading(false);
+  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const getNextNum = async () => {
+    const { data } = await supabase.from("lpo").select("lpo_number").order("created_at", { ascending: false }).limit(1);
+    const last = data?.[0]?.lpo_number || "LPO-000";
+    const n = parseInt(last.replace("LPO-", "")) || 0;
+    return `LPO-${String(n + 1).padStart(3, "0")}`;
+  };
+
+  const add = async (f) => {
+    const lpoNum = await getNextNum();
+    const totalAmount = (f.items || []).reduce((s, i) => s + (Number(i.qty) * Number(i.rate)), 0);
+    const { data: lpoData, error } = await supabase.from("lpo").insert([{
+      lpo_number: lpoNum, project_id: f.pid,
+      supplier_name: f.supplierName, supplier_contact: f.supplierContact,
+      supplier_email: f.supplierEmail, supplier_address: f.supplierAddress,
+      supplier_trn: f.supplierTrn, mr_id: f.mrId || null,
+      mr_number: f.mrNum || null,
+      date: f.date || null, delivery_date: f.deliveryDate || null,
+      payment_terms: f.paymentTerms, status: "Draft",
+      delivery_status: "Not Delivered", total_amount: totalAmount,
+      remarks: f.remarks,
+    }]).select().single();
+    if (error) return { ok: false, error: error.message };
+    if (f.items && f.items.length > 0) {
+      const itemRows = f.items.filter(i => i.desc.trim()).map(i => ({
+        lpo_id: lpoData.id, item_description: i.desc, unit: i.unit,
+        quantity: Number(i.qty) || 0, rate: Number(i.rate) || 0,
+        amount: (Number(i.qty) || 0) * (Number(i.rate) || 0),
+        delivered_quantity: 0, pending_quantity: Number(i.qty) || 0,
+        delivery_status: "Not Delivered",
+      }));
+      if (itemRows.length > 0) await supabase.from("lpo_items").insert(itemRows);
+    }
+    // Link MR if provided
+    if (f.mrId) {
+      await supabase.from("material_requests").update({
+        lpo_status: "Raised", linked_lpo_id: lpoData.id,
+        linked_lpo_number: lpoNum, status: "Converted to LPO",
+      }).eq("id", f.mrId);
+    }
+    await loadData(); return { ok: true, lpoNum };
+  };
+
+  const update = async (id, f) => {
+    const totalAmount = (f.items || []).reduce((s, i) => s + (Number(i.qty) * Number(i.rate)), 0);
+    const { error } = await supabase.from("lpo").update({
+      project_id: f.pid, supplier_name: f.supplierName, supplier_contact: f.supplierContact,
+      supplier_email: f.supplierEmail, supplier_address: f.supplierAddress,
+      supplier_trn: f.supplierTrn, date: f.date || null,
+      delivery_date: f.deliveryDate || null, payment_terms: f.paymentTerms,
+      status: f.status, delivery_status: f.deliveryStatus,
+      delivery_notes: f.deliveryNotes, total_amount: totalAmount, remarks: f.remarks,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    // Replace items
+    await supabase.from("lpo_items").delete().eq("lpo_id", id);
+    if (f.items && f.items.length > 0) {
+      const itemRows = f.items.filter(i => i.desc.trim()).map(i => ({
+        lpo_id: id, item_description: i.desc, unit: i.unit,
+        quantity: Number(i.qty) || 0, rate: Number(i.rate) || 0,
+        amount: (Number(i.qty) || 0) * (Number(i.rate) || 0),
+        delivered_quantity: Number(i.deliveredQty) || 0,
+        pending_quantity: Math.max(0, (Number(i.qty) || 0) - (Number(i.deliveredQty) || 0)),
+        delivery_status: i.itemDeliveryStatus || "Not Delivered",
+      }));
+      if (itemRows.length > 0) await supabase.from("lpo_items").insert(itemRows);
+    }
+    // Auto-update MR delivery status
+    await syncMrDelivery(id, f);
+    await loadData(); return { ok: true };
+  };
+
+  const syncMrDelivery = async (lpoId, f) => {
+    if (!f.mrId) return;
+    const totalOrdered = (f.items || []).reduce((s, i) => s + (Number(i.qty) || 0), 0);
+    const totalDelivered = (f.items || []).reduce((s, i) => s + (Number(i.deliveredQty) || 0), 0);
+    let mrStatus = "Converted to LPO";
+    let mrDelivery = "Pending";
+    if (totalDelivered >= totalOrdered && totalOrdered > 0) {
+      mrStatus = "Material Fully Delivered"; mrDelivery = "Fully Delivered";
+    } else if (totalDelivered > 0) {
+      mrStatus = "Material Partially Delivered"; mrDelivery = "Partially Delivered";
+    }
+    await supabase.from("material_requests").update({
+      status: mrStatus, delivery_status: mrDelivery,
+    }).eq("id", f.mrId);
+  };
+
+  const remove = async (id) => {
+    await supabase.from("lpo_items").delete().eq("lpo_id", id);
+    const { error } = await supabase.from("lpo").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  return { lpos, loading, add, update, remove, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MR MODULE CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const MR_STATUS = ["Draft","Submitted","Approved","Rejected","Converted to LPO","Material Partially Delivered","Material Fully Delivered"];
+const MR_PRIORITY = ["Low","Medium","High","Urgent"];
+const MR_DEPT = ["Civil","MEP","QAQC","Store","Architecture","Safety"];
+const UNITS = ["Nos","Pcs","Kg","Ton","Ltr","Bag","Box","Roll","Mtr","Sqm","Set","Pair","Lot"];
+const PRI_COLOR = { Low:"bg-slate-100 text-slate-600", Medium:"bg-blue-100 text-blue-700", High:"bg-orange-100 text-orange-700", Urgent:"bg-red-100 text-red-700 font-bold" };
+const EMPTY_MR_ITEM = () => ({ id: Date.now() + Math.random(), desc:"", unit:"Nos", qty:"", spec:"", brand:"", remarks:"" });
+const EMPTY_MR = () => ({ pid:"", requestedBy:"", dept:"Civil", date: new Date().toISOString().split("T")[0], requiredDate:"", priority:"Medium", status:"Draft", remarks:"", items:[EMPTY_MR_ITEM()] });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MATERIAL REQUEST MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo }) => {
+  const [mode, setMode] = useState("list");
+  const [sel, setSel] = useState(null);
+  const [form, setForm] = useState(EMPTY_MR());
+  const [search, setSearch] = useState("");
+  const [fStatus, setFStatus] = useState("All");
+  const [fProject, setFProject] = useState("All");
+  const [saving, setSaving] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+  const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
+
+  const addItem = () => setForm(p => ({...p, items:[...p.items, EMPTY_MR_ITEM()]}));
+  const removeItem = id => setForm(p => ({...p, items: p.items.filter(i => i.id !== id)}));
+  const setItem = (id, k, v) => setForm(p => ({...p, items: p.items.map(i => i.id===id ? {...i,[k]:v} : i)}));
+
+  const openCreate = () => { setForm(EMPTY_MR()); setSel(null); setMode("form"); };
+  const openEdit = mr => {
+    setSel(mr);
+    setForm({ pid:mr.pid, requestedBy:mr.requestedBy, dept:mr.dept, date:mr.date, requiredDate:mr.requiredDate, priority:mr.priority, status:mr.status, remarks:mr.remarks,
+      items: mr.items.length ? mr.items.map(i=>({id:i.id||Date.now()+Math.random(),desc:i.desc,unit:i.unit,qty:String(i.qty),spec:i.spec,brand:i.brand,remarks:i.remarks})) : [EMPTY_MR_ITEM()] });
+    setMode("form");
+  };
+  const openView = mr => { setSel(mr); setMode("view"); };
+  const goList = () => { setMode("list"); setSel(null); };
+
+  const handleSave = async () => {
+    if (!form.pid) { showToast("Select a project","error"); return; }
+    if (!form.items.some(i=>i.desc.trim())) { showToast("Add at least one item","error"); return; }
+    setSaving(true);
+    const res = sel ? await onUpdate(sel.id, form) : await onAdd(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast(sel?"MR updated!":"MR created: "+res.mrNum); goList();
+  };
+  const handleDelete = async id => {
+    const res = await onDelete(id);
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("MR deleted!"); setConfirmId(null); if (mode!=="list") goList();
+  };
+  const handleApprove = async () => {
+    const res = await onUpdateStatus(sel.id, { status:"Approved" });
+    if (res.ok) { showToast("MR Approved!"); setSel(p=>({...p,status:"Approved"})); }
+    else showToast(res.error,"error");
+  };
+
+  const filtered = mrs.filter(m => {
+    if (fStatus!=="All" && m.status!==fStatus) return false;
+    if (fProject!=="All" && m.pid!==fProject) return false;
+    if (search && !`${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const DEL_BADGE = { "Pending":"bg-slate-100 text-slate-500 border-slate-200", "Partially Delivered":"bg-amber-100 text-amber-700 border-amber-200", "Fully Delivered":"bg-green-100 text-green-700 border-green-200" };
+
+  // ── VIEW ────────────────────────────────────────────────────────────────────
+  if (mode==="view"&&sel) return (
+    <div className="p-6 max-w-4xl space-y-4">
+      {confirmId&&<ConfirmDialog message="Delete this MR?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+      <BackBtn onClick={goList}/>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-5 text-white">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-amber-400 text-xs font-mono font-bold">{sel.mrNum}</span>
+            <h2 className="text-xl font-bold mt-1">{projects.find(p=>p.id===sel.pid)?.name||"—"}</h2>
+            <p className="text-slate-300 text-sm mt-1">{projects.find(p=>p.id===sel.pid)?.number} · {sel.dept} · {sel.requestedBy}</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <Badge text={sel.status}/>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${PRI_COLOR[sel.priority]}`}>{sel.priority}</span>
+          </div>
+        </div>
+        {/* Summary cards */}
+        <div className="grid grid-cols-4 gap-3 mt-4">
+          {[{l:"Date",v:fmtDate(sel.date)},{l:"Required By",v:fmtDate(sel.requiredDate)},{l:"LPO Status",v:sel.lpoStatus},{l:"Delivery",v:sel.deliveryStatus}].map(c=>(
+            <div key={c.l} className="bg-white/10 rounded-lg p-2.5 text-center">
+              <div className="text-xs text-slate-300">{c.l}</div>
+              <div className="text-sm font-bold text-white mt-0.5">{c.v||"—"}</div>
+            </div>
+          ))}
+        </div>
+        {sel.linkedLpoNum&&<div className="mt-3 bg-amber-500/20 border border-amber-400/30 rounded-lg px-3 py-2 text-sm text-amber-300">
+          <span className="font-semibold">Linked LPO: </span>{sel.linkedLpoNum}
+        </div>}
+      </div>
+      {/* Items */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 font-semibold text-slate-700 text-sm">Items ({sel.items.length})</div>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50"><tr>{["#","Description","Unit","Qty","Specification","Brand","Remarks"].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {sel.items.map((it,idx)=>(
+              <tr key={it.id} className="hover:bg-slate-50">
+                <td className="px-3 py-2 text-slate-400 text-xs">{idx+1}</td>
+                <td className="px-3 py-2 font-medium text-slate-800">{it.desc}</td>
+                <td className="px-3 py-2 text-slate-600">{it.unit}</td>
+                <td className="px-3 py-2 font-bold text-slate-800">{it.qty}</td>
+                <td className="px-3 py-2 text-slate-600 text-xs">{it.spec||"—"}</td>
+                <td className="px-3 py-2 text-slate-600 text-xs">{it.brand||"—"}</td>
+                <td className="px-3 py-2 text-slate-500 text-xs">{it.remarks||"—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700"><span className="font-semibold">Remarks: </span>{sel.remarks}</div>}
+      {/* Actions */}
+      <div className="flex flex-wrap gap-3">
+        <Btn onClick={()=>openEdit(sel)} label="Edit MR"/>
+        {sel.status==="Submitted"&&<button onClick={handleApprove} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">✓ Approve MR</button>}
+        {sel.status==="Approved"&&sel.lpoStatus==="Not Raised"&&<button onClick={()=>onNavigateLpo(sel)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">+ Convert to LPO</button>}
+        <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+      </div>
+    </div>
+  );
+
+  // ── FORM ────────────────────────────────────────────────────────────────────
+  if (mode==="form") return (
+    <div className="p-6 max-w-3xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?`Edit — ${sel.mrNum}`:"New Material Request"}</h2>
+      <div className="space-y-4">
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Request Details</div>
+          <Grid2>
+            <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Department"/><Sel value={form.dept} onChange={set("dept")}>{MR_DEPT.map(d=><option key={d}>{d}</option>)}</Sel></div>
+            <div><Lbl t="Requested By"/><Inp value={form.requestedBy} onChange={set("requestedBy")} placeholder="Engineer name"/></div>
+            <div><Lbl t="Priority"/><Sel value={form.priority} onChange={set("priority")}>{MR_PRIORITY.map(p=><option key={p}>{p}</option>)}</Sel></div>
+            <div><Lbl t="Date"/><Inp type="date" value={form.date} onChange={set("date")}/></div>
+            <div><Lbl t="Required Date"/><Inp type="date" value={form.requiredDate} onChange={set("requiredDate")}/></div>
+          </Grid2>
+          {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{MR_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
+          <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Additional notes..."/></div>
+        </FormCard>
+        {/* Items */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <span className="font-semibold text-slate-700 text-sm">Material Items</span>
+            <button onClick={addItem} className="text-xs font-bold text-amber-600 hover:text-amber-700 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[700px]">
+              <thead className="bg-slate-50"><tr>{["#","Description*","Unit","Qty*","Specification","Brand","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+              <tbody>
+                {form.items.map((it,idx)=>(
+                  <tr key={it.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2 text-slate-400 text-xs w-8">{idx+1}</td>
+                    <td className="px-2 py-1"><Inp value={it.desc} onChange={e=>setItem(it.id,"desc",e.target.value)} placeholder="Item description"/></td>
+                    <td className="px-2 py-1 w-24"><Sel value={it.unit} onChange={e=>setItem(it.id,"unit",e.target.value)}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel></td>
+                    <td className="px-2 py-1 w-20"><Inp type="number" value={it.qty} onChange={e=>setItem(it.id,"qty",e.target.value)} placeholder="0"/></td>
+                    <td className="px-2 py-1"><Inp value={it.spec} onChange={e=>setItem(it.id,"spec",e.target.value)} placeholder="Spec..."/></td>
+                    <td className="px-2 py-1"><Inp value={it.brand} onChange={e=>setItem(it.id,"brand",e.target.value)} placeholder="Brand..."/></td>
+                    <td className="px-2 py-1"><Inp value={it.remarks} onChange={e=>setItem(it.id,"remarks",e.target.value)} placeholder="Notes..."/></td>
+                    <td className="px-2 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={form.items.length===1} className="text-red-400 hover:text-red-600 text-lg leading-none disabled:opacity-30">×</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="flex gap-3"><Btn saving={saving} onClick={handleSave} label={sel?"Update MR":"Submit MR"}/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+      </div>
+    </div>
+  );
+
+  // ── LIST ────────────────────────────────────────────────────────────────────
+  return (
+    <div className="p-6">
+      {confirmId&&<ConfirmDialog message="Delete this MR permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+      <PageTitle title="Material Requests" count={filtered.length}
+        exportBtn={<ExportButtons data={filtered.map(m=>({...m,projectNum:(projects.find(p=>p.id===m.pid)||{}).number||"—",projectName:(projects.find(p=>p.id===m.pid)||{}).name||"—",itemCount:m.items.length}))}
+          excelCols={[{header:"MR No.",key:"mrNum",width:12},{header:"Project No.",key:"projectNum",width:14},{header:"Project",key:"projectName",width:35},{header:"Dept",key:"dept",width:14},{header:"Requested By",key:"requestedBy",width:20},{header:"Date",key:"date",width:14,type:"date"},{header:"Required Date",key:"requiredDate",width:14,type:"date"},{header:"Priority",key:"priority",width:12},{header:"Status",key:"status",width:22},{header:"LPO Status",key:"lpoStatus",width:16},{header:"LPO No.",key:"linkedLpoNum",width:14},{header:"Delivery",key:"deliveryStatus",width:18}]}
+          fileName="Material_Requests" pdfTitle="Material Requests Register"/>}
+        btn={<AddBtn onClick={openCreate} label="New MR"/>}/>
+      <div className="flex flex-wrap gap-3 mb-3">
+        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
+        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
+      </div>
+      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No MRs found" onCreate={openCreate}/>:(
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["MR No.","Project","Dept","Requested By","Date","Req. Date","Priority","Status","LPO No.","Delivery","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(m=>{
+                const proj = projects.find(p=>p.id===m.pid);
+                return (
+                  <tr key={m.id} className="hover:bg-amber-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{m.mrNum}</td>
+                    <td className="px-4 py-3"><div className="text-xs font-bold text-slate-800">{proj?.number||"—"}</div><div className="text-xs text-slate-400 max-w-[120px] truncate">{proj?.name}</div></td>
+                    <td className="px-4 py-3 text-xs"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{m.dept}</span></td>
+                    <td className="px-4 py-3 text-xs text-slate-700">{m.requestedBy||"—"}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(m.date)}</td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap"><span className={isOverdue(m.requiredDate,m.status)?"text-red-600 font-bold":"text-slate-600"}>{fmtDate(m.requiredDate)}</span></td>
+                    <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${PRI_COLOR[m.priority]}`}>{m.priority}</span></td>
+                    <td className="px-4 py-3"><Badge text={m.status}/></td>
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{m.linkedLpoNum||"—"}</td>
+                    <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${DEL_BADGE[m.deliveryStatus]||"bg-slate-100 text-slate-500 border-slate-200"}`}>{m.deliveryStatus}</span></td>
+                    <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={()=>openView(m)} label="View" color="view"/><ActBtn onClick={()=>openEdit(m)} label="Edit" color="edit"/><ActBtn onClick={()=>setConfirmId(m.id)} label="Del" color="del"/></div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LPO MODULE CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const LPO_STATUS = ["Draft","Issued","Partially Delivered","Fully Delivered","Completed","Cancelled"];
+const LPO_PAYMENT = ["Advance","7 Days","15 Days","30 Days","45 Days","60 Days","On Delivery"];
+const LPO_DEL_STATUS = ["Not Delivered","Partially Delivered","Fully Delivered"];
+const EMPTY_LPO_ITEM = () => ({ id:Date.now()+Math.random(), desc:"", unit:"Nos", qty:"", rate:"", amount:0, deliveredQty:"0", itemDeliveryStatus:"Not Delivered" });
+const EMPTY_LPO = (mrObj) => ({
+  pid: mrObj?.pid||"", mrId: mrObj?.id||"", mrNum: mrObj?.mrNum||"",
+  supplierName:"", supplierContact:"", supplierEmail:"", supplierAddress:"", supplierTrn:"",
+  date: new Date().toISOString().split("T")[0], deliveryDate:"",
+  paymentTerms:"30 Days", status:"Draft", deliveryStatus:"Not Delivered",
+  deliveryNotes:"", remarks:"",
+  items: mrObj?.items?.length
+    ? mrObj.items.map(i=>({id:Date.now()+Math.random(),desc:i.desc,unit:i.unit,qty:String(i.qty),rate:"",amount:0,deliveredQty:"0",itemDeliveryStatus:"Not Delivered"}))
+    : [EMPTY_LPO_ITEM()],
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LPO MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill }) => {
+  const [mode, setMode] = useState(prefillMr ? "form" : "list");
+  const [sel, setSel] = useState(null);
+  const [form, setForm] = useState(() => EMPTY_LPO(prefillMr));
+  const [search, setSearch] = useState("");
+  const [fStatus, setFStatus] = useState("All");
+  const [fProject, setFProject] = useState("All");
+  const [saving, setSaving] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+  const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
+
+  // When prefillMr changes (from MR "Convert to LPO" button)
+  useEffect(() => {
+    if (prefillMr) { setForm(EMPTY_LPO(prefillMr)); setMode("form"); setSel(null); }
+  }, [prefillMr]);
+
+  const addItem = () => setForm(p => ({...p, items:[...p.items, EMPTY_LPO_ITEM()]}));
+  const removeItem = id => setForm(p => ({...p, items: p.items.filter(i => i.id!==id)}));
+  const setItemF = (id, k, v) => setForm(p => ({...p, items: p.items.map(i => {
+    if (i.id!==id) return i;
+    const updated = {...i,[k]:v};
+    if (k==="qty"||k==="rate") updated.amount = (Number(k==="qty"?v:i.qty)||0)*(Number(k==="rate"?v:i.rate)||0);
+    if (k==="deliveredQty") {
+      const pending = Math.max(0,(Number(i.qty)||0)-(Number(v)||0));
+      updated.itemDeliveryStatus = Number(v)<=0?"Not Delivered":pending<=0?"Fully Delivered":"Partially Delivered";
+    }
+    return updated;
+  })}));
+
+  const totalAmt = form.items.reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.rate)||0),0);
+
+  const openCreate = () => { setForm(EMPTY_LPO()); setSel(null); setMode("form"); if(onClearPrefill) onClearPrefill(); };
+  const openEdit = l => {
+    setSel(l);
+    setForm({pid:l.pid,mrId:l.mrId,mrNum:l.mrNum,supplierName:l.supplierName,supplierContact:l.supplierContact,supplierEmail:l.supplierEmail,supplierAddress:l.supplierAddress,supplierTrn:l.supplierTrn,date:l.date,deliveryDate:l.deliveryDate,paymentTerms:l.paymentTerms,status:l.status,deliveryStatus:l.deliveryStatus,deliveryNotes:l.deliveryNotes,remarks:l.remarks,
+      items:l.items.map(i=>({id:i.id||Date.now()+Math.random(),desc:i.desc,unit:i.unit,qty:String(i.qty),rate:String(i.rate),amount:i.amount,deliveredQty:String(i.deliveredQty||0),itemDeliveryStatus:i.itemDeliveryStatus||"Not Delivered"}))});
+    setMode("form");
+  };
+  const openView = l => { setSel(l); setMode("view"); };
+  const goList = () => { setMode("list"); setSel(null); if(onClearPrefill) onClearPrefill(); };
+
+  const handleSave = async () => {
+    if (!form.pid) { showToast("Select a project","error"); return; }
+    if (!form.supplierName.trim()) { showToast("Supplier name required","error"); return; }
+    if (!form.items.some(i=>i.desc.trim())) { showToast("Add at least one item","error"); return; }
+    setSaving(true);
+    const payload = {...form, items: form.items.map(i=>({...i,amount:(Number(i.qty)||0)*(Number(i.rate)||0)}))};
+    const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast(sel?"LPO updated!":"LPO created: "+res.lpoNum); goList();
+  };
+  const handleDelete = async id => {
+    const res = await onDelete(id);
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("LPO deleted!"); setConfirmId(null); if(mode!=="list") goList();
+  };
+
+  const filtered = lpos.filter(l => {
+    if (fStatus!=="All" && l.status!==fStatus) return false;
+    if (fProject!=="All" && l.pid!==fProject) return false;
+    if (search && !`${l.lpoNum} ${l.supplierName} ${l.mrNum}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  // ── VIEW ────────────────────────────────────────────────────────────────────
+  if (mode==="view"&&sel) return (
+    <div className="p-6 max-w-4xl space-y-4">
+      {confirmId&&<ConfirmDialog message="Delete this LPO?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+      <BackBtn onClick={goList}/>
+      <div className="bg-gradient-to-r from-blue-800 to-blue-700 rounded-xl p-5 text-white">
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="text-blue-200 text-xs font-mono font-bold">{sel.lpoNum}</span>
+            {sel.mrNum&&<span className="ml-2 text-xs bg-amber-500/20 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded-full">MR: {sel.mrNum}</span>}
+            <h2 className="text-xl font-bold mt-1">{sel.supplierName}</h2>
+            <p className="text-blue-200 text-sm mt-1">{projects.find(p=>p.id===sel.pid)?.number} · TRN: {sel.supplierTrn||"—"}</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <Badge text={sel.status}/>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${SC[sel.deliveryStatus]||"bg-slate-100 text-slate-500"}`}>{sel.deliveryStatus}</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-3 mt-4">
+          {[{l:"LPO Date",v:fmtDate(sel.date)},{l:"Delivery Date",v:fmtDate(sel.deliveryDate)},{l:"Payment Terms",v:sel.paymentTerms},{l:"Total Amount",v:`AED ${Number(sel.totalAmount).toLocaleString()}`}].map(c=>(
+            <div key={c.l} className="bg-white/10 rounded-lg p-2.5 text-center">
+              <div className="text-xs text-blue-200">{c.l}</div>
+              <div className="text-sm font-bold text-white mt-0.5">{c.v||"—"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Supplier info */}
+      <FormCard>
+        <div className="text-sm font-bold text-slate-700 mb-3">Supplier Information</div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[["Company",sel.supplierName],["Contact",sel.supplierContact],["Email",sel.supplierEmail],["Phone/Address",sel.supplierAddress],["TRN Number",sel.supplierTrn],["Payment Terms",sel.paymentTerms]].map(([k,v])=>(
+            <div key={k}><div className="text-xs text-slate-400">{k}</div><div className="font-semibold text-slate-800 mt-0.5">{v||"—"}</div></div>
+          ))}
+        </div>
+      </FormCard>
+      {/* Items with delivery tracking */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+          <span className="font-semibold text-slate-700 text-sm">Items & Delivery Tracking</span>
+          <span className="text-xs text-slate-500">Total: <strong className="text-slate-800">AED {Number(sel.totalAmount).toLocaleString()}</strong></span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[800px]">
+            <thead className="bg-slate-50"><tr>{["#","Description","Unit","Ordered","Rate","Amount","Delivered","Pending","Status"].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {sel.items.map((it,idx)=>{
+                const pending = Math.max(0,(Number(it.qty)||0)-(Number(it.deliveredQty)||0));
+                return (
+                  <tr key={it.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 text-slate-400 text-xs">{idx+1}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800">{it.desc}</td>
+                    <td className="px-3 py-2 text-slate-600 text-xs">{it.unit}</td>
+                    <td className="px-3 py-2 font-bold">{it.qty}</td>
+                    <td className="px-3 py-2 text-slate-600">AED {Number(it.rate).toLocaleString()}</td>
+                    <td className="px-3 py-2 font-bold text-slate-800">AED {Number(it.amount).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-green-700 font-bold">{it.deliveredQty||0}</td>
+                    <td className="px-3 py-2"><span className={pending>0?"text-red-600 font-bold":"text-green-600 font-bold"}>{pending}</span></td>
+                    <td className="px-3 py-2"><Badge text={it.itemDeliveryStatus} cls={it.itemDeliveryStatus==="Fully Delivered"?"bg-green-100 text-green-700 border-green-200":it.itemDeliveryStatus==="Partially Delivered"?"bg-amber-100 text-amber-700 border-amber-200":"bg-slate-100 text-slate-500 border-slate-200"}/></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="bg-amber-50 border-t-2 border-amber-200">
+              <tr><td colSpan={5} className="px-3 py-3 font-bold text-slate-700 text-right">Total Amount:</td><td className="px-3 py-3 font-bold text-slate-900">AED {Number(sel.totalAmount).toLocaleString()}</td><td colSpan={3}/></tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      {sel.deliveryNotes&&<div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm"><span className="font-semibold text-blue-700">Delivery Notes: </span>{sel.deliveryNotes}</div>}
+      {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm"><span className="font-semibold">Remarks: </span>{sel.remarks}</div>}
+      <div className="flex gap-3"><Btn onClick={()=>openEdit(sel)} label="Edit LPO"/><Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/></div>
+    </div>
+  );
+
+  // ── FORM ────────────────────────────────────────────────────────────────────
+  if (mode==="form") return (
+    <div className="p-6 max-w-3xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?`Edit — ${sel.lpoNum}`:prefillMr?`Convert MR ${prefillMr.mrNum} → LPO`:"New LPO"}</h2>
+      <div className="space-y-4">
+        {/* LPO Details */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">LPO Details</div>
+          <Grid2>
+            <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Linked MR"/><Inp value={form.mrNum} readOnly placeholder="Auto-filled from MR" className="bg-slate-50 text-slate-500"/></div>
+            <div><Lbl t="LPO Date"/><Inp type="date" value={form.date} onChange={set("date")}/></div>
+            <div><Lbl t="Delivery Date"/><Inp type="date" value={form.deliveryDate} onChange={set("deliveryDate")}/></div>
+            <div><Lbl t="Payment Terms"/><Sel value={form.paymentTerms} onChange={set("paymentTerms")}>{LPO_PAYMENT.map(p=><option key={p}>{p}</option>)}</Sel></div>
+            {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{LPO_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
+          </Grid2>
+        </FormCard>
+        {/* Supplier Details */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Supplier Details</div>
+          <div><Lbl t="Supplier Company Name" req/><Inp value={form.supplierName} onChange={set("supplierName")} placeholder="e.g. Al Futtaim Building Materials LLC"/></div>
+          <Grid2>
+            <div><Lbl t="Contact Person"/><Inp value={form.supplierContact} onChange={set("supplierContact")} placeholder="Contact name"/></div>
+            <div><Lbl t="Phone / Email"/><Inp value={form.supplierEmail} onChange={set("supplierEmail")} placeholder="phone or email"/></div>
+          </Grid2>
+          <div><Lbl t="Address"/><Inp value={form.supplierAddress} onChange={set("supplierAddress")} placeholder="Supplier address"/></div>
+          <div><Lbl t="TRN Number"/><Inp value={form.supplierTrn} onChange={set("supplierTrn")} placeholder="e.g. 100XXXXXXXXX00003"/></div>
+        </FormCard>
+        {/* Items */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <span className="font-semibold text-slate-700 text-sm">Items & Pricing</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-slate-700">Total: AED {totalAmt.toLocaleString()}</span>
+              <button onClick={addItem} className="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[800px]">
+              <thead className="bg-slate-50"><tr>{["#","Description*","Unit","Qty*","Rate (AED)*","Amount","Delivered","",""].map(h=><th key={h} className="text-left px-2 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+              <tbody>
+                {form.items.map((it,idx)=>(
+                  <tr key={it.id} className="border-t border-slate-100">
+                    <td className="px-2 py-1 text-slate-400 text-xs w-8">{idx+1}</td>
+                    <td className="px-1 py-1"><Inp value={it.desc} onChange={e=>setItemF(it.id,"desc",e.target.value)} placeholder="Description"/></td>
+                    <td className="px-1 py-1 w-20"><Sel value={it.unit} onChange={e=>setItemF(it.id,"unit",e.target.value)}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel></td>
+                    <td className="px-1 py-1 w-18"><Inp type="number" value={it.qty} onChange={e=>setItemF(it.id,"qty",e.target.value)} placeholder="0"/></td>
+                    <td className="px-1 py-1 w-24"><Inp type="number" value={it.rate} onChange={e=>setItemF(it.id,"rate",e.target.value)} placeholder="0.00"/></td>
+                    <td className="px-2 py-1 text-sm font-bold text-slate-700 whitespace-nowrap">AED {((Number(it.qty)||0)*(Number(it.rate)||0)).toLocaleString()}</td>
+                    <td className="px-1 py-1 w-20"><Inp type="number" value={it.deliveredQty} onChange={e=>setItemF(it.id,"deliveredQty",e.target.value)} placeholder="0"/></td>
+                    <td className="px-1 py-1 text-xs"><span className={it.itemDeliveryStatus==="Fully Delivered"?"text-green-600 font-bold":it.itemDeliveryStatus==="Partially Delivered"?"text-amber-600 font-bold":"text-slate-400"}>{it.itemDeliveryStatus}</span></td>
+                    <td className="px-1 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={form.items.length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {/* Delivery + Remarks */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Delivery & Remarks</div>
+          {sel&&<div className="mb-3"><Lbl t="Delivery Status"/><Sel value={form.deliveryStatus} onChange={set("deliveryStatus")}>{LPO_DEL_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
+          <div><Lbl t="Delivery Notes"/><Txta value={form.deliveryNotes} onChange={set("deliveryNotes")} rows={2} placeholder="Delivery notes..."/></div>
+          <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Additional remarks..."/></div>
+        </FormCard>
+        <div className="flex gap-3"><Btn saving={saving} onClick={handleSave} label={sel?"Update LPO":prefillMr?"Create LPO from MR":"Create LPO"}/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+      </div>
+    </div>
+  );
+
+  // ── LIST ────────────────────────────────────────────────────────────────────
+  return (
+    <div className="p-6">
+      {confirmId&&<ConfirmDialog message="Delete this LPO permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+      <PageTitle title="Local Purchase Orders" count={filtered.length}
+        exportBtn={<ExportButtons data={filtered.map(l=>({...l,projectNum:(projects.find(p=>p.id===l.pid)||{}).number||"—",totalFmt:`AED ${Number(l.totalAmount).toLocaleString()}`}))}
+          excelCols={[{header:"LPO No.",key:"lpoNum",width:12},{header:"Project",key:"projectNum",width:14},{header:"Supplier",key:"supplierName",width:30},{header:"TRN",key:"supplierTrn",width:18},{header:"MR No.",key:"mrNum",width:12},{header:"Date",key:"date",width:14,type:"date"},{header:"Del. Date",key:"deliveryDate",width:14,type:"date"},{header:"Payment",key:"paymentTerms",width:14},{header:"Status",key:"status",width:16},{header:"Delivery",key:"deliveryStatus",width:18},{header:"Total",key:"totalFmt",width:18}]}
+          fileName="Local_Purchase_Orders" pdfTitle="Local Purchase Orders"/>}
+        btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
+      <div className="flex flex-wrap gap-3 mb-3">
+        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
+        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
+      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["LPO No.","Project","Supplier","MR No.","Date","Del. Date","Status","Delivery","Total","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(l=>{
+                const proj = projects.find(p=>p.id===l.pid);
+                return (
+                  <tr key={l.id} className="hover:bg-blue-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{l.lpoNum}</td>
+                    <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+                    <td className="px-4 py-3"><div className="font-medium text-slate-800 max-w-[140px] truncate">{l.supplierName}</div><div className="text-xs text-slate-400 truncate">TRN: {l.supplierTrn||"—"}</div></td>
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{l.mrNum||"—"}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(l.date)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(l.deliveryDate)||"—"}</td>
+                    <td className="px-4 py-3"><Badge text={l.status}/></td>
+                    <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${l.deliveryStatus==="Fully Delivered"?"bg-green-100 text-green-700 border-green-200":l.deliveryStatus==="Partially Delivered"?"bg-amber-100 text-amber-700 border-amber-200":"bg-slate-100 text-slate-500 border-slate-200"}`}>{l.deliveryStatus}</span></td>
+                    <td className="px-4 py-3 font-bold text-slate-800 whitespace-nowrap">AED {Number(l.totalAmount).toLocaleString()}</td>
+                    <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={()=>openView(l)} label="View" color="view"/><ActBtn onClick={()=>openEdit(l)} label="Edit" color="edit"/><ActBtn onClick={()=>setConfirmId(l.id)} label="Del" color="del"/></div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // APP ROOT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3178,6 +3986,9 @@ export default function App() {
   const { progressItems, add: addPg, update: updPg, remove: delPg } = useProjectProgress();
   const { photos, loading: phLoad, add: addPh, update: updPh, remove: delPh } = usePhotos();
   const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
+  const { mrs, loading: mrLoad, add: addMr, update: updMr, remove: delMr, updateStatus: updMrStatus } = useMatReqs();
+  const { lpos, loading: lpoLoad, add: addLpo, update: updLpo, remove: delLpo } = useLPOs();
+  const [prefillMr, setPrefillMr] = useState(null);
 
   const { toast, showToast, hideToast } = useToast();
   const [page, setPage] = useState("dashboard");
@@ -3198,7 +4009,7 @@ export default function App() {
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} />;
+      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} />;
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
@@ -3208,6 +4019,8 @@ export default function App() {
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} />;
+      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);setPage("lpo");}}/>;
+      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
     }
   };
