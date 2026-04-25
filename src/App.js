@@ -41,29 +41,53 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
   if (!data || data.length === 0) { alert("No data to export."); return; }
   try {
     const { jsPDF } = window.jspdf;
-    if (!jsPDF) { alert("PDF library not loaded. Please wait and try again."); return; }
+    if (!jsPDF) { alert("PDF library not loaded. Refresh page and try again."); return; }
     const fullName = `${fileName}_${todayExport()}.pdf`;
     const now = new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
-    const doc = new jsPDF({ orientation, format: "a4" });
+    const doc = new jsPDF({ orientation, format: "a4", compress: true });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    doc.setFillColor(...DARK_COLOR);
-    doc.rect(0, 0, pageW, 28, "F");
-    doc.setFillColor(...AMBER_COLOR);
-    doc.rect(0, 28, pageW, 3, "F");
-    // Add logo
-    try { doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, 3, 38, 22); } catch(e) {}
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text(title, pageW / 2, 12, { align: "center" });
-    doc.setTextColor(200, 200, 200);
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "normal");
-    doc.text(AGBC_COMPANY, pageW / 2, 20, { align: "center" });
-    doc.setFontSize(7);
-    doc.setTextColor(180, 180, 180);
-    doc.text(`${now}  ·  ${data.length} records`, pageW - 14, 24, { align: "right" });
+    const MARGIN = 10;
+
+    // ── Draw header on every page ──────────────────────────────────────────
+    const drawHeader = () => {
+      // Full-width dark background
+      doc.setFillColor(...DARK_COLOR);
+      doc.rect(0, 0, pageW, 38, "F");
+      // Amber accent line
+      doc.setFillColor(...AMBER_COLOR);
+      doc.rect(0, 38, pageW, 2.5, "F");
+      // Full-width logo (left-aligned, preserving aspect ratio)
+      try {
+        const logoH = 30;
+        const logoW = logoH * (5.5); // logo ratio approx 5.5:1
+        doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", MARGIN, 4, logoW, logoH);
+      } catch(e) {
+        // fallback text if logo fails
+        doc.setTextColor(245, 158, 11);
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("AGBC", MARGIN, 20);
+      }
+      // Report title (right of logo)
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(title, pageW - MARGIN, 15, { align: "right" });
+      // Company name
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(200, 200, 200);
+      doc.text(AGBC_COMPANY, pageW - MARGIN, 23, { align: "right" });
+      // Date & record count
+      doc.setFontSize(7);
+      doc.setTextColor(160, 160, 160);
+      doc.text(`${now}  ·  ${data.length} record${data.length !== 1 ? "s" : ""}`, pageW - MARGIN, 31, { align: "right" });
+    };
+
+    drawHeader();
+
+    // ── Table ──────────────────────────────────────────────────────────────
     const heads = [columns.map(c => c.header)];
     const rows = data.map(row => columns.map(c => {
       const v = row[c.key];
@@ -72,20 +96,54 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
       if (c.type === "array") return Array.isArray(v) ? v.join(", ") : String(v);
       return String(v);
     }));
+
+    // Auto font size based on column count
+    const colCount = columns.length;
+    const autoFont = colCount > 10 ? 6.5 : colCount > 7 ? 7 : 7.5;
+    const autoPad = colCount > 10 ? 2.5 : 3;
+
     doc.autoTable({
-      startY: 34,
+      startY: 43,
+      margin: { left: MARGIN, right: MARGIN, bottom: 15 },
       head: heads,
       body: rows,
       theme: "grid",
-      styles: { fontSize: 7.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, overflow: "linebreak", valign: "middle", textColor: DARK_COLOR },
-      headStyles: { fillColor: AMBER_COLOR, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, halign: "center" },
-      alternateRowStyles: { fillColor: LIGHT_COLOR },
-      columnStyles: columns.reduce((acc, c, i) => { if (c.pdfWidth) acc[i] = { cellWidth: c.pdfWidth }; return acc; }, {}),
+      tableWidth: "auto",
+      styles: {
+        fontSize: autoFont,
+        cellPadding: { top: autoPad, bottom: autoPad, left: 3, right: 3 },
+        overflow: "linebreak",
+        valign: "middle",
+        textColor: [30, 41, 59],
+        lineColor: [220, 220, 220],
+        lineWidth: 0.2,
+      },
+      headStyles: {
+        fillColor: AMBER_COLOR,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: autoFont,
+        halign: "center",
+        cellPadding: { top: autoPad + 1, bottom: autoPad + 1, left: 3, right: 3 },
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      columnStyles: columns.reduce((acc, c, i) => {
+        if (c.pdfWidth) acc[i] = { cellWidth: c.pdfWidth };
+        if (c.align) acc[i] = { ...(acc[i]||{}), halign: c.align };
+        return acc;
+      }, {}),
       didDrawPage: ({ pageNumber }) => {
+        // Redraw header on subsequent pages
+        if (pageNumber > 1) drawHeader();
+        // Footer
         const total = doc.internal.getNumberOfPages();
         doc.setFontSize(6.5);
         doc.setTextColor(150);
-        doc.text(`Page ${pageNumber} of ${total}  ·  ${AGBC_COMPANY}  ·  Exported ${todayExport()}`, pageW / 2, pageH - 6, { align: "center" });
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          `Page ${pageNumber} of ${total}   ·   ${AGBC_COMPANY}   ·   Exported ${todayExport()}`,
+          pageW / 2, pageH - 6, { align: "center" }
+        );
       },
     });
     doc.save(fullName);
@@ -100,24 +158,34 @@ const exportDailyReportPDF = (report, projectName) => {
     const doc = new jsPDF({ orientation: "portrait", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
+    // ── Full-width header ────────────────────────────────────────────────────
     doc.setFillColor(...DARK_COLOR);
-    doc.rect(0, 0, pageW, 42, "F");
+    doc.rect(0, 0, pageW, 44, "F");
     doc.setFillColor(...AMBER_COLOR);
-    doc.rect(0, 42, pageW, 3, "F");
-    // Logo on left
-    try { doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, 5, 44, 28); } catch(e) {}
+    doc.rect(0, 44, pageW, 3, "F");
+    // Full-width logo
+    try {
+      const logoH = 34;
+      const logoW = logoH * 5.5;
+      doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, 5, logoW, logoH);
+    } catch(e) {
+      doc.setTextColor(245, 158, 11);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("AGBC", 14, 22);
+    }
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
+    doc.setFontSize(15);
     doc.setFont("helvetica", "bold");
-    doc.text("DAILY SITE REPORT", pageW / 2, 18, { align: "center" });
+    doc.text("DAILY SITE REPORT", pageW - 12, 16, { align: "right" });
     doc.setTextColor(200, 200, 200);
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(AGBC_COMPANY, pageW / 2, 28, { align: "center" });
+    doc.text(AGBC_COMPANY, pageW - 12, 26, { align: "right" });
     doc.setFontSize(7.5);
-    doc.setTextColor(180, 180, 180);
-    doc.text(new Date().toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short" }), pageW - 14, 36, { align: "right" });
-    let y = 52;
+    doc.setTextColor(160, 160, 160);
+    doc.text(new Date().toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short" }), pageW - 12, 36, { align: "right" });
+    let y = 56;
     doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.3);
@@ -272,6 +340,56 @@ function useProjects() {
     await loadData(); return { ok: true };
   };
   return { projects, loading, add, update, remove, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECT PROGRESS HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useProjectProgress() {
+  const [progressItems, setProgressItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase.from("project_progress_items").select("*").order("created_at");
+    if (error) { console.error("Progress:", error.message); setLoading(false); return; }
+    if (data) setProgressItems(data.map(p => ({
+      id: p.id, pid: p.project_id, activity: p.activity_name || "",
+      plannedStart: p.planned_start_date || "", plannedEnd: p.planned_finish_date || "",
+      actualStart: p.actual_start_date || "", actualEnd: p.actual_finish_date || "",
+      pct: Number(p.progress_percentage) || 0, status: p.status || "Not Started",
+      remarks: p.remarks || "",
+    })));
+    setLoading(false);
+  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const add = async (f) => {
+    const { error } = await supabase.from("project_progress_items").insert([{
+      project_id: f.pid, activity_name: f.activity,
+      planned_start_date: f.plannedStart || null, planned_finish_date: f.plannedEnd || null,
+      actual_start_date: f.actualStart || null, actual_finish_date: f.actualEnd || null,
+      progress_percentage: Math.min(100, Math.max(0, Number(f.pct) || 0)),
+      status: f.status, remarks: f.remarks,
+    }]);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+  const update = async (id, f) => {
+    const { error } = await supabase.from("project_progress_items").update({
+      activity_name: f.activity,
+      planned_start_date: f.plannedStart || null, planned_finish_date: f.plannedEnd || null,
+      actual_start_date: f.actualStart || null, actual_finish_date: f.actualEnd || null,
+      progress_percentage: Math.min(100, Math.max(0, Number(f.pct) || 0)),
+      status: f.status, remarks: f.remarks,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+  const remove = async (id) => {
+    const { error } = await supabase.from("project_progress_items").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+  return { progressItems, loading: loading, add, update, remove };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -991,143 +1109,348 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports }) => {
 // PROJECTS MODULE — Full CRUD
 // ─────────────────────────────────────────────────────────────────────────────
 const PROJ_STATUS = ["Active", "Tender", "On Hold", "Completed", "Cancelled"];
-const EMPTY_PROJ = { number: "", name: "", plot: "", location: "", plotArea: "", bua: "", duration: "", consultant: "", consultantContact: "", status: "Active", mapUrl: "" };
+const PROG_STATUS = ["Not Started", "In Progress", "On Hold", "Completed"];
+const ACTIVITIES = ["Excavation","Shoring","Piling","Concrete","Steel Reinforcement","Block Work","Plaster","MEP First Fix","MEP Second Fix","Waterproofing","Tiling","Painting","Doors & Windows","External Works","Testing & Commissioning"];
+const EMPTY_PROJ = { number:"",name:"",plot:"",location:"",plotArea:"",bua:"",duration:"",consultant:"",consultantContact:"",status:"Active",mapUrl:"" };
+const EMPTY_PG = { pid:"",activity:"",plannedStart:"",plannedEnd:"",actualStart:"",actualEnd:"",pct:0,status:"Not Started",remarks:"" };
 
-const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast }) => {
-  const [mode, setMode] = useState("list"); // list | form | view
+// Progress bar component
+const PctBar = ({ pct, showLabel = true, height = "h-2.5" }) => {
+  const pn = Math.min(100, Math.max(0, Number(pct) || 0));
+  const color = pn === 100 ? "bg-green-500" : pn >= 60 ? "bg-blue-500" : pn >= 30 ? "bg-amber-500" : pn > 0 ? "bg-orange-500" : "bg-slate-200";
+  return (
+    <div className="flex items-center gap-2 w-full">
+      <div className={`flex-1 bg-slate-100 rounded-full overflow-hidden ${height}`}>
+        <div className={`${height} rounded-full transition-all duration-500 ${color}`} style={{ width: `${pn}%` }} />
+      </div>
+      {showLabel && <span className="text-xs font-bold text-slate-600 w-8 shrink-0">{pn}%</span>}
+    </div>
+  );
+};
+
+const PROG_STATUS_COLOR = {
+  "Not Started": "bg-slate-100 text-slate-500 border-slate-200",
+  "In Progress": "bg-blue-100 text-blue-700 border-blue-200",
+  "On Hold":     "bg-amber-100 text-amber-700 border-amber-200",
+  "Completed":   "bg-green-100 text-green-700 border-green-200",
+};
+
+const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg }) => {
+  const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
+  const [progTab, setProgTab] = useState("list"); // for progress: list | form
+  const [selPg, setSelPg] = useState(null);
   const [form, setForm] = useState(EMPTY_PROJ);
+  const [pgForm, setPgForm] = useState(EMPTY_PG);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingPg, setSavingPg] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
+  const [confirmPgId, setConfirmPgId] = useState(null);
+  const [pgFilter, setPgFilter] = useState("All");
+  const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
+  const setPg = k => e => setPgForm(p => ({...p,[k]:e.target.value}));
 
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  // Compute overall progress for a project
+  const getOverall = (pid) => {
+    const items = progressItems.filter(p => p.pid === pid);
+    if (!items.length) return 0;
+    return Math.round(items.reduce((a,i) => a + (Number(i.pct)||0), 0) / items.length);
+  };
 
   const openCreate = () => { setForm(EMPTY_PROJ); setSel(null); setMode("form"); };
-  const openEdit = p => {
-    setSel(p);
-    setForm({ number: p.number, name: p.name, plot: p.plot, location: p.location, plotArea: String(p.plotArea || ""), bua: String(p.bua || ""), duration: String(p.duration || ""), consultant: p.consultant, consultantContact: p.consultantContact, status: p.status, mapUrl: p.mapUrl });
-    setMode("form");
-  };
-  const openView = p => { setSel(p); setMode("view"); };
-  const goList = () => { setMode("list"); setSel(null); };
+  const openEdit   = p => { setSel(p); setForm({number:p.number,name:p.name,plot:p.plot,location:p.location,plotArea:String(p.plotArea||""),bua:String(p.bua||""),duration:String(p.duration||""),consultant:p.consultant,consultantContact:p.consultantContact,status:p.status,mapUrl:p.mapUrl}); setMode("form"); };
+  const openView   = p => { setSel(p); setProgTab("list"); setSelPg(null); setPgForm({...EMPTY_PG,pid:p.id}); setMode("view"); };
+  const goList     = () => { setMode("list"); setSel(null); };
 
   const handleSave = async () => {
-    if (!form.number.trim() || !form.name.trim()) { showToast("Project Number and Name are required", "error"); return; }
+    if (!form.number.trim()||!form.name.trim()) { showToast("Project Number and Name required","error"); return; }
     setSaving(true);
-    const res = sel ? await onUpdate(sel.id, form) : await onAdd(form);
+    const res = sel ? await onUpdate(sel.id,form) : await onAdd(form);
     setSaving(false);
-    if (!res.ok) { showToast(res.error || "Save failed", "error"); return; }
-    showToast(sel ? "Project updated successfully!" : "Project created successfully!");
-    goList();
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast(sel?"Project updated!":"Project created!"); goList();
   };
 
   const handleDelete = async id => {
     const res = await onDelete(id);
-    if (!res.ok) { showToast(res.error || "Delete failed", "error"); return; }
-    showToast("Project deleted!"); setConfirmId(null); if (mode !== "list") goList();
+    if (!res.ok) { showToast(res.error||"Delete failed","error"); return; }
+    showToast("Project deleted!"); setConfirmId(null); if (mode!=="list") goList();
   };
 
-  const filtered = projects.filter(p =>
-    [p.number, p.name, p.location, p.consultant].join(" ").toLowerCase().includes(search.toLowerCase())
-  );
+  // Progress CRUD
+  const openAddPg = () => { setSelPg(null); setPgForm({...EMPTY_PG,pid:sel.id}); setProgTab("form"); };
+  const openEditPg = pg => { setSelPg(pg); setPgForm({pid:pg.pid,activity:pg.activity,plannedStart:pg.plannedStart,plannedEnd:pg.plannedEnd,actualStart:pg.actualStart,actualEnd:pg.actualEnd,pct:pg.pct,status:pg.status,remarks:pg.remarks}); setProgTab("form"); };
 
-  // ── VIEW ──
-  if (mode === "view" && sel) return (
-    <div className="p-6 max-w-3xl">
-      {confirmId && <ConfirmDialog message={`Delete project "${sel.name}"? This cannot be undone.`} onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <BackBtn onClick={goList} />
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-6 py-5">
-          <div className="flex items-start justify-between">
-            <div><span className="text-amber-400 text-xs font-mono font-bold">{sel.number}</span><h2 className="text-xl font-bold text-white mt-1">{sel.name}</h2></div>
-            <Badge text={sel.status} cls="bg-amber-500 text-white border-amber-400" />
+  const handleSavePg = async () => {
+    if (!pgForm.activity) { showToast("Activity name required","error"); return; }
+    setSavingPg(true);
+    const res = selPg ? await onUpdatePg(selPg.id,pgForm) : await onAddPg(pgForm);
+    setSavingPg(false);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast(selPg?"Activity updated!":"Activity added!"); setProgTab("list"); setSelPg(null);
+  };
+
+  const handleDeletePg = async id => {
+    const res = await onDeletePg(id);
+    if (!res.ok) { showToast(res.error||"Delete failed","error"); return; }
+    showToast("Activity deleted!"); setConfirmPgId(null);
+  };
+
+  const filtered = projects.filter(p => [p.name,p.number,p.location,p.consultant].join(" ").toLowerCase().includes(search.toLowerCase()));
+
+  const exportData = filtered.map(p => ({
+    ...p,
+    overallPct: `${getOverall(p.id)}%`,
+    plotAreaSqft: p.plotArea ? `${Number(p.plotArea).toLocaleString()} sqft` : "—",
+    buaSqft: p.bua ? `${Number(p.bua).toLocaleString()} sqft` : "—",
+  }));
+  const PROJ_EXCEL_COLS = [
+    { header: "Project No.",        key: "number",            width: 14 },
+    { header: "Project Name",       key: "name",              width: 42 },
+    { header: "Location",           key: "location",          width: 24 },
+    { header: "Plot Number",        key: "plot",              width: 14 },
+    { header: "Consultant",         key: "consultant",        width: 28 },
+    { header: "Consultant Contact", key: "consultantContact", width: 22 },
+    { header: "Duration (M)",       key: "duration",          width: 14 },
+    { header: "Plot Area (sqft)",   key: "plotAreaSqft",      width: 18 },
+    { header: "BUA (sqft)",         key: "buaSqft",           width: 16 },
+    { header: "Overall Progress",   key: "overallPct",        width: 16 },
+    { header: "Status",             key: "status",            width: 14 },
+    { header: "Map URL",            key: "mapUrl",            width: 50 },
+  ];
+  // PDF columns — no Map URL, fixed widths for clean layout
+  const PROJ_COLS = [
+    { header: "Project No.",   key: "number",       pdfWidth: 18 },
+    { header: "Name",          key: "name",         pdfWidth: 52 },
+    { header: "Location",      key: "location",     pdfWidth: 30 },
+    { header: "Plot No.",      key: "plot",         pdfWidth: 18 },
+    { header: "Consultant",    key: "consultant",   pdfWidth: 35 },
+    { header: "Duration (M)",  key: "duration",     pdfWidth: 16 },
+    { header: "Plot Area sqft",key: "plotAreaSqft", pdfWidth: 22 },
+    { header: "BUA sqft",      key: "buaSqft",      pdfWidth: 20 },
+    { header: "Progress",      key: "overallPct",   pdfWidth: 16 },
+    { header: "Status",        key: "status",       pdfWidth: 16 },
+  ]
+
+  // ── VIEW PAGE ────────────────────────────────────────────────────────────────
+  if (mode==="view"&&sel) {
+    const projPgItems = progressItems.filter(p => p.pid===sel.id);
+    const overallPct  = getOverall(sel.id);
+    const filteredPg  = projPgItems.filter(p => pgFilter==="All"||p.status===pgFilter);
+
+    return (
+      <div className="p-6 max-w-5xl space-y-4">
+        {confirmId&&<ConfirmDialog message={`Delete project "${sel.name}"?`} onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+        {confirmPgId&&<ConfirmDialog message="Delete this progress activity?" onConfirm={()=>handleDeletePg(confirmPgId)} onCancel={()=>setConfirmPgId(null)}/>}
+        <BackBtn onClick={goList}/>
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-5 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-amber-400 text-xs font-mono font-bold mb-1">{sel.number}</div>
+              <h2 className="text-xl font-bold">{sel.name}</h2>
+              <p className="text-slate-300 text-sm mt-1">{sel.location} {sel.consultant?`· ${sel.consultant}`:""}</p>
+            </div>
+            <Badge text={sel.status} cls="bg-amber-500/20 text-amber-300 border-amber-500/30"/>
+          </div>
+          <div className="mt-4 space-y-1">
+            <div className="flex items-center justify-between text-xs text-slate-300">
+              <span>Overall Project Progress</span>
+              <span className="font-bold text-white text-base">{overallPct}%</span>
+            </div>
+            <PctBar pct={overallPct} showLabel={false} height="h-3"/>
+            <div className="flex items-center gap-4 text-xs text-slate-400 mt-1">
+              <span>{projPgItems.filter(p=>p.status==="Completed").length} completed</span>
+              <span>{projPgItems.filter(p=>p.status==="In Progress").length} in progress</span>
+              <span>{projPgItems.filter(p=>p.status==="Not Started").length} not started</span>
+            </div>
           </div>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-5">
-          {[["Location", sel.location], ["Plot Number", sel.plot], ["Duration", sel.duration ? `${sel.duration} Months` : null], ["Consultant", sel.consultant], ["Consultant Contact", sel.consultantContact], ["Plot Area", sel.plotArea ? `${fmtNum(sel.plotArea)} sqft` : null], ["BUA", sel.bua ? `${fmtNum(sel.bua)} sqft` : null]].filter(([, v]) => v).map(([k, v]) => (
-            <div key={k}><div className="text-xs text-slate-400 font-medium mb-0.5">{k}</div><div className="text-sm font-semibold text-slate-800">{v}</div></div>
-          ))}
+
+        {/* Project Info */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {[["Duration",sel.duration?`${sel.duration} Months`:"—"],["Plot Area",sel.plotArea?`${sel.plotArea} sqft`:"—"],["BUA",sel.bua?`${sel.bua} sqft`:"—"],["Plot No.",sel.plot||"—"]].map(([k,v])=>(
+              <div key={k}><div className="text-xs text-slate-400">{k}</div><div className="font-semibold text-slate-800 mt-0.5">{v}</div></div>
+            ))}
+          </div>
+          {sel.mapUrl&&<a href={sel.mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-3 text-blue-600 text-sm font-medium hover:underline"><Icon name="map" cls="w-4 h-4"/>View on Map</a>}
+          <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100">
+            <Btn onClick={()=>openEdit(sel)} label="Edit Project"/>
+            <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+          </div>
         </div>
-        {sel.mapUrl && <div className="px-6 pb-4"><a href={sel.mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-blue-600 text-sm font-medium hover:underline"><Icon name="map" cls="w-4 h-4" />View on Map</a></div>}
-        <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
-          <Btn onClick={() => openEdit(sel)} label="Edit Project" />
-          <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+
+        {/* Progress Activities Section */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50">
+            <div>
+              <h3 className="font-bold text-slate-800">Construction Progress Activities</h3>
+              <p className="text-xs text-slate-400 mt-0.5">{projPgItems.length} activities · Overall: {overallPct}%</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Sel value={pgFilter} onChange={e=>setPgFilter(e.target.value)} className="w-auto text-xs">
+                <option value="All">All Status</option>{PROG_STATUS.map(s=><option key={s}>{s}</option>)}
+              </Sel>
+              {progTab==="list"&&<button onClick={openAddPg} className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold px-3 py-2 rounded-lg">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>Add Activity
+              </button>}
+            </div>
+          </div>
+
+          {/* Add/Edit Form */}
+          {progTab==="form"&&(
+            <div className="p-5 border-b border-slate-100 bg-amber-50/40">
+              <h4 className="font-semibold text-slate-800 mb-4">{selPg?"Edit Activity":"Add New Activity"}</h4>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Lbl t="Activity Name" req/>
+                    <Sel value={pgForm.activity} onChange={pg=>setPgForm(p=>({...p,activity:pg.target.value}))}>
+                      <option value="">Select Activity...</option>{ACTIVITIES.map(a=><option key={a}>{a}</option>)}
+                    </Sel>
+                  </div>
+                  <div><Lbl t="Status"/><Sel value={pgForm.status} onChange={e=>setPgForm(p=>({...p,status:e.target.value}))}>{PROG_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div><Lbl t="Planned Start"/><Inp type="date" value={pgForm.plannedStart} onChange={e=>setPgForm(p=>({...p,plannedStart:e.target.value}))}/></div>
+                  <div><Lbl t="Planned Finish"/><Inp type="date" value={pgForm.plannedEnd} onChange={e=>setPgForm(p=>({...p,plannedEnd:e.target.value}))}/></div>
+                  <div><Lbl t="Actual Start"/><Inp type="date" value={pgForm.actualStart} onChange={e=>setPgForm(p=>({...p,actualStart:e.target.value}))}/></div>
+                  <div><Lbl t="Actual Finish"/><Inp type="date" value={pgForm.actualEnd} onChange={e=>setPgForm(p=>({...p,actualEnd:e.target.value}))}/></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Lbl t={`Progress % (${pgForm.pct}%)`}/>
+                    <input type="range" min="0" max="100" step="5" value={pgForm.pct}
+                      onChange={e=>setPgForm(p=>({...p,pct:Number(e.target.value)}))}
+                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500"/>
+                    <PctBar pct={pgForm.pct} height="h-2"/>
+                  </div>
+                  <div><Lbl t="Remarks"/><Inp value={pgForm.remarks} onChange={e=>setPgForm(p=>({...p,remarks:e.target.value}))} placeholder="Any notes..."/></div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Btn saving={savingPg} onClick={handleSavePg} label={selPg?"Update Activity":"Save Activity"}/>
+                  <Btn onClick={()=>{setProgTab("list");setSelPg(null);}} label="Cancel" color="slate"/>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Activities Table */}
+          {filteredPg.length===0?(
+            <div className="text-center py-12 text-slate-400 text-sm">
+              {projPgItems.length===0
+                ? <span>No activities added yet. Click <strong>Add Activity</strong> to start tracking progress.</span>
+                : <span>No activities match the selected filter.</span>
+              }
+            </div>
+          ):(
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>{["Activity","Progress","Status","Planned Start","Planned End","Actual Start","Actual End","Remarks","Actions"].map(h=><th key={h} className="text-left px-4 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredPg.map(pg=>(
+                    <tr key={pg.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-800 text-sm">{pg.activity}</div>
+                      </td>
+                      <td className="px-4 py-3 min-w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                            <div className={`h-2 rounded-full ${pg.pct===100?"bg-green-500":pg.pct>=60?"bg-blue-500":pg.pct>=30?"bg-amber-500":pg.pct>0?"bg-orange-500":"bg-slate-200"}`} style={{width:`${pg.pct}%`}}/>
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 w-8 shrink-0">{pg.pct}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${PROG_STATUS_COLOR[pg.status]||"bg-slate-100 text-slate-600"}`}>{pg.status}</span></td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(pg.plannedStart)}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(pg.plannedEnd)}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(pg.actualStart)||"—"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(pg.actualEnd)||"—"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500 max-w-[120px] truncate">{pg.remarks||"—"}</td>
+                      <td className="px-4 py-3"><div className="flex gap-1"><ActBtn onClick={()=>openEditPg(pg)} label="Edit" color="edit"/><ActBtn onClick={()=>setConfirmPgId(pg.id)} label="Del" color="del"/></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  // ── FORM ──
-  if (mode === "form") return (
+  // ── FORM ─────────────────────────────────────────────────────────────────────
+  if (mode==="form") return (
     <div className="p-6 max-w-2xl">
-      <BackBtn onClick={goList} />
-      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel ? "Edit Project" : "New Project"}</h2>
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?"Edit Project":"New Project"}</h2>
       <FormCard>
         <Grid2>
-          <div><Lbl t="Project Number" req /><Inp value={form.number} onChange={set("number")} placeholder="e.g. J224" /></div>
-          <div><Lbl t="Status" /><Sel value={form.status} onChange={set("status")}>{PROJ_STATUS.map(s => <option key={s}>{s}</option>)}</Sel></div>
+          <div><Lbl t="Project Number" req/><Inp value={form.number} onChange={set("number")} placeholder="e.g. J224"/></div>
+          <div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{PROJ_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>
         </Grid2>
-        <div><Lbl t="Project Name" req /><Inp value={form.name} onChange={set("name")} placeholder="e.g. G+5+Roof Residential Building" /></div>
+        <div><Lbl t="Project Name" req/><Inp value={form.name} onChange={set("name")} placeholder="e.g. G+5+Roof Residential Building"/></div>
         <Grid2>
-          <div><Lbl t="Location" /><Inp value={form.location} onChange={set("location")} placeholder="e.g. Dubai South" /></div>
-          <div><Lbl t="Plot Number" /><Inp value={form.plot} onChange={set("plot")} placeholder="e.g. 5132010" /></div>
+          <div><Lbl t="Location"/><Inp value={form.location} onChange={set("location")} placeholder="e.g. Dubai South"/></div>
+          <div><Lbl t="Plot Number"/><Inp value={form.plot} onChange={set("plot")} placeholder="e.g. 5132010"/></div>
         </Grid2>
         <Grid3>
-          <div><Lbl t="Duration (Months)" /><Inp type="number" value={form.duration} onChange={set("duration")} placeholder="e.g. 15" /></div>
-          <div><Lbl t="Plot Area (sqft)" /><Inp type="number" value={form.plotArea} onChange={set("plotArea")} placeholder="e.g. 6200" /></div>
-          <div><Lbl t="BUA (sqft)" /><Inp type="number" value={form.bua} onChange={set("bua")} placeholder="e.g. 18500" /></div>
+          <div><Lbl t="Duration (Months)"/><Inp type="number" value={form.duration} onChange={set("duration")} placeholder="e.g. 15"/></div>
+          <div><Lbl t="Plot Area (sqft)"/><Inp type="number" value={form.plotArea} onChange={set("plotArea")} placeholder="e.g. 6200"/></div>
+          <div><Lbl t="BUA (sqft)"/><Inp type="number" value={form.bua} onChange={set("bua")} placeholder="e.g. 18500"/></div>
         </Grid3>
         <Grid2>
-          <div><Lbl t="Consultant" /><Inp value={form.consultant} onChange={set("consultant")} placeholder="e.g. ANT Engineering" /></div>
-          <div><Lbl t="Consultant Contact" /><Inp value={form.consultantContact} onChange={set("consultantContact")} placeholder="Phone or email" /></div>
+          <div><Lbl t="Consultant"/><Inp value={form.consultant} onChange={set("consultant")} placeholder="e.g. ANT Engineering"/></div>
+          <div><Lbl t="Consultant Contact"/><Inp value={form.consultantContact} onChange={set("consultantContact")} placeholder="Phone or email"/></div>
         </Grid2>
-        <div><Lbl t="Google Map URL" /><Inp value={form.mapUrl} onChange={set("mapUrl")} placeholder="https://maps.google.com/..." /></div>
-        <FormActions saving={saving} onSave={handleSave} onCancel={goList} label={sel ? "Update Project" : "Save Project"} />
+        <div><Lbl t="Google Map URL"/><Inp value={form.mapUrl} onChange={set("mapUrl")} placeholder="https://maps.google.com/..."/></div>
+        <FormActions saving={saving} onSave={handleSave} onCancel={goList} label={sel?"Update Project":"Save Project"}/>
       </FormCard>
     </div>
   );
 
-  // ── LIST ──
+  // ── LIST ──────────────────────────────────────────────────────────────────────
   return (
     <div className="p-6">
-      {confirmId && <ConfirmDialog message="Delete this project? All related data may be affected." onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      {(() => {
-        const PROJ_COLS = [
-          { header: "Project No.", key: "number", width: 14 },
-          { header: "Name", key: "name", width: 40 },
-          { header: "Location", key: "location", width: 22 },
-          { header: "Plot No.", key: "plot", width: 14 },
-          { header: "Consultant", key: "consultant", width: 25 },
-          { header: "Contact", key: "consultantContact", width: 22 },
-          { header: "Duration (M)", key: "duration", width: 14 },
-          { header: "Plot Area (sqft)", key: "plotArea", width: 16 },
-          { header: "BUA (sqft)", key: "bua", width: 14 },
-          { header: "Status", key: "status", width: 14 },
-        ];
-        return <PageTitle title="Projects" count={filtered.length}
-          exportBtn={<ExportButtons data={filtered} excelCols={PROJ_COLS} fileName="Projects" pdfTitle="Projects Register" />}
-          btn={<AddBtn onClick={openCreate} label="New Project" />} />;
-      })()}
-      <div className="mb-4"><SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." /></div>
-      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No projects found" onCreate={openCreate} /> : (
+      {confirmId&&<ConfirmDialog message="Delete this project? All related data may be affected." onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+      <PageTitle title="Projects" count={filtered.length}
+        exportBtn={<ExportButtons data={exportData} excelCols={PROJ_EXCEL_COLS} pdfCols={PROJ_COLS} fileName="Projects" pdfTitle="Projects Register" orientation="landscape"/>}
+        btn={<AddBtn onClick={openCreate} label="New Project"/>}/>
+      <div className="mb-4"><SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..."/></div>
+      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No projects found" onCreate={openCreate}/>:(
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>{["Project No.", "Name", "Location", "Consultant", "Duration", "Status", "Actions"].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
+              <tr>{["Project No.","Name","Location","Consultant","Duration","Progress","Status","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map(p => (
-                <tr key={p.id} className="hover:bg-amber-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{p.number}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800 max-w-[200px]"><div className="truncate">{p.name}</div></td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{p.location}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{p.consultant}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{p.duration ? `${p.duration} M` : "—"}</td>
-                  <td className="px-4 py-3"><Badge text={p.status} /></td>
-                  <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={() => openView(p)} label="View" color="view" /><ActBtn onClick={() => openEdit(p)} label="Edit" color="edit" /><ActBtn onClick={() => setConfirmId(p.id)} label="Del" color="del" /></div></td>
-                </tr>
-              ))}
+              {filtered.map(p=>{
+                const overall = getOverall(p.id);
+                const pgItems = progressItems.filter(pg=>pg.pid===p.id);
+                return (
+                  <tr key={p.id} className="hover:bg-amber-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{p.number}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800 max-w-[200px]"><div className="truncate">{p.name}</div></td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{p.location}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{p.consultant}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{p.duration?`${p.duration} M`:"—"}</td>
+                    <td className="px-4 py-3 min-w-[140px]">
+                      {pgItems.length>0?(
+                        <div className="space-y-1">
+                          <PctBar pct={overall} height="h-2"/>
+                          <div className="text-xs text-slate-400">{pgItems.length} activit{pgItems.length===1?"y":"ies"}</div>
+                        </div>
+                      ):<span className="text-xs text-slate-300 italic">No activities yet</span>}
+                    </td>
+                    <td className="px-4 py-3"><Badge text={p.status}/></td>
+                    <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={()=>openView(p)} label="View" color="view"/><ActBtn onClick={()=>openEdit(p)} label="Edit" color="edit"/><ActBtn onClick={()=>setConfirmId(p.id)} label="Del" color="del"/></div></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1135,6 +1458,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast }) =
     </div>
   );
 };
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TASKS MODULE — Full CRUD
@@ -2851,6 +3175,7 @@ export default function App() {
   const { inspections, loading: ilLoad, add: addI, update: updI, remove: delI } = useInspections();
   const { drawings, loading: dlLoad, add: addD, update: updD, remove: delD } = useDrawings();
   const { subs, loading: sbLoad, add: addSub, update: updSub, remove: delSub } = useSubcontractors();
+  const { progressItems, add: addPg, update: updPg, remove: delPg } = useProjectProgress();
   const { photos, loading: phLoad, add: addPh, update: updPh, remove: delPh } = usePhotos();
   const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
 
@@ -2874,7 +3199,7 @@ export default function App() {
   const renderPage = () => {
     switch (page) {
       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} />;
-      case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} />;
+      case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
       case "reports":        return <DailyReports {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
