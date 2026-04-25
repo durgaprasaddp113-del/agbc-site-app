@@ -2,6 +2,180 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase";
 import Login from "./Login";
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT UTILITIES — Excel (SheetJS) + PDF (jsPDF)
+// ─────────────────────────────────────────────────────────────────────────────
+const AGBC_COMPANY = "Al Ghaith Building Construction Co. LLC";
+const AMBER_COLOR = [245, 158, 11];
+const DARK_COLOR  = [30, 41, 59];
+const LIGHT_COLOR = [248, 250, 252];
+const todayExport = () => new Date().toISOString().split("T")[0];
+
+const exportToExcel = (data, columns, fileName) => {
+  if (!data || data.length === 0) { alert("No data to export."); return; }
+  try {
+    const XLSX = window._XLSX;
+    if (!XLSX) { alert("Excel library not loaded. Please wait and try again."); return; }
+    const fullName = `${fileName}_${todayExport()}.xlsx`;
+    const headers = columns.map(c => c.header);
+    const rows = data.map(row => columns.map(c => {
+      const v = row[c.key];
+      if (v === null || v === undefined || v === "") return "";
+      if (c.type === "date") { try { return new Date(v).toLocaleDateString("en-GB"); } catch { return String(v); } }
+      if (c.type === "array") return Array.isArray(v) ? v.join(", ") : String(v);
+      if (c.type === "number") return Number(v) || 0;
+      return String(v);
+    }));
+    const wsData = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = columns.map(c => ({ wch: c.width || 20 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, fileName.replace(/_/g, " ").substring(0, 31));
+    XLSX.writeFile(wb, fullName);
+  } catch(e) { console.error("Excel export error:", e); alert("Excel export failed: " + e.message); }
+};
+
+const exportToPDF = (data, columns, fileName, title, orientation = "landscape") => {
+  if (!data || data.length === 0) { alert("No data to export."); return; }
+  try {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert("PDF library not loaded. Please wait and try again."); return; }
+    const fullName = `${fileName}_${todayExport()}.pdf`;
+    const now = new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+    const doc = new jsPDF({ orientation, format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...DARK_COLOR);
+    doc.rect(0, 0, pageW, 24, "F");
+    doc.setFillColor(...AMBER_COLOR);
+    doc.rect(0, 24, pageW, 3, "F");
+    doc.setTextColor(245, 158, 11);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("AGBC", 14, 9);
+    doc.setTextColor(200, 200, 200);
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
+    doc.text(AGBC_COMPANY, 14, 16);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, pageW / 2, 11, { align: "center" });
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(180, 180, 180);
+    doc.text(`${now}  ·  ${data.length} records`, pageW - 14, 16, { align: "right" });
+    const heads = [columns.map(c => c.header)];
+    const rows = data.map(row => columns.map(c => {
+      const v = row[c.key];
+      if (v === null || v === undefined || v === "") return "—";
+      if (c.type === "date") { try { return new Date(v).toLocaleDateString("en-GB"); } catch { return String(v); } }
+      if (c.type === "array") return Array.isArray(v) ? v.join(", ") : String(v);
+      return String(v);
+    }));
+    doc.autoTable({
+      startY: 30,
+      head: heads,
+      body: rows,
+      theme: "grid",
+      styles: { fontSize: 7.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 }, overflow: "linebreak", valign: "middle", textColor: DARK_COLOR },
+      headStyles: { fillColor: AMBER_COLOR, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, halign: "center" },
+      alternateRowStyles: { fillColor: LIGHT_COLOR },
+      columnStyles: columns.reduce((acc, c, i) => { if (c.pdfWidth) acc[i] = { cellWidth: c.pdfWidth }; return acc; }, {}),
+      didDrawPage: ({ pageNumber }) => {
+        const total = doc.internal.getNumberOfPages();
+        doc.setFontSize(6.5);
+        doc.setTextColor(150);
+        doc.text(`Page ${pageNumber} of ${total}  ·  ${AGBC_COMPANY}  ·  Exported ${todayExport()}`, pageW / 2, pageH - 6, { align: "center" });
+      },
+    });
+    doc.save(fullName);
+  } catch(e) { console.error("PDF export error:", e); alert("PDF export failed: " + e.message); }
+};
+
+const exportDailyReportPDF = (report, projectName) => {
+  try {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert("PDF library not loaded."); return; }
+    const today = report.date || todayExport();
+    const doc = new jsPDF({ orientation: "portrait", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    doc.setFillColor(...DARK_COLOR);
+    doc.rect(0, 0, pageW, 38, "F");
+    doc.setFillColor(...AMBER_COLOR);
+    doc.rect(0, 38, pageW, 3, "F");
+    doc.setTextColor(245, 158, 11);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("AGBC", 14, 14);
+    doc.setTextColor(180, 180, 180);
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.text(AGBC_COMPANY, 14, 20);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("DAILY SITE REPORT", pageW / 2, 18, { align: "center" });
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(180, 180, 180);
+    doc.text(new Date().toLocaleString("en-GB", { dateStyle: "full", timeStyle: "short" }), pageW - 14, 32, { align: "right" });
+    let y = 48;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(14, y, pageW - 28, 30, 3, 3, "FD");
+    const infoFmt = d => { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }); } catch { return d; } };
+    const infoItems = [["Project", projectName || "—"], ["Report Date", infoFmt(report.date)], ["Prepared By", report.preparedBy || "—"], ["Status", report.status || "Draft"]];
+    const halfW = (pageW - 28) / 2;
+    infoItems.forEach(([label, value], idx) => {
+      const col = idx % 2, row = Math.floor(idx / 2);
+      const x = 18 + col * halfW, iy = y + 9 + row * 11;
+      doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(100); doc.text(label + ":", x, iy);
+      doc.setFont("helvetica", "normal"); doc.setTextColor(...DARK_COLOR); doc.setFontSize(8); doc.text(value, x + 24, iy);
+    });
+    y += 36;
+    const cards = [{ label: "Weather", value: report.weather || "—", bg: [254, 243, 199], text: [120, 80, 0] }, { label: "Temperature", value: report.temp ? `${report.temp}°C` : "—", bg: [209, 250, 229], text: [0, 100, 60] }, { label: "Manpower", value: String(report.manpower || 0), bg: [219, 234, 254], text: [30, 60, 150] }];
+    const cardW = (pageW - 28 - 6) / 3;
+    cards.forEach((card, i) => {
+      const cx = 14 + i * (cardW + 3);
+      doc.setFillColor(...card.bg); doc.setDrawColor(220); doc.roundedRect(cx, y, cardW, 22, 2, 2, "FD");
+      doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(...card.text); doc.text(card.label, cx + cardW / 2, y + 7, { align: "center" });
+      doc.setFontSize(13); doc.setFont("helvetica", "bold"); doc.text(card.value, cx + cardW / 2, y + 18, { align: "center" });
+    });
+    y += 28;
+    const sections = [["Work Activities Today", report.activities], ["Work Completed", report.completed], ["Issues & Delays", report.issues], ["Safety Observations", report.safety], ["Materials Received", report.materials]].filter(([, v]) => v && v.trim());
+    sections.forEach(([label, value]) => {
+      if (y > pageH - 40) { doc.addPage(); y = 16; }
+      doc.setFillColor(...AMBER_COLOR); doc.rect(14, y, pageW - 28, 8, "F");
+      doc.setTextColor(255, 255, 255); doc.setFontSize(8); doc.setFont("helvetica", "bold"); doc.text(`  ${label}`, 17, y + 5.5);
+      y += 10;
+      const lines = doc.splitTextToSize(value, pageW - 36);
+      const bodyH = Math.max(lines.length * 5 + 8, 14);
+      if (y + bodyH > pageH - 30) { doc.addPage(); y = 16; }
+      doc.setFillColor(...LIGHT_COLOR); doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.rect(14, y, pageW - 28, bodyH, "FD");
+      doc.setTextColor(...DARK_COLOR); doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.text(lines, 18, y + 6);
+      y += bodyH + 5;
+    });
+    if (y > pageH - 50) { doc.addPage(); y = 16; }
+    y = Math.max(y, pageH - 50);
+    doc.setDrawColor(200); doc.setLineWidth(0.3); doc.line(14, y, 90, y); doc.line(pageW - 90, y, pageW - 14, y);
+    doc.setFontSize(7); doc.setTextColor(120);
+    doc.text("Site Engineer Signature", 14, y + 5); doc.text("Project Manager Signature", pageW - 90, y + 5);
+    doc.text(report.preparedBy || "_______________", 14, y + 11);
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i); doc.setFillColor(248, 250, 252); doc.rect(0, pageH - 12, pageW, 12, "F");
+      doc.setFontSize(6.5); doc.setTextColor(120); doc.setFont("helvetica", "normal");
+      doc.text(`Page ${i} of ${totalPages}  ·  ${AGBC_COMPANY}  ·  Daily Site Report — ${today}`, pageW / 2, pageH - 4, { align: "center" });
+    }
+    doc.save(`Daily_Report_${today}.pdf`);
+  } catch(e) { console.error("Daily Report PDF error:", e); alert("PDF export failed: " + e.message); }
+};
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TOAST
 // ─────────────────────────────────────────────────────────────────────────────
@@ -552,12 +726,50 @@ const ActBtn = ({ onClick, label, color }) => {
   return <button onClick={onClick} className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${c[color] || ""}`}>{label}</button>;
 };
 const BackBtn = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 font-medium mb-1">← Back</button>;
-const PageTitle = ({ title, count, btn }) => (
-  <div className="flex items-center justify-between mb-4">
+const PageTitle = ({ title, count, btn, exportBtn }) => (
+  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
     <div><h2 className="text-xl font-bold text-slate-800">{title}</h2>{count !== undefined && <p className="text-xs text-slate-400 mt-0.5">{count} records</p>}</div>
-    {btn}
+    <div className="flex items-center gap-2 flex-wrap">
+      {exportBtn}
+      {btn}
+    </div>
   </div>
 );
+
+// ── EXPORT BUTTONS COMPONENT ───────────────────────────────────────────────────
+const ExportButtons = ({ data, excelCols, pdfCols, fileName, pdfTitle, orientation = "landscape" }) => {
+  const [xlsLoad, setXlsLoad] = useState(false);
+  const [pdfLoad, setPdfLoad] = useState(false);
+  const empty = !data || data.length === 0;
+
+  const handleExcel = () => {
+    if (empty) return;
+    setXlsLoad(true);
+    try { exportToExcel(data, excelCols, fileName); } finally { setXlsLoad(false); }
+  };
+  const handlePDF = () => {
+    if (empty) return;
+    setPdfLoad(true);
+    try { exportToPDF(data, pdfCols || excelCols, fileName, pdfTitle || fileName.replace(/_/g," "), orientation); } finally { setPdfLoad(false); }
+  };
+
+  return (
+    <div className="flex gap-1.5">
+      <button onClick={handleExcel} disabled={empty || xlsLoad}
+        title={empty ? "No data to export" : "Export to Excel"}
+        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${empty ? "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed" : "bg-green-50 text-green-700 border-green-300 hover:bg-green-100"}`}>
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        {xlsLoad ? "..." : "Excel"}
+      </button>
+      <button onClick={handlePDF} disabled={empty || pdfLoad}
+        title={empty ? "No data to export" : "Export to PDF"}
+        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${empty ? "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed" : "bg-red-50 text-red-700 border-red-300 hover:bg-red-100"}`}>
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        {pdfLoad ? "..." : "PDF"}
+      </button>
+    </div>
+  );
+};
 const AddBtn = ({ onClick, label }) => (
   <button onClick={onClick} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm">
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
@@ -841,7 +1053,23 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast }) =
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this project? All related data may be affected." onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Projects" count={filtered.length} btn={<AddBtn onClick={openCreate} label="New Project" />} />
+      {(() => {
+        const PROJ_COLS = [
+          { header: "Project No.", key: "number", width: 14 },
+          { header: "Name", key: "name", width: 40 },
+          { header: "Location", key: "location", width: 22 },
+          { header: "Plot No.", key: "plot", width: 14 },
+          { header: "Consultant", key: "consultant", width: 25 },
+          { header: "Contact", key: "consultantContact", width: 22 },
+          { header: "Duration (M)", key: "duration", width: 14 },
+          { header: "Plot Area (sqft)", key: "plotArea", width: 16 },
+          { header: "BUA (sqft)", key: "bua", width: 14 },
+          { header: "Status", key: "status", width: 14 },
+        ];
+        return <PageTitle title="Projects" count={filtered.length}
+          exportBtn={<ExportButtons data={filtered} excelCols={PROJ_COLS} fileName="Projects" pdfTitle="Projects Register" />}
+          btn={<AddBtn onClick={openCreate} label="New Project" />} />;
+      })()}
       <div className="mb-4"><SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." /></div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No projects found" onCreate={openCreate} /> : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -959,7 +1187,28 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast 
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this task permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Task Management" count={filtered.length} btn={<AddBtn onClick={openCreate} label="New Task" />} />
+      {(() => {
+        const exportData = filtered.map(t => ({
+          ...t,
+          projectNum: (projects.find(p => p.id === t.pid) || {}).number || "—",
+          projectName: (projects.find(p => p.id === t.pid) || {}).name || "—",
+        }));
+        const TASK_COLS = [
+          { header: "Title", key: "title", width: 30 },
+          { header: "Project No.", key: "projectNum", width: 14 },
+          { header: "Project Name", key: "projectName", width: 30 },
+          { header: "Location", key: "location", width: 20 },
+          { header: "Trade", key: "trade", width: 22 },
+          { header: "Assignee", key: "assignee", width: 20 },
+          { header: "Subcontractor", key: "subName", width: 22 },
+          { header: "Priority", key: "priority", width: 12 },
+          { header: "Due Date", key: "due", width: 14, type: "date" },
+          { header: "Status", key: "status", width: 14 },
+        ];
+        return <PageTitle title="Task Management" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={TASK_COLS} fileName="Task_Management" pdfTitle="Task Management Register" />}
+          btn={<AddBtn onClick={openCreate} label="New Task" />} />;
+      })()}
       <div className="flex flex-wrap gap-3 mb-4">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks..." />
         <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{TASK_STATUS.map(s => <option key={s}>{s}</option>)}</Sel>
@@ -1128,7 +1377,34 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast 
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this snag permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Snag / Punch List" count={filtered.length} btn={<AddBtn onClick={openCreate} label="New Snag" />} />
+      {(() => {
+        const exportData = filtered.map(s => ({
+          ...s,
+          projectNum: (projects.find(p => p.id === s.pid) || {}).number || "—",
+          projectName: (projects.find(p => p.id === s.pid) || {}).name || "—",
+          hasBeforePhoto: s.beforeUrl ? "Yes" : "No",
+          hasAfterPhoto: s.afterUrl ? "Yes" : "No",
+        }));
+        const SNAG_COLS = [
+          { header: "Snag No.", key: "num", width: 12 },
+          { header: "Title", key: "title", width: 30 },
+          { header: "Category", key: "category", width: 16 },
+          { header: "Location", key: "location", width: 20 },
+          { header: "Project No.", key: "projectNum", width: 14 },
+          { header: "Project Name", key: "projectName", width: 28 },
+          { header: "Subcontractor", key: "sub", width: 22 },
+          { header: "Engineer", key: "engineer", width: 20 },
+          { header: "Due Date", key: "due", width: 14, type: "date" },
+          { header: "Status", key: "status", width: 18 },
+          { header: "Before Photo", key: "hasBeforePhoto", width: 14 },
+          { header: "After Photo", key: "hasAfterPhoto", width: 14 },
+          { header: "Remarks", key: "remarks", width: 30 },
+          { header: "Consultant Comment", key: "consultant", width: 30 },
+        ];
+        return <PageTitle title="Snag / Punch List" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={SNAG_COLS} fileName="Snag_Punch_List" pdfTitle="Snag / Punch List Register" />}
+          btn={<AddBtn onClick={openCreate} label="New Snag" />} />;
+      })()}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-3">
@@ -1247,7 +1523,15 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             <div key={k}><div className="text-xs text-slate-400 font-bold uppercase tracking-wide mb-1">{k}</div><p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg leading-relaxed">{v}</p></div>
           ))}
           <div className="text-xs text-slate-400 pt-2 border-t border-slate-100">Prepared by: <strong className="text-slate-600">{sel.preparedBy || "—"}</strong></div>
-          <div className="flex gap-3"><Btn onClick={() => openEdit(sel)} label="Edit Report" /><Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" /></div>
+          <div className="flex flex-wrap gap-3">
+            <Btn onClick={() => openEdit(sel)} label="Edit Report" />
+            <button onClick={() => exportDailyReportPDF(sel, (projects.find(p => p.id === sel.pid)||{}).name || sel.pid)}
+              className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+              Export PDF Report
+            </button>
+            <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+          </div>
         </div>
       </div>
     </div>
@@ -1278,7 +1562,31 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this report permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Daily Site Reports" count={filtered.length} btn={<AddBtn onClick={openCreate} label="New Report" />} />
+      {(() => {
+        const exportData = filtered.map(r => ({
+          ...r,
+          projectNum: (projects.find(p => p.id === r.pid) || {}).number || "—",
+          projectName: (projects.find(p => p.id === r.pid) || {}).name || "—",
+        }));
+        const RPT_COLS = [
+          { header: "Date", key: "date", width: 16, type: "date" },
+          { header: "Project No.", key: "projectNum", width: 14 },
+          { header: "Project Name", key: "projectName", width: 30 },
+          { header: "Weather", key: "weather", width: 14 },
+          { header: "Temp (°C)", key: "temp", width: 12 },
+          { header: "Manpower", key: "manpower", width: 12, type: "number" },
+          { header: "Activities", key: "activities", width: 40 },
+          { header: "Work Completed", key: "completed", width: 35 },
+          { header: "Issues / Delays", key: "issues", width: 35 },
+          { header: "Safety", key: "safety", width: 30 },
+          { header: "Materials", key: "materials", width: 30 },
+          { header: "Prepared By", key: "preparedBy", width: 20 },
+          { header: "Status", key: "status", width: 14 },
+        ];
+        return <PageTitle title="Daily Site Reports" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={RPT_COLS} fileName="Daily_Reports" pdfTitle="Daily Site Reports" orientation="landscape" />}
+          btn={<AddBtn onClick={openCreate} label="New Report" />} />;
+      })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No reports yet" onCreate={openCreate} /> : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1394,7 +1702,30 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this inspection request?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Inspection Requests" count={filtered.length} btn={<AddBtn onClick={openCreate} label="New IR / WIR" />} />
+      {(() => {
+        const exportData = filtered.map(i => ({
+          ...i,
+          projectNum: (projects.find(p => p.id === i.pid) || {}).number || "—",
+          projectName: (projects.find(p => p.id === i.pid) || {}).name || "—",
+        }));
+        const IR_COLS = [
+          { header: "IR Number", key: "num", width: 22 },
+          { header: "Type", key: "type", width: 10 },
+          { header: "Description", key: "desc", width: 40 },
+          { header: "Project No.", key: "projectNum", width: 14 },
+          { header: "Project Name", key: "projectName", width: 30 },
+          { header: "Location", key: "location", width: 20 },
+          { header: "Trade", key: "trade", width: 20 },
+          { header: "Submitted By", key: "submittedBy", width: 20 },
+          { header: "Submit Date", key: "submitted", width: 14, type: "date" },
+          { header: "Inspection Date", key: "inspection", width: 16, type: "date" },
+          { header: "Status", key: "status", width: 16 },
+          { header: "Remarks", key: "remarks", width: 30 },
+        ];
+        return <PageTitle title="Inspection Requests" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={IR_COLS} fileName="Inspection_Requests" pdfTitle="Inspection Request Tracker" />}
+          btn={<AddBtn onClick={openCreate} label="New IR / WIR" />} />;
+      })()}
       <div className="flex flex-wrap gap-3 mb-3">
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
@@ -1512,7 +1843,30 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this drawing?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Drawing Register" count={filtered.length} btn={<AddBtn onClick={openCreate} label="Add Drawing" />} />
+      {(() => {
+        const exportData = filtered.map(d => ({
+          ...d,
+          projectNum: (projects.find(p => p.id === d.pid) || {}).number || "—",
+          projectName: (projects.find(p => p.id === d.pid) || {}).name || "—",
+          currentStatus: d.latest ? "Current" : "Superseded",
+          hasFile: d.fileUrl ? "Yes" : "No",
+        }));
+        const DWG_COLS = [
+          { header: "Drawing No.", key: "num", width: 22 },
+          { header: "Title", key: "title", width: 35 },
+          { header: "Discipline", key: "discipline", width: 18 },
+          { header: "Revision", key: "rev", width: 10 },
+          { header: "Project No.", key: "projectNum", width: 14 },
+          { header: "Project Name", key: "projectName", width: 30 },
+          { header: "Date Received", key: "received", width: 16, type: "date" },
+          { header: "Status", key: "currentStatus", width: 14 },
+          { header: "Has File", key: "hasFile", width: 10 },
+          { header: "Remarks", key: "remarks", width: 30 },
+        ];
+        return <PageTitle title="Drawing Register" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={DWG_COLS} fileName="Drawing_Register" pdfTitle="Drawing Register" />}
+          btn={<AddBtn onClick={openCreate} label="Add Drawing" />} />;
+      })()}
       <div className="flex flex-wrap gap-3 mb-4">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search drawings..." />
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
@@ -1642,7 +1996,27 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this photo permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Progress Photos" count={filtered.length} btn={<AddBtn onClick={() => setMode("upload")} label="Upload Photos" />} />
+      {(() => {
+        const exportData = filtered.map(p => ({
+          caption: p.caption || "No caption",
+          area: p.area || "—",
+          projectNum: (projects.find(pr => pr.id === p.project_id) || {}).number || "—",
+          projectName: (projects.find(pr => pr.id === p.project_id) || {}).name || "—",
+          uploaded: p.uploaded_at ? p.uploaded_at.split("T")[0] : "—",
+          fileUrl: p.file_url || "—",
+        }));
+        const PH_COLS = [
+          { header: "Caption", key: "caption", width: 35 },
+          { header: "Area / Location", key: "area", width: 25 },
+          { header: "Project No.", key: "projectNum", width: 14 },
+          { header: "Project Name", key: "projectName", width: 30 },
+          { header: "Upload Date", key: "uploaded", width: 16 },
+          { header: "File URL", key: "fileUrl", width: 50 },
+        ];
+        return <PageTitle title="Progress Photos" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={PH_COLS} fileName="Progress_Photos" pdfTitle="Progress Photos Register" orientation="portrait" />}
+          btn={<AddBtn onClick={() => setMode("upload")} label="Upload Photos" />} />;
+      })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => setMode("upload")} /> : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -2096,7 +2470,62 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this subcontractor? This cannot be undone." onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <PageTitle title="Subcontractors" count={filtered.length} btn={<AddBtn onClick={openCreate} label="Add Subcontractor" />} />
+      {(() => {
+        const exportData = filtered.map(s => {
+          const stats = getSubStats(s.name);
+          const subProjs = getProjectsForSub(s);
+          return {
+            name: s.name,
+            contact: s.contact,
+            phone: s.phone,
+            email: s.email,
+            trades: s.trades,
+            projects: subProjs.map(p => p.number).join(", ") || "Not assigned",
+            projectNames: subProjs.map(p => p.name).join("; ") || "—",
+            status: s.active ? "Active" : "Inactive",
+            overallRating: s.overallRating || 0,
+            qualityRating: s.qualityRating || 0,
+            safetyRating: s.safetyRating || 0,
+            progressRating: s.progressRating || 0,
+            responseRating: s.responseRating || 0,
+            lastEvalDate: s.lastEvalDate,
+            totalTasks: stats.tasks.total,
+            openTasks: stats.tasks.open,
+            overdueTasks: stats.tasks.overdue,
+            completedTasks: stats.tasks.completed,
+            totalSnags: stats.snags.total,
+            openSnags: stats.snags.open,
+            closedSnags: stats.snags.closed,
+            notes: s.notes,
+          };
+        });
+        const SUB_COLS = [
+          { header: "Company Name", key: "name", width: 28 },
+          { header: "Contact Person", key: "contact", width: 22 },
+          { header: "Phone", key: "phone", width: 18 },
+          { header: "Email", key: "email", width: 28 },
+          { header: "Trades", key: "trades", width: 25, type: "array" },
+          { header: "Projects", key: "projects", width: 25 },
+          { header: "Status", key: "status", width: 12 },
+          { header: "Overall Rating", key: "overallRating", width: 14 },
+          { header: "Quality", key: "qualityRating", width: 10 },
+          { header: "Safety", key: "safetyRating", width: 10 },
+          { header: "Progress", key: "progressRating", width: 10 },
+          { header: "Response", key: "responseRating", width: 10 },
+          { header: "Last Eval", key: "lastEvalDate", width: 14, type: "date" },
+          { header: "Total Tasks", key: "totalTasks", width: 12 },
+          { header: "Open Tasks", key: "openTasks", width: 12 },
+          { header: "Overdue Tasks", key: "overdueTasks", width: 14 },
+          { header: "Completed Tasks", key: "completedTasks", width: 15 },
+          { header: "Total Snags", key: "totalSnags", width: 12 },
+          { header: "Open Snags", key: "openSnags", width: 12 },
+          { header: "Closed Snags", key: "closedSnags", width: 13 },
+          { header: "Notes", key: "notes", width: 35 },
+        ];
+        return <PageTitle title="Subcontractors" count={filtered.length}
+          exportBtn={<ExportButtons data={exportData} excelCols={SUB_COLS} fileName="Subcontractors" pdfTitle="Subcontractors Register" />}
+          btn={<AddBtn onClick={openCreate} label="Add Subcontractor" />} />;
+      })()}
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-3">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, project, trade..." />
