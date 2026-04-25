@@ -117,6 +117,7 @@ function useTasks() {
     if (data) setTasks(data.map(t => ({
       id: t.id, pid: t.project_id, title: t.title || "", desc: t.description || "",
       location: t.location || "", trade: t.trade || "", assignee: t.assignee_name || "",
+      subName: t.subcontractor_name || "",
       priority: t.priority || "Medium", status: t.status || "Open", due: t.due_date || "",
     })));
     setLoading(false);
@@ -127,6 +128,7 @@ function useTasks() {
     const { error } = await supabase.from("tasks").insert([{
       project_id: f.pid, title: f.title, description: f.desc,
       location: f.location, trade: f.trade, assignee_name: f.assignee,
+      subcontractor_name: f.subName || null,
       priority: f.priority, status: "Open", due_date: f.due || null,
     }]);
     if (error) return { ok: false, error: error.message };
@@ -136,6 +138,7 @@ function useTasks() {
     const { error } = await supabase.from("tasks").update({
       project_id: f.pid, title: f.title, description: f.desc,
       location: f.location, trade: f.trade, assignee_name: f.assignee,
+      subcontractor_name: f.subName || null,
       priority: f.priority, status: f.status, due_date: f.due || null,
     }).eq("id", id);
     if (error) return { ok: false, error: error.message };
@@ -409,6 +412,13 @@ function useSubcontractors() {
       phone: s.phone || "", email: s.email || "",
       trades: Array.isArray(s.trade) ? s.trade : (s.trade ? [s.trade] : []),
       active: s.is_active !== false, notes: s.performance_notes || "",
+      qualityRating: s.quality_rating || 0,
+      safetyRating: s.safety_rating || 0,
+      progressRating: s.progress_rating || 0,
+      responseRating: s.response_rating || 0,
+      overallRating: s.overall_rating || 0,
+      lastEvalDate: s.last_evaluation_date || "",
+      projectIds: Array.isArray(s.project_ids) ? s.project_ids : [],
     })));
     setLoading(false);
   }, []);
@@ -418,6 +428,13 @@ function useSubcontractors() {
     const { error } = await supabase.from("subcontractors").insert([{
       company_name: f.name, contact_person: f.contact, phone: f.phone,
       email: f.email, trade: f.trades, is_active: true, performance_notes: f.notes,
+      quality_rating: f.qualityRating || null,
+      safety_rating: f.safetyRating || null,
+      progress_rating: f.progressRating || null,
+      response_rating: f.responseRating || null,
+      overall_rating: f.overallRating || null,
+      last_evaluation_date: f.lastEvalDate || null,
+      project_ids: f.projectIds && f.projectIds.length > 0 ? f.projectIds : null,
     }]);
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
@@ -426,13 +443,20 @@ function useSubcontractors() {
     const { error } = await supabase.from("subcontractors").update({
       company_name: f.name, contact_person: f.contact, phone: f.phone,
       email: f.email, trade: f.trades, is_active: f.active, performance_notes: f.notes,
+      quality_rating: f.qualityRating || null,
+      safety_rating: f.safetyRating || null,
+      progress_rating: f.progressRating || null,
+      response_rating: f.responseRating || null,
+      overall_rating: f.overallRating || null,
+      last_evaluation_date: f.lastEvalDate || null,
+      project_ids: f.projectIds && f.projectIds.length > 0 ? f.projectIds : null,
     }).eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
   };
   const remove = async (id) => {
     const { error } = await supabase.from("subcontractors").delete().eq("id", id);
-    if (error) return { ok: false, error: error.message };
+    if (error) { console.error("Delete sub error:", error.message); return { ok: false, error: error.message }; }
     await loadData(); return { ok: true };
   };
   return { subs, loading, add, update, remove };
@@ -850,7 +874,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast }) =
 // ─────────────────────────────────────────────────────────────────────────────
 const TASK_STATUS = ["Open", "In Progress", "On Hold", "Completed", "Closed"];
 const TRADES = ["Civil / Structural", "Civil / Masonry", "Civil / Waterproofing", "MEP / HVAC", "MEP / Electrical", "MEP / Plumbing", "Finishing", "Aluminum / Glazing", "Aluminum / Cladding", "Safety", "Other"];
-const EMPTY_TASK = { pid: "", title: "", desc: "", location: "", trade: "", assignee: "", priority: "Medium", status: "Open", due: "" };
+const EMPTY_TASK = { pid: "", title: "", desc: "", location: "", trade: "", assignee: "", subName: "", priority: "Medium", status: "Open", due: "" };
 
 const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast }) => {
   const [mode, setMode] = useState("list");
@@ -864,7 +888,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const openCreate = () => { setForm(EMPTY_TASK); setSel(null); setMode("form"); };
-  const openEdit = t => { setSel(t); setForm({ pid: t.pid, title: t.title, desc: t.desc, location: t.location, trade: t.trade, assignee: t.assignee, priority: t.priority, status: t.status, due: t.due }); setMode("form"); };
+  const openEdit = t => { setSel(t); setForm({ pid: t.pid, title: t.title, desc: t.desc, location: t.location, trade: t.trade, assignee: t.assignee, subName: t.subName || "", priority: t.priority, status: t.status, due: t.due }); setMode("form"); };
   const openView = t => { setSel(t); setMode("view"); };
   const goList = () => { setMode("list"); setSel(null); };
 
@@ -918,11 +942,14 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast 
           <div><Lbl t="Location" /><Inp value={form.location} onChange={set("location")} placeholder="e.g. Level 3" /></div>
           <div><Lbl t="Trade" /><Sel value={form.trade} onChange={set("trade")}><option value="">Select...</option>{TRADES.map(t => <option key={t}>{t}</option>)}</Sel></div>
         </Grid2>
-        <Grid3>
-          <div><Lbl t="Assignee" /><Inp value={form.assignee} onChange={set("assignee")} placeholder="Engineer name" /></div>
+        <Grid2>
+          <div><Lbl t="Assignee / Engineer" /><Inp value={form.assignee} onChange={set("assignee")} placeholder="Engineer name" /></div>
+          <div><Lbl t="Assign to Subcontractor" /><Inp value={form.subName} onChange={set("subName")} placeholder="Subcontractor company name" /></div>
+        </Grid2>
+        <Grid2>
           <div><Lbl t="Priority" /><Sel value={form.priority} onChange={set("priority")}>{["Low", "Medium", "High", "Critical"].map(p => <option key={p}>{p}</option>)}</Sel></div>
           <div><Lbl t="Due Date" /><Inp type="date" value={form.due} onChange={set("due")} /></div>
-        </Grid3>
+        </Grid2>
         {sel && <div><Lbl t="Status" /><Sel value={form.status} onChange={set("status")}>{TASK_STATUS.map(s => <option key={s}>{s}</option>)}</Sel></div>}
         <FormActions saving={saving} onSave={handleSave} onCancel={goList} label={sel ? "Update Task" : "Save Task"} />
       </FormCard>
@@ -1648,20 +1675,130 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBCONTRACTORS MODULE — Full CRUD
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_SUB = { name: "", contact: "", phone: "", email: "", tradesInput: "", trades: [], notes: "", active: true };
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBCONTRACTORS MODULE — Full Featured
+// ─────────────────────────────────────────────────────────────────────────────
 
-const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast }) => {
+// Star Rating Display
+const StarRating = ({ value, max = 5, onSelect, size = "sm" }) => {
+  const sizes = { sm: "w-4 h-4", md: "w-5 h-5", lg: "w-6 h-6" };
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1,2,3,4,5].map(i => (
+        <button key={i} onClick={() => onSelect && onSelect(i)} type="button"
+          className={`${sizes[size]} transition-colors ${onSelect ? "cursor-pointer hover:scale-110" : "cursor-default"}`}
+          style={{ color: i <= value ? "#f59e0b" : "#d1d5db" }}>
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        </button>
+      ))}
+      {value > 0 && <span className="text-xs text-slate-500 ml-1">({value}/5)</span>}
+    </div>
+  );
+};
+
+const RATING_LABEL = { 0: "Not Rated", 1: "Poor", 2: "Below Average", 3: "Average", 4: "Good", 5: "Excellent" };
+const RATING_COLOR = { 0: "text-slate-400", 1: "text-red-600", 2: "text-orange-500", 3: "text-amber-500", 4: "text-blue-600", 5: "text-green-600" };
+
+const RatingField = ({ label, value, onChange }) => (
+  <div className="space-y-1">
+    <div className="flex items-center justify-between">
+      <Lbl t={label} />
+      <span className={`text-xs font-semibold ${RATING_COLOR[value] || "text-slate-400"}`}>{RATING_LABEL[value] || "Not Rated"}</span>
+    </div>
+    <StarRating value={value} onSelect={onChange} size="md" />
+  </div>
+);
+
+const EMPTY_SUB = {
+  name: "", contact: "", phone: "", email: "",
+  tradesInput: "", trades: [], notes: "", active: true,
+  projectIds: [],
+  qualityRating: 0, safetyRating: 0, progressRating: 0,
+  responseRating: 0, overallRating: 0, lastEvalDate: "",
+};
+
+const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, tasks, snags, projects }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_SUB);
   const [search, setSearch] = useState("");
+  const [fStatus, setFStatus] = useState("All");
+  const [fTrade, setFTrade] = useState("All");
+  const [fProject, setFProject] = useState("All");
+  const [fRating, setFRating] = useState("All");
+  const [fOverdue, setFOverdue] = useState(false);
+  const [fOpenSnags, setFOpenSnags] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
+  const [activeTab, setActiveTab] = useState("overview");
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const setRating = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  const getProjectsForSub = (sub) => {
+    // 1. Projects saved directly on the subcontractor record
+    const savedProjs = (sub.projectIds || [])
+      .map(pid => (projects || []).find(p => p.id === pid))
+      .filter(Boolean);
+    // 2. Projects derived from tasks assigned to this sub
+    const taskPids = [...new Set((tasks || []).filter(t => t.subName === sub.name).map(t => t.pid))];
+    const taskProjs = taskPids.map(pid => (projects || []).find(p => p.id === pid)).filter(Boolean);
+    // 3. Projects derived from snags assigned to this sub
+    const snagPids = [...new Set((snags || []).filter(s => s.sub === sub.name).map(s => s.pid))];
+    const snagProjs = snagPids.map(pid => (projects || []).find(p => p.id === pid)).filter(Boolean);
+    // Merge unique by id
+    const all = [...savedProjs, ...taskProjs, ...snagProjs];
+    const seen = new Set();
+    return all.filter(p => { if (seen.has(p.id)) return false; seen.add(p.id); return true; });
+  };
+
+  const getSubStats = (subName) => {
+    const subTasks = (tasks || []).filter(t => t.subName === subName);
+    const subSnags = (snags || []).filter(s => s.sub === subName);
+    const now = new Date();
+    return {
+      tasks: {
+        total: subTasks.length,
+        open: subTasks.filter(t => t.status === "Open").length,
+        inProgress: subTasks.filter(t => t.status === "In Progress").length,
+        overdue: subTasks.filter(t => t.due && new Date(t.due) < now && !["Completed","Closed"].includes(t.status)).length,
+        completed: subTasks.filter(t => ["Completed","Closed"].includes(t.status)).length,
+        list: subTasks,
+      },
+      snags: {
+        total: subSnags.length,
+        open: subSnags.filter(s => s.status === "Open").length,
+        underRect: subSnags.filter(s => s.status === "Under Rectification").length,
+        readyReview: subSnags.filter(s => s.status === "Ready for Review").length,
+        closed: subSnags.filter(s => s.status === "Closed").length,
+        rejected: subSnags.filter(s => s.status === "Rejected").length,
+        list: subSnags,
+      },
+    };
+  };
+
+  // Toggle project selection in form
+  const toggleProject = pid => {
+    setForm(p => {
+      const exists = p.projectIds.includes(pid);
+      return { ...p, projectIds: exists ? p.projectIds.filter(x => x !== pid) : [...p.projectIds, pid] };
+    });
+  };
 
   const openCreate = () => { setForm(EMPTY_SUB); setSel(null); setMode("form"); };
-  const openEdit = s => { setSel(s); setForm({ name: s.name, contact: s.contact, phone: s.phone, email: s.email, trades: s.trades || [], tradesInput: (s.trades || []).join(", "), notes: s.notes, active: s.active }); setMode("form"); };
-  const openView = s => { setSel(s); setMode("view"); };
+  const openEdit = s => {
+    setSel(s);
+    setForm({
+      name: s.name, contact: s.contact, phone: s.phone, email: s.email,
+      trades: s.trades || [], tradesInput: (s.trades || []).join(", "),
+      notes: s.notes, active: s.active, projectIds: s.projectIds || [],
+      qualityRating: s.qualityRating || 0, safetyRating: s.safetyRating || 0,
+      progressRating: s.progressRating || 0, responseRating: s.responseRating || 0,
+      overallRating: s.overallRating || 0, lastEvalDate: s.lastEvalDate || "",
+    });
+    setMode("form");
+  };
+  const openView = s => { setSel(s); setActiveTab("overview"); setMode("view"); };
   const goList = () => { setMode("list"); setSel(null); };
 
   const handleSave = async () => {
@@ -1670,84 +1807,369 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast })
     setSaving(true);
     const res = sel ? await onUpdate(sel.id, { ...form, trades }) : await onAdd({ ...form, trades });
     setSaving(false);
-    if (!res.ok) { showToast(res.error || "Save failed", "error"); return; }
+    if (!res.ok) { showToast(res.error || "Save failed. Run the SQL fix in Supabase.", "error"); return; }
     showToast(sel ? "Subcontractor updated!" : "Subcontractor added!"); goList();
   };
   const handleDelete = async id => {
     const res = await onDelete(id);
-    if (!res.ok) { showToast(res.error || "Delete failed", "error"); return; }
+    if (!res.ok) { showToast(res.error || "Delete failed. Run the SQL RLS fix.", "error"); return; }
     showToast("Subcontractor deleted!"); setConfirmId(null); if (mode !== "list") goList();
   };
 
-  const filtered = subs.filter(s => `${s.name} ${s.contact} ${s.email} ${(s.trades || []).join(" ")}`.toLowerCase().includes(search.toLowerCase()));
+  const allTrades = [...new Set(subs.flatMap(s => s.trades || []))].sort();
 
-  if (mode === "view" && sel) return (
-    <div className="p-6 max-w-2xl">
-      {confirmId && <ConfirmDialog message={`Delete "${sel.name}"?`} onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <BackBtn onClick={goList} />
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-slate-700 to-slate-600 px-6 py-5">
-          <div className="flex items-start justify-between">
-            <div><h2 className="text-xl font-bold text-white">{sel.name}</h2><p className="text-slate-300 text-sm mt-1">{sel.contact}</p></div>
-            <span className={`px-3 py-1 text-xs font-bold rounded-full border ${sel.active ? "bg-green-400/20 text-green-300 border-green-400/30" : "bg-slate-400/20 text-slate-300 border-slate-400/30"}`}>{sel.active ? "Active" : "Inactive"}</span>
+  const filtered = subs.filter(s => {
+    const stats = getSubStats(s.name);
+    const subProjs = getProjectsForSub(s);
+    if (search && !`${s.name} ${s.contact} ${s.email} ${(s.trades||[]).join(" ")} ${subProjs.map(p=>p.number+" "+p.name).join(" ")}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (fStatus !== "All" && (fStatus === "Active" ? !s.active : s.active)) return false;
+    if (fTrade !== "All" && !(s.trades || []).includes(fTrade)) return false;
+    if (fProject !== "All" && !subProjs.find(p => p.id === fProject)) return false;
+    if (fRating !== "All") { const r = parseInt(fRating); if ((s.overallRating || 0) !== r) return false; }
+    if (fOverdue && stats.tasks.overdue === 0) return false;
+    if (fOpenSnags && stats.snags.open === 0) return false;
+    return true;
+  });
+
+  // ── VIEW PAGE ────────────────────────────────────────────────────────────────
+  if (mode === "view" && sel) {
+    const stats = getSubStats(sel.name);
+    const subProjs = getProjectsForSub(sel);
+    const completionPct = stats.tasks.total > 0 ? Math.round((stats.tasks.completed / stats.tasks.total) * 100) : 0;
+    const TABS = ["overview", "tasks", "snags", "performance"];
+    return (
+      <div className="p-6 max-w-4xl">
+        {confirmId && <ConfirmDialog message={`Delete "${sel.name}"? This cannot be undone.`} onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
+        <BackBtn onClick={goList} />
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-6 mb-4 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-2xl font-bold">{sel.name}</h2>
+              <p className="text-slate-300 text-sm mt-1">{sel.contact}{sel.phone ? ` · ${sel.phone}` : ""}</p>
+              {/* Projects */}
+              <div className="mt-3">
+                <div className="text-xs text-slate-400 mb-1.5">Assigned Projects</div>
+                {subProjs.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {subProjs.map(p => (
+                      <div key={p.id} className="bg-amber-500/20 border border-amber-500/30 rounded-lg px-3 py-1.5">
+                        <div className="text-xs font-bold text-amber-300">{p.number}</div>
+                        <div className="text-xs text-amber-200 leading-tight max-w-[180px] truncate">{p.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <span className="text-xs text-slate-400 italic">No projects assigned yet</span>}
+              </div>
+              <div className="flex flex-wrap gap-2 mt-3">{(sel.trades||[]).map((t,i) => <span key={i} className="bg-white/10 text-white/80 border border-white/20 text-xs px-2 py-0.5 rounded-full">{t}</span>)}</div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <span className={`px-3 py-1 text-xs font-bold rounded-full border ${sel.active ? "bg-green-400/20 text-green-300 border-green-400/30" : "bg-red-400/20 text-red-300 border-red-400/30"}`}>{sel.active ? "Active" : "Inactive"}</span>
+              {sel.overallRating > 0 && <div className="text-right"><div className="text-amber-400 text-lg font-bold">★ {sel.overallRating}/5</div><div className="text-xs text-slate-400">{RATING_LABEL[sel.overallRating]}</div></div>}
+            </div>
+          </div>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-5 gap-3 mt-5">
+            {[
+              { label: "Projects", value: subProjs.length, sub: "assigned", color: "bg-white/10" },
+              { label: "Pending Tasks", value: stats.tasks.open + stats.tasks.inProgress, sub: `${stats.tasks.total} total`, color: "bg-blue-500/20" },
+              { label: "Open Snags", value: stats.snags.open, sub: `${stats.snags.total} total`, color: "bg-orange-500/20" },
+              { label: "Overdue", value: stats.tasks.overdue, sub: "items", color: stats.tasks.overdue > 0 ? "bg-red-500/30" : "bg-green-500/20" },
+              { label: "Completion", value: `${completionPct}%`, sub: `${stats.tasks.completed} done`, color: "bg-purple-500/20" },
+            ].map(c => (
+              <div key={c.label} className={`${c.color} rounded-xl p-3 text-center`}>
+                <div className="text-xl font-bold text-white">{c.value}</div>
+                <div className="text-xs text-white/70">{c.label}</div>
+                <div className="text-xs text-white/40">{c.sub}</div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="p-6 space-y-5">
-          <Grid2>
-            <div><div className="text-xs text-slate-400 font-medium">Phone</div><div className="font-semibold text-slate-800 mt-0.5">{sel.phone || "—"}</div></div>
-            <div><div className="text-xs text-slate-400 font-medium">Email</div><div className="font-semibold text-slate-800 mt-0.5">{sel.email || "—"}</div></div>
-          </Grid2>
-          <div>
-            <div className="text-xs text-slate-400 font-medium mb-2">Trades & Specializations</div>
-            <div className="flex flex-wrap gap-2">{(sel.trades || []).length > 0 ? sel.trades.map((t, i) => <span key={i} className="bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">{t}</span>) : <span className="text-slate-400 text-sm">No trades listed</span>}</div>
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 bg-slate-100 rounded-xl p-1">
+          {TABS.map(t => <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 py-2 text-xs font-bold rounded-lg capitalize transition-colors ${activeTab === t ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{t === "tasks" ? `Tasks (${stats.tasks.total})` : t === "snags" ? `Snags (${stats.snags.total})` : t === "performance" ? "Ratings" : "Overview"}</button>)}
+        </div>
+        {/* OVERVIEW TAB */}
+        {activeTab === "overview" && (
+          <div className="space-y-4">
+            <FormCard>
+              <div className="text-sm font-bold text-slate-700 mb-3">Assigned Projects</div>
+              {subProjs.length > 0 ? (
+                <div className="space-y-2">
+                  {subProjs.map(p => (
+                    <div key={p.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center shrink-0"><span className="text-xs font-bold text-amber-700">{p.number?.replace("J","")}</span></div>
+                      <div><div className="text-sm font-bold text-slate-800">{p.number}</div><div className="text-xs text-slate-500">{p.name}</div></div>
+                      <div className="ml-auto"><Badge text={p.status} /></div>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="text-center py-6 text-slate-400 text-sm italic">No projects assigned. Edit to assign projects.</div>}
+            </FormCard>
+            <FormCard>
+              <div className="text-sm font-bold text-slate-700 mb-3">Contact Information</div>
+              <Grid2>
+                {[["Phone", sel.phone], ["Email", sel.email], ["Contact Person", sel.contact]].map(([k,v]) => (
+                  <div key={k}><div className="text-xs text-slate-400">{k}</div><div className="text-sm font-semibold text-slate-800 mt-0.5">{v || "—"}</div></div>
+                ))}
+              </Grid2>
+            </FormCard>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="text-sm font-bold text-slate-700 mb-3">Task Summary</div>
+                {[["Open", stats.tasks.open, "text-red-600"], ["In Progress", stats.tasks.inProgress, "text-blue-600"], ["Overdue", stats.tasks.overdue, "text-orange-600"], ["Completed", stats.tasks.completed, "text-green-600"]].map(([l,v,c]) => (
+                  <div key={l} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0"><span className="text-xs text-slate-600">{l}</span><span className={`text-sm font-bold ${c}`}>{v}</span></div>
+                ))}
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="text-sm font-bold text-slate-700 mb-3">Snag Summary</div>
+                {[["Open", stats.snags.open, "text-red-600"], ["Under Rectification", stats.snags.underRect, "text-orange-600"], ["Ready for Review", stats.snags.readyReview, "text-purple-600"], ["Closed", stats.snags.closed, "text-green-600"], ["Rejected", stats.snags.rejected, "text-slate-500"]].map(([l,v,c]) => (
+                  <div key={l} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0"><span className="text-xs text-slate-600">{l}</span><span className={`text-sm font-bold ${c}`}>{v}</span></div>
+                ))}
+              </div>
+            </div>
+            {sel.notes && <FormCard><div className="text-sm font-bold text-slate-700 mb-2">Performance Notes</div><p className="text-sm text-slate-600 leading-relaxed">{sel.notes}</p></FormCard>}
+            <div className="flex gap-3"><Btn onClick={() => openEdit(sel)} label="Edit Subcontractor" /><Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" /></div>
           </div>
-          {sel.notes && <div><div className="text-xs text-slate-400 font-medium mb-1">Performance Notes</div><p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg leading-relaxed">{sel.notes}</p></div>}
-          <div className="flex gap-3 pt-2 border-t border-slate-100"><Btn onClick={() => openEdit(sel)} label="Edit" /><Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" /></div>
+        )}
+        {/* TASKS TAB */}
+        {activeTab === "tasks" && (
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
+              <span className="text-sm font-bold text-slate-700">Assigned Tasks ({stats.tasks.total})</span>
+              {stats.tasks.overdue > 0 && <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">{stats.tasks.overdue} overdue</span>}
+            </div>
+            {stats.tasks.list.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 text-sm">No tasks assigned to {sel.name}.<br/><span className="text-xs mt-1 block">Go to Tasks → New Task → set "Assign to Subcontractor"</span></div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50"><tr>{["Task","Project","Priority","Due","Status"].map(h => <th key={h} className="text-left px-4 py-2 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stats.tasks.list.map(t => {
+                    const proj = (projects||[]).find(p => p.id === t.pid);
+                    return (
+                      <tr key={t.id} className={`hover:bg-slate-50 ${isOverdue(t.due, t.status) ? "bg-red-50/40" : ""}`}>
+                        <td className="px-4 py-2.5"><div className="font-medium text-slate-800 text-xs">{t.title}</div><div className="text-xs text-slate-400">{t.location}</div></td>
+                        <td className="px-4 py-2.5"><div className="text-xs font-bold text-amber-700">{proj?.number || "—"}</div><div className="text-xs text-slate-400 truncate max-w-[120px]">{proj?.name || ""}</div></td>
+                        <td className="px-4 py-2.5"><Badge text={t.priority} cls={PC[t.priority]} /></td>
+                        <td className={`px-4 py-2.5 text-xs font-semibold ${isOverdue(t.due, t.status) ? "text-red-600" : "text-slate-600"}`}>{fmtDate(t.due)}</td>
+                        <td className="px-4 py-2.5"><Badge text={t.status} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+        {/* SNAGS TAB */}
+        {activeTab === "snags" && (
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
+              <span className="text-sm font-bold text-slate-700">Assigned Snags ({stats.snags.total})</span>
+              {stats.snags.open > 0 && <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">{stats.snags.open} open</span>}
+            </div>
+            {stats.snags.list.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 text-sm">No snags assigned to {sel.name}.<br/><span className="text-xs mt-1 block">Go to Snag List → New Snag → set "Subcontractor"</span></div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50"><tr>{["Snag","Project","Category","Due","Status"].map(h => <th key={h} className="text-left px-4 py-2 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stats.snags.list.map(s => {
+                    const proj = (projects||[]).find(p => p.id === s.pid);
+                    return (
+                      <tr key={s.id} className={`hover:bg-slate-50 ${isOverdue(s.due, s.status) ? "bg-red-50/40" : ""}`}>
+                        <td className="px-4 py-2.5"><div className="font-mono text-xs font-bold text-amber-600">{s.num}</div><div className="text-xs text-slate-700 truncate max-w-[140px]">{s.title}</div></td>
+                        <td className="px-4 py-2.5"><div className="text-xs font-bold text-amber-700">{proj?.number || "—"}</div><div className="text-xs text-slate-400 truncate max-w-[120px]">{proj?.name || ""}</div></td>
+                        <td className="px-4 py-2.5"><Badge text={s.category} cls="bg-slate-100 text-slate-600 border-slate-200" /></td>
+                        <td className={`px-4 py-2.5 text-xs font-semibold ${isOverdue(s.due, s.status) ? "text-red-600" : "text-slate-600"}`}>{fmtDate(s.due)}</td>
+                        <td className="px-4 py-2.5"><Badge text={s.status} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+        {/* PERFORMANCE TAB */}
+        {activeTab === "performance" && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="text-sm font-bold text-slate-700 mb-4">Performance Ratings</div>
+              <div className="space-y-4">
+                {[["Quality of Work", sel.qualityRating], ["Safety Compliance", sel.safetyRating], ["Progress / Schedule", sel.progressRating], ["Response Time", sel.responseRating]].map(([label, rating]) => (
+                  <div key={label} className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                    <span className="text-sm text-slate-700 font-medium">{label}</span>
+                    <div className="flex items-center gap-3"><StarRating value={rating || 0} size="sm" /><span className={`text-xs font-bold w-20 text-right ${RATING_COLOR[rating] || "text-slate-400"}`}>{RATING_LABEL[rating] || "Not Rated"}</span></div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between">
+                <div className="font-bold text-slate-800">Overall Rating</div>
+                <div className="flex items-center gap-3"><StarRating value={sel.overallRating || 0} size="md" /><span className={`text-sm font-bold ${RATING_COLOR[sel.overallRating] || "text-slate-400"}`}>{RATING_LABEL[sel.overallRating] || "Not Rated"}</span></div>
+              </div>
+              {sel.lastEvalDate && <div className="mt-3 text-xs text-slate-400">Last evaluated: {fmtDate(sel.lastEvalDate)}</div>}
+            </div>
+            {sel.notes && <div className="bg-amber-50 border border-amber-200 rounded-xl p-4"><div className="text-xs font-bold text-amber-700 mb-1">Performance Notes</div><p className="text-sm text-amber-800">{sel.notes}</p></div>}
+            <Btn onClick={() => openEdit(sel)} label="Update Ratings" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── FORM ──────────────────────────────────────────────────────────────────────
+  if (mode === "form") return (
+    <div className="p-6 max-w-2xl">
+      <BackBtn onClick={goList} />
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel ? "Edit Subcontractor" : "Add Subcontractor"}</h2>
+      <div className="space-y-4">
+        {/* Basic Info */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Basic Information</div>
+          <div><Lbl t="Company Name" req /><Inp value={form.name} onChange={set("name")} placeholder="e.g. Al Futtaim MEP LLC" /></div>
+          <div><Lbl t="Contact Person" /><Inp value={form.contact} onChange={set("contact")} placeholder="Contact name" /></div>
+          <Grid2>
+            <div><Lbl t="Phone" /><Inp value={form.phone} onChange={set("phone")} placeholder="+971-50-..." /></div>
+            <div><Lbl t="Email" /><Inp value={form.email} onChange={set("email")} placeholder="email@company.com" /></div>
+          </Grid2>
+          <div><Lbl t="Trades (comma separated)" /><Inp value={form.tradesInput} onChange={set("tradesInput")} placeholder="e.g. MEP, HVAC, Plumbing, Electrical" /></div>
+          {sel && <div><Lbl t="Status" /><Sel value={form.active ? "Active" : "Inactive"} onChange={e => setForm(p => ({ ...p, active: e.target.value === "Active" }))}><option>Active</option><option>Inactive</option></Sel></div>}
+        </FormCard>
+        {/* Project Assignment */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Assign to Projects</div>
+          <p className="text-xs text-slate-400 mb-3">Select all projects this subcontractor is working on:</p>
+          {(projects || []).length === 0 ? <p className="text-sm text-slate-400 italic">No projects found</p> : (
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {(projects || []).map(p => {
+                const isSelected = (form.projectIds || []).includes(p.id);
+                return (
+                  <div key={p.id} onClick={() => toggleProject(p.id)}
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${isSelected ? "bg-amber-50 border-amber-400" : "bg-white border-slate-200 hover:border-amber-300"}`}>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center border-2 shrink-0 ${isSelected ? "bg-amber-500 border-amber-500" : "border-slate-300"}`}>
+                      {isSelected && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-slate-800">{p.number}</div>
+                      <div className="text-xs text-slate-500 truncate">{p.name} · {p.location}</div>
+                    </div>
+                    <Badge text={p.status} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {(form.projectIds || []).length > 0 && (
+            <div className="mt-2 text-xs text-amber-600 font-semibold">{form.projectIds.length} project{form.projectIds.length > 1 ? "s" : ""} selected</div>
+          )}
+        </FormCard>
+        {/* Performance Ratings */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Performance Ratings</div>
+          <div className="space-y-4">
+            <RatingField label="Quality of Work" value={form.qualityRating} onChange={setRating("qualityRating")} />
+            <RatingField label="Safety Compliance" value={form.safetyRating} onChange={setRating("safetyRating")} />
+            <RatingField label="Progress / Schedule" value={form.progressRating} onChange={setRating("progressRating")} />
+            <RatingField label="Response Time" value={form.responseRating} onChange={setRating("responseRating")} />
+            <div className="border-t border-slate-100 pt-3">
+              <RatingField label="Overall Rating" value={form.overallRating} onChange={setRating("overallRating")} />
+            </div>
+          </div>
+          <div className="mt-3"><Lbl t="Last Evaluation Date" /><Inp type="date" value={form.lastEvalDate} onChange={set("lastEvalDate")} /></div>
+        </FormCard>
+        {/* Notes */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Performance Notes</div>
+          <Txta value={form.notes} onChange={set("notes")} rows={3} placeholder="Notes about performance, issues, recommendations..." />
+        </FormCard>
+        <div className="flex gap-3">
+          <Btn saving={saving} onClick={handleSave} label={sel ? "Update Subcontractor" : "Save Subcontractor"} />
+          <Btn onClick={goList} label="Cancel" color="slate" />
         </div>
       </div>
     </div>
   );
 
-  if (mode === "form") return (
-    <div className="p-6 max-w-lg">
-      <BackBtn onClick={goList} />
-      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel ? "Edit Subcontractor" : "Add Subcontractor"}</h2>
-      <FormCard>
-        <div><Lbl t="Company Name" req /><Inp value={form.name} onChange={set("name")} placeholder="e.g. Al Futtaim MEP LLC" /></div>
-        <div><Lbl t="Contact Person" /><Inp value={form.contact} onChange={set("contact")} placeholder="Contact name" /></div>
-        <Grid2>
-          <div><Lbl t="Phone" /><Inp value={form.phone} onChange={set("phone")} placeholder="+971-50-..." /></div>
-          <div><Lbl t="Email" /><Inp value={form.email} onChange={set("email")} placeholder="email@company.com" /></div>
-        </Grid2>
-        <div><Lbl t="Trades (comma separated)" /><Inp value={form.tradesInput} onChange={set("tradesInput")} placeholder="e.g. MEP, HVAC, Plumbing, Electrical" /></div>
-        <div><Lbl t="Performance Notes" /><Txta value={form.notes} onChange={set("notes")} rows={3} placeholder="Any notes about this subcontractor's performance..." /></div>
-        {sel && <div><Lbl t="Status" /><Sel value={form.active ? "Active" : "Inactive"} onChange={e => setForm(p => ({ ...p, active: e.target.value === "Active" }))}><option>Active</option><option>Inactive</option></Sel></div>}
-        <FormActions saving={saving} onSave={handleSave} onCancel={goList} label={sel ? "Update Subcontractor" : "Save Subcontractor"} />
-      </FormCard>
-    </div>
-  );
-
+  // ── LIST ──────────────────────────────────────────────────────────────────────
   return (
     <div className="p-6">
-      {confirmId && <ConfirmDialog message="Delete this subcontractor?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
+      {confirmId && <ConfirmDialog message="Delete this subcontractor? This cannot be undone." onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
       <PageTitle title="Subcontractors" count={filtered.length} btn={<AddBtn onClick={openCreate} label="Add Subcontractor" />} />
-      <div className="mb-4"><SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search subcontractors..." /></div>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 mb-3">
+        <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, project, trade..." />
+        <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></Sel>
+        <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{(projects||[]).map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel>
+        <Sel value={fTrade} onChange={e => setFTrade(e.target.value)} className="w-auto"><option value="All">All Trades</option>{allTrades.map(t => <option key={t}>{t}</option>)}</Sel>
+        <Sel value={fRating} onChange={e => setFRating(e.target.value)} className="w-auto"><option value="All">All Ratings</option>{[5,4,3,2,1].map(r => <option key={r} value={r}>{"★".repeat(r)} {RATING_LABEL[r]}</option>)}</Sel>
+        <button onClick={() => setFOverdue(!fOverdue)} className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${fOverdue ? "bg-red-100 text-red-700 border-red-300" : "bg-white text-slate-600 border-slate-200 hover:border-red-300"}`}>🔴 Has Overdue</button>
+        <button onClick={() => setFOpenSnags(!fOpenSnags)} className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${fOpenSnags ? "bg-orange-100 text-orange-700 border-orange-300" : "bg-white text-slate-600 border-slate-200 hover:border-orange-300"}`}>⚠️ Has Open Snags</button>
+      </div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No subcontractors found" onCreate={openCreate} /> : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {filtered.map(s => (
-            <div key={s.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div><div className="font-bold text-slate-800">{s.name}</div><div className="text-xs text-slate-500 mt-0.5">{s.contact}</div></div>
-                <span className={`px-2 py-0.5 text-xs font-bold rounded-full border shrink-0 ${s.active ? "bg-green-100 text-green-700 border-green-200" : "bg-slate-100 text-slate-500 border-slate-200"}`}>{s.active ? "Active" : "Inactive"}</span>
-              </div>
-              <div className="flex flex-wrap gap-1 mb-3">{(s.trades || []).map((t, i) => <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{t}</span>)}</div>
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-slate-500 space-y-0.5"><div>{s.phone}</div><div className="truncate max-w-[160px]">{s.email}</div></div>
-                <div className="flex gap-1.5"><ActBtn onClick={() => openView(s)} label="View" color="view" /><ActBtn onClick={() => openEdit(s)} label="Edit" color="edit" /><ActBtn onClick={() => setConfirmId(s.id)} label="Del" color="del" /></div>
-              </div>
-              {s.notes && <div className="mt-2 text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100 line-clamp-2">{s.notes}</div>}
-            </div>
-          ))}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm min-w-[900px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["Company","Projects","Trades","Status","Rating","Tasks","Snags","Overdue","Actions"].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(s => {
+                const stats = getSubStats(s.name);
+                const subProjs = getProjectsForSub(s);
+                const pending = stats.tasks.open + stats.tasks.inProgress;
+                return (
+                  <tr key={s.id} className="hover:bg-amber-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-bold text-slate-800">{s.name}</div>
+                      <div className="text-xs text-slate-400">{s.contact}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {subProjs.length === 0 ? (
+                        <span className="text-xs text-slate-300 italic">Not assigned</span>
+                      ) : (
+                        <div className="space-y-1 max-w-[160px]">
+                          {subProjs.slice(0,2).map(p => (
+                            <div key={p.id} className="bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                              <div className="text-xs font-bold text-amber-700">{p.number}</div>
+                              <div className="text-xs text-slate-500 truncate">{p.name}</div>
+                            </div>
+                          ))}
+                          {subProjs.length > 2 && <div className="text-xs text-slate-400">+{subProjs.length - 2} more</div>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1 max-w-[120px]">
+                        {(s.trades||[]).slice(0,2).map((t,i) => <span key={i} className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded whitespace-nowrap">{t}</span>)}
+                        {(s.trades||[]).length > 2 && <span className="text-xs text-slate-400">+{(s.trades||[]).length-2}</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><span className={`px-2 py-0.5 text-xs font-bold rounded-full border whitespace-nowrap ${s.active ? "bg-green-100 text-green-700 border-green-200" : "bg-slate-100 text-slate-500 border-slate-200"}`}>{s.active ? "Active" : "Inactive"}</span></td>
+                    <td className="px-4 py-3"><StarRating value={s.overallRating || 0} size="sm" /></td>
+                    <td className="px-4 py-3">
+                      <span className={`text-sm font-bold ${pending > 0 ? "text-blue-600" : "text-slate-400"}`}>{pending}</span>
+                      <span className="text-xs text-slate-400 ml-1">/ {stats.tasks.total}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-sm font-bold ${stats.snags.open > 0 ? "text-orange-600" : "text-slate-400"}`}>{stats.snags.open}</span>
+                      <span className="text-xs text-slate-400 ml-1">/ {stats.snags.total}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {stats.tasks.overdue > 0 ? <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full whitespace-nowrap">{stats.tasks.overdue} overdue</span> : <span className="text-xs text-green-600 whitespace-nowrap">✓ None</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1.5">
+                        <ActBtn onClick={() => openView(s)} label="View" color="view" />
+                        <ActBtn onClick={() => openEdit(s)} label="Edit" color="edit" />
+                        <ActBtn onClick={() => setConfirmId(s.id)} label="Del" color="del" />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -1802,7 +2224,7 @@ export default function App() {
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
-      case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} />;
+      case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
     }
   };
