@@ -1617,58 +1617,58 @@ const StatCard = ({ label, value, sub, color, icon }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
-const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [], stock = [], nocs = [] }) => {
+const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [], stock = [], nocs = [], onNavigate }) => {
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0];
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
   const dateStr = now.toLocaleDateString("en-GB", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
 
   // Computed metrics
-  const openTasks   = tasks.filter(t => !["Completed","Closed"].includes(t.status)).length;
-  const openSnags   = snags.filter(s => s.status !== "Closed").length;
-  const pendingIRs  = inspections.filter(i => ["Draft","Submitted"].includes(i.status)).length;
-  const pendingMrs  = mrs.filter(m => ["Draft","Submitted","Approved"].includes(m.status)).length;
-  const activeLpos  = lpos.filter(l => ["Draft","Issued","Partially Delivered"].includes(l.status)).length;
-  const pendingDel  = lpos.filter(l => l.deliveryStatus !== "Fully Delivered" && l.deliveryDate && new Date(l.deliveryDate) < now).length;
-  const lowStock    = stock.filter(s => ["Low Stock","Out of Stock"].includes(s.status)).length;
-  const overdue     = tasks.filter(t => isOverdue(t.due, t.status)).length + snags.filter(s => isOverdue(s.due, s.status)).length;
-  const todayRpts   = reports.filter(r => r.date === todayStr).length;
-  const nocExpiring = nocs.filter(n => isExpiringSoon(n.expiryDate, n.status)).length;
-  const nocExpired  = nocs.filter(n => isExpired(n.expiryDate, n.status) && n.status !== "Expired").length;
+  const openTasks    = tasks.filter(t => !["Completed","Closed"].includes(t.status)).length;
+  const openSnags    = snags.filter(s => s.status !== "Closed").length;
+  const pendingIRs   = inspections.filter(i => ["Draft","Submitted"].includes(i.status)).length;
+  const pendingMrs   = mrs.filter(m => ["Draft","Submitted","Approved"].includes(m.status)).length;
+  const activeLpos   = lpos.filter(l => ["Draft","Issued","Partially Delivered"].includes(l.status)).length;
+  const pendingDel   = lpos.filter(l => l.deliveryStatus !== "Fully Delivered" && l.deliveryDate && new Date(l.deliveryDate) < now).length;
+  const lowStock     = stock.filter(s => ["Low Stock","Out of Stock"].includes(s.status)).length;
+  const overdue      = tasks.filter(t => isOverdue(t.due, t.status)).length + snags.filter(s => isOverdue(s.due, s.status)).length;
+  const todayRpts    = reports.filter(r => r.date === todayStr).length;
+  const nocExpiring  = nocs.filter(n => isExpiringSoon(n.expiryDate, n.status)).length;
+  const nocExpired   = nocs.filter(n => isExpired(n.expiryDate, n.status) && n.status !== "Expired").length;
 
-  // Today's site activity from today's reports
   const todayReports = reports.filter(r => r.date === todayStr);
-  const totalMP = todayReports.reduce((s,r) => s + (Number(r.manpower)||0), 0);
+  const totalMP      = todayReports.reduce((s,r) => s + (Number(r.manpower)||0), 0);
 
-  // Alerts
+  // Alerts lists
   const overdueTasks   = tasks.filter(t => isOverdue(t.due, t.status)).slice(0,5);
   const overdueSnags   = snags.filter(s => isOverdue(s.due, s.status)).slice(0,5);
   const pendingIRList  = inspections.filter(i => ["Draft","Submitted"].includes(i.status)).slice(0,4);
   const pendingMRList  = mrs.filter(m => m.status === "Submitted").slice(0,4);
   const overdueDelList = lpos.filter(l => l.deliveryStatus !== "Fully Delivered" && l.deliveryDate && new Date(l.deliveryDate) < now).slice(0,4);
   const lowStockList   = stock.filter(s => ["Low Stock","Out of Stock"].includes(s.status)).slice(0,4);
+  const totalAlerts    = overdueTasks.length + overdueSnags.length + pendingMRList.length + overdueDelList.length;
 
-  const totalAlerts = overdueTasks.length + overdueSnags.length + pendingMRList.length + overdueDelList.length;
+  const nav = (pg, filter = {}) => onNavigate && onNavigate(pg, filter);
 
+  // KPI card click targets
   const CARDS = [
-    { label:"Active Projects",   v:projects.filter(p=>p.status==="Active").length,  sub:`${projects.length} total`,   color:"from-blue-600 to-blue-500",   icon:"🏗️" },
-    { label:"Open Tasks",        v:openTasks,   sub:`${tasks.length} total`,         color:"from-amber-500 to-amber-400",   icon:"✅" },
-    { label:"Open Snags",        v:openSnags,   sub:`${snags.length} total`,         color:"from-orange-500 to-orange-400", icon:"🔴" },
-    { label:"Pending IRs",       v:pendingIRs,  sub:"Awaiting approval",             color:"from-purple-600 to-purple-500", icon:"🔍" },
-    { label:"Pending MRs",       v:pendingMrs,  sub:`${mrs.length} total`,           color:"from-indigo-600 to-indigo-500", icon:"📋" },
-    { label:"Active LPOs",       v:activeLpos,  sub:`${lpos.length} total`,          color:"from-teal-600 to-teal-500",    icon:"🛒" },
-    { label:"Pending Deliveries",v:pendingDel,  sub:"Overdue LPOs",                  color:"from-rose-600 to-rose-500",    icon:"🚚" },
-    { label:"Low Stock",         v:lowStock,    sub:`${stock.length} materials`,      color:"from-red-600 to-red-500",      icon:"📦" },
-    { label:"NOC Alerts",        v:nocExpiring+nocExpired, sub:`${nocExpiring} expiring · ${nocExpired} expired`, color:"from-purple-700 to-purple-600", icon:"🛡️" },
-    { label:"Overdue Items",     v:overdue,     sub:"Tasks + Snags",                  color:"from-red-700 to-red-600",      icon:"⚠️" },
-    { label:"Reports Today",     v:todayRpts,   sub:todayStr,                        color:"from-green-600 to-green-500",  icon:"📝" },
+    { label:"Active Projects",    v:projects.filter(p=>p.status==="Active").length,  sub:`${projects.length} total`,            color:"from-blue-600 to-blue-500",    icon:"🏗️",  onClick:() => nav("projects", { status:"Active" }) },
+    { label:"Open Tasks",         v:openTasks,    sub:`${tasks.length} total`,        color:"from-amber-500 to-amber-400",   icon:"✅",  onClick:() => nav("tasks",    { status:"Open" }) },
+    { label:"Open Snags",         v:openSnags,    sub:`${snags.length} total`,        color:"from-orange-500 to-orange-400", icon:"🔴",  onClick:() => nav("snags",    { status:"Open" }) },
+    { label:"Pending IRs",        v:pendingIRs,   sub:"Awaiting approval",            color:"from-purple-600 to-purple-500", icon:"🔍",  onClick:() => nav("inspections", { status:"Submitted" }) },
+    { label:"Pending MRs",        v:pendingMrs,   sub:`${mrs.length} total`,          color:"from-indigo-600 to-indigo-500", icon:"📋",  onClick:() => nav("mr",       { status:"Submitted" }) },
+    { label:"Active LPOs",        v:activeLpos,   sub:`${lpos.length} total`,         color:"from-teal-600 to-teal-500",    icon:"🛒",  onClick:() => nav("lpo",      { status:"Issued" }) },
+    { label:"Pending Deliveries", v:pendingDel,   sub:"Overdue LPOs",                color:"from-rose-600 to-rose-500",    icon:"🚚",  onClick:() => nav("lpo",      { delivery:"overdue" }) },
+    { label:"Low Stock",          v:lowStock,     sub:`${stock.length} materials`,    color:"from-red-600 to-red-500",      icon:"📦",  onClick:() => nav("store",    { status:"Low Stock" }) },
+    { label:"NOC Alerts",         v:nocExpiring+nocExpired, sub:`${nocExpiring} expiring · ${nocExpired} expired`, color:"from-purple-700 to-purple-600", icon:"🛡️", onClick:() => nav("noc", { expiry:"expiring" }) },
+    { label:"Overdue Items",      v:overdue,      sub:"Tasks + Snags",               color:"from-red-700 to-red-600",      icon:"⚠️",  onClick:() => nav("tasks",    { overdue:true }) },
+    { label:"Reports Today",      v:todayRpts,    sub:todayStr,                      color:"from-green-600 to-green-500",  icon:"📝",  onClick:() => nav("reports",  { date:todayStr }) },
   ];
 
   return (
     <div className="p-5 space-y-6 max-w-screen-xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">{greeting} 👷</h1>
           <p className="text-sm text-slate-500 mt-0.5">{dateStr} — Dubai, UAE</p>
@@ -1680,37 +1680,41 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
         )}
       </div>
 
-      {/* 10 KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Clickable KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         {CARDS.map(c => (
-          <div key={c.label} className={`bg-gradient-to-br ${c.color} rounded-xl p-4 text-white shadow-sm`}>
+          <div key={c.label} onClick={c.onClick}
+            className={`bg-gradient-to-br ${c.color} rounded-xl p-4 text-white shadow-sm cursor-pointer
+              hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 select-none`}>
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-3xl font-black">{c.v}</div>
                 <div className="text-xs font-semibold opacity-90 mt-1 leading-tight">{c.label}</div>
-                <div className="text-xs opacity-70 mt-0.5">{c.sub}</div>
+                <div className="text-xs opacity-60 mt-0.5">{c.sub}</div>
               </div>
               <span className="text-2xl opacity-80">{c.icon}</span>
             </div>
+            <div className="mt-2 text-xs opacity-50 font-semibold">Click to view →</div>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {/* Left col: Projects + Activity */}
+        {/* Left: Projects + Activity */}
         <div className="xl:col-span-2 space-y-5">
-          {/* Project Progress Overview */}
+          {/* Project Progress */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <span className="font-bold text-slate-800 text-sm">🏗️ Project Progress Overview</span>
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{projects.filter(p=>p.status==="Active").length} Active</span>
+              <button onClick={()=>nav("projects",{})} className="text-xs text-amber-600 font-semibold hover:underline">View All →</button>
             </div>
             <div className="divide-y divide-slate-100">
               {projects.filter(p=>p.status==="Active").slice(0,7).map(p => {
                 const pct = p.overallPct || 0;
                 const bar = pct===100?"bg-green-500":pct>=60?"bg-blue-500":pct>=30?"bg-amber-500":"bg-orange-400";
                 return (
-                  <div key={p.id} className="px-5 py-3.5 flex items-center gap-4">
+                  <div key={p.id} onClick={()=>nav("projects",{ projectId: p.id })}
+                    className="px-5 py-3 flex items-center gap-4 cursor-pointer hover:bg-amber-50 transition-colors">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{p.number}</span>
@@ -1722,30 +1726,34 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
                         </div>
                         <span className="text-xs font-bold text-slate-600 w-8 shrink-0">{pct}%</span>
                       </div>
-                      <div className="text-xs text-slate-400 mt-0.5">{p.location}{p.duration ? ` · ${p.duration}M` : ""}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{p.location}{p.duration?` · ${p.duration}M`:""}</div>
                     </div>
                     <Badge text={p.status}/>
+                    <span className="text-slate-300 text-sm">›</span>
                   </div>
                 );
               })}
-              {projects.filter(p=>p.status==="Active").length===0&&<div className="px-5 py-8 text-center text-slate-400 text-sm">No active projects</div>}
+              {projects.filter(p=>p.status==="Active").length===0&&(
+                <div className="px-5 py-8 text-center text-slate-400 text-sm">No active projects</div>
+              )}
             </div>
           </div>
 
-          {/* Today's Site Activity */}
+          {/* Today's Activity */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <span className="font-bold text-slate-800 text-sm">📊 Today's Site Activity</span>
-              <span className="text-xs text-slate-400">{new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</span>
+              <button onClick={()=>nav("reports",{ date:todayStr })} className="text-xs text-amber-600 font-semibold hover:underline">View Reports →</button>
             </div>
             <div className="p-5">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-3 gap-3 mb-4">
                 {[
-                  {l:"Reports Submitted",v:todayRpts,icon:"📝",c:"bg-blue-50 text-blue-700"},
-                  {l:"Total Manpower",v:totalMP,icon:"👷",c:"bg-amber-50 text-amber-700"},
-                  {l:"Pending IRs",v:pendingIRs,icon:"🔍",c:"bg-purple-50 text-purple-700"},
+                  {l:"Reports Today", v:todayRpts, icon:"📝", c:"bg-blue-50 text-blue-700",   onClick:()=>nav("reports",{ date:todayStr })},
+                  {l:"Total Manpower",v:totalMP,   icon:"👷", c:"bg-amber-50 text-amber-700", onClick:()=>nav("reports",{ date:todayStr })},
+                  {l:"Pending IRs",   v:pendingIRs,icon:"🔍", c:"bg-purple-50 text-purple-700",onClick:()=>nav("inspections",{ status:"Submitted" })},
                 ].map(s=>(
-                  <div key={s.l} className={`${s.c} rounded-xl p-3 text-center`}>
+                  <div key={s.l} onClick={s.onClick}
+                    className={`${s.c} rounded-xl p-3 text-center cursor-pointer hover:shadow-md hover:scale-105 transition-all duration-150`}>
                     <div className="text-2xl">{s.icon}</div>
                     <div className="text-2xl font-black mt-1">{s.v}</div>
                     <div className="text-xs font-semibold mt-0.5 opacity-80">{s.l}</div>
@@ -1756,13 +1764,15 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
                 <div className="space-y-2">
                   <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Today's Reports</div>
                   {todayReports.map(r=>{
-                    const proj = projects.find(p=>p.id===r.pid);
+                    const proj=projects.find(p=>p.id===r.pid);
                     return (
-                      <div key={r.id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                      <div key={r.id} onClick={()=>nav("reports",{ date:todayStr })}
+                        className="flex items-center gap-3 bg-slate-50 hover:bg-amber-50 rounded-lg px-3 py-2.5 cursor-pointer transition-colors">
                         <span className="text-xs font-mono font-bold text-amber-700">{proj?.number||"—"}</span>
                         <div className="flex-1 min-w-0 text-xs text-slate-700 truncate">{proj?.name||"—"}</div>
                         <span className="text-xs text-slate-500">{r.manpower?`${r.manpower} workers`:""}</span>
                         <Badge text={r.status}/>
+                        <span className="text-slate-300 text-xs">›</span>
                       </div>
                     );
                   })}
@@ -1774,9 +1784,9 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
           </div>
         </div>
 
-        {/* Right col: Alerts + Recent */}
+        {/* Right: Alerts + Recent */}
         <div className="space-y-5">
-          {/* Alerts Panel */}
+          {/* Alerts */}
           <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-red-100 bg-red-50 flex items-center gap-2">
               <span className="text-red-500 text-lg">🚨</span>
@@ -1784,42 +1794,56 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
             </div>
             <div className="divide-y divide-slate-100 max-h-[380px] overflow-y-auto">
               {overdueTasks.map(t=>(
-                <div key={t.id} className="px-4 py-2.5 flex items-start gap-2">
+                <div key={t.id} onClick={()=>nav("tasks",{ overdue:true })}
+                  className="px-4 py-2.5 flex items-start gap-2 cursor-pointer hover:bg-red-50 transition-colors">
                   <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold shrink-0">TASK</span>
                   <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">{t.title}</div><div className="text-xs text-red-500">Due {fmtDate(t.due)}</div></div>
+                  <span className="text-slate-300 text-xs shrink-0">›</span>
                 </div>
               ))}
               {overdueSnags.map(s=>(
-                <div key={s.id} className="px-4 py-2.5 flex items-start gap-2">
+                <div key={s.id} onClick={()=>nav("snags",{ overdue:true })}
+                  className="px-4 py-2.5 flex items-start gap-2 cursor-pointer hover:bg-orange-50 transition-colors">
                   <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold shrink-0">SNAG</span>
                   <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">{s.title}</div><div className="text-xs text-orange-500">Due {fmtDate(s.due)}</div></div>
+                  <span className="text-slate-300 text-xs shrink-0">›</span>
                 </div>
               ))}
               {pendingMRList.map(m=>(
-                <div key={m.id} className="px-4 py-2.5 flex items-start gap-2">
+                <div key={m.id} onClick={()=>nav("mr",{ status:"Submitted" })}
+                  className="px-4 py-2.5 flex items-start gap-2 cursor-pointer hover:bg-amber-50 transition-colors">
                   <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold shrink-0">MR</span>
                   <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800">{m.mrNum}</div><div className="text-xs text-amber-600">Awaiting approval</div></div>
+                  <span className="text-slate-300 text-xs shrink-0">›</span>
                 </div>
               ))}
               {pendingIRList.map(i=>(
-                <div key={i.id} className="px-4 py-2.5 flex items-start gap-2">
+                <div key={i.id} onClick={()=>nav("inspections",{ status:"Submitted" })}
+                  className="px-4 py-2.5 flex items-start gap-2 cursor-pointer hover:bg-purple-50 transition-colors">
                   <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold shrink-0">IR</span>
                   <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800">{i.inspNum||"IR"}</div><div className="text-xs text-purple-600">{i.status}</div></div>
+                  <span className="text-slate-300 text-xs shrink-0">›</span>
                 </div>
               ))}
               {overdueDelList.map(l=>(
-                <div key={l.id} className="px-4 py-2.5 flex items-start gap-2">
+                <div key={l.id} onClick={()=>nav("lpo",{ delivery:"overdue" })}
+                  className="px-4 py-2.5 flex items-start gap-2 cursor-pointer hover:bg-rose-50 transition-colors">
                   <span className="text-xs bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold shrink-0">LPO</span>
                   <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800">{l.lpoNum}</div><div className="text-xs text-rose-500">Delivery overdue</div></div>
+                  <span className="text-slate-300 text-xs shrink-0">›</span>
                 </div>
               ))}
               {lowStockList.map(s=>(
-                <div key={s.id} className="px-4 py-2.5 flex items-start gap-2">
+                <div key={s.id} onClick={()=>nav("store",{ status:"Low Stock" })}
+                  className="px-4 py-2.5 flex items-start gap-2 cursor-pointer hover:bg-red-50 transition-colors">
                   <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold shrink-0">STK</span>
                   <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">{s.name}</div><div className="text-xs text-red-500">{s.status} · {s.balance} {s.unit}</div></div>
+                  <span className="text-slate-300 text-xs shrink-0">›</span>
                 </div>
               ))}
-              {totalAlerts===0&&lowStockList.length===0&&<div className="px-5 py-8 text-center text-green-600 text-sm font-semibold">✅ All clear — no alerts!</div>}
+              {totalAlerts===0&&lowStockList.length===0&&(
+                <div className="px-5 py-8 text-center text-green-600 text-sm font-semibold">✅ All clear — no alerts!</div>
+              )}
             </div>
           </div>
 
@@ -1830,17 +1854,19 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
             </div>
             <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto">
               {[
-                ...reports.slice(0,3).map(r=>({type:"Report",label:fmtDate(r.date)+" — "+(projects.find(p=>p.id===r.pid)?.number||""),sub:r.status,icon:"📝",col:"text-green-600"})),
-                ...tasks.slice(0,2).map(t=>({type:"Task",label:t.title,sub:t.status,icon:"✅",col:"text-amber-600"})),
-                ...snags.slice(0,2).map(s=>({type:"Snag",label:s.title,sub:s.status,icon:"🔴",col:"text-orange-600"})),
-                ...mrs.slice(0,2).map(m=>({type:"MR",label:m.mrNum,sub:m.status,icon:"📋",col:"text-indigo-600"})),
+                ...reports.slice(0,3).map(r=>({type:"Report",label:fmtDate(r.date)+" — "+(projects.find(p=>p.id===r.pid)?.number||""),sub:r.status,icon:"📝",col:"text-green-600",onClick:()=>nav("reports",{ date:r.date })})),
+                ...tasks.slice(0,2).map(t=>({type:"Task",label:t.title,sub:t.status,icon:"✅",col:"text-amber-600",onClick:()=>nav("tasks",{ status:t.status })})),
+                ...snags.slice(0,2).map(s=>({type:"Snag",label:s.title,sub:s.status,icon:"🔴",col:"text-orange-600",onClick:()=>nav("snags",{ status:s.status })})),
+                ...mrs.slice(0,2).map(m=>({type:"MR",label:m.mrNum,sub:m.status,icon:"📋",col:"text-indigo-600",onClick:()=>nav("mr",{ status:m.status })})),
               ].slice(0,10).map((a,i)=>(
-                <div key={i} className="px-4 py-2.5 flex items-center gap-2.5">
+                <div key={i} onClick={a.onClick}
+                  className="px-4 py-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-slate-50 transition-colors">
                   <span className="text-base">{a.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold text-slate-800 truncate">{a.label}</div>
                     <div className={`text-xs ${a.col}`}>{a.type} · {a.sub}</div>
                   </div>
+                  <span className="text-slate-300 text-xs">›</span>
                 </div>
               ))}
             </div>
@@ -1882,7 +1908,7 @@ const PROG_STATUS_COLOR = {
   "Completed":   "bg-green-100 text-green-700 border-green-200",
 };
 
-const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg }) => {
+const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [progTab, setProgTab] = useState("list"); // for progress: list | form
@@ -1895,6 +1921,13 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
   const [confirmId, setConfirmId] = useState(null);
   const [confirmPgId, setConfirmPgId] = useState(null);
   const [pgFilter, setPgFilter] = useState("All");
+  // Navigate from dashboard to specific project
+  useEffect(() => {
+    if (navFilter.projectId) {
+      const p = projects.find(x => x.id === navFilter.projectId);
+      if (p) { setSel(p); setMode("view"); }
+    }
+  }, [navFilter, projects]);
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
   const setPg = k => e => setPgForm(p => ({...p,[k]:e.target.value}));
 
@@ -2214,13 +2247,17 @@ const TASK_STATUS = ["Open", "In Progress", "On Hold", "Completed", "Closed"];
 const TRADES = ["Civil / Structural", "Civil / Masonry", "Civil / Waterproofing", "MEP / HVAC", "MEP / Electrical", "MEP / Plumbing", "Finishing", "Aluminum / Glazing", "Aluminum / Cladding", "Safety", "Other"];
 const EMPTY_TASK = { pid: "", title: "", desc: "", location: "", trade: "", assignee: "", subName: "", priority: "Medium", status: "Open", due: "" };
 
-const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast }) => {
+const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_TASK);
   const [search, setSearch] = useState("");
-  const [fStatus, setFStatus] = useState("All");
-  const [fProject, setFProject] = useState("All");
+  const [fStatus, setFStatus] = useState(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
+  useEffect(() => {
+    setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
+    setFProject(navFilter.projectId || "All");
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -2357,14 +2394,18 @@ const SNAG_STATUS = ["Open", "Under Rectification", "Ready for Review", "Closed"
 const SNAG_CATS = ["Architectural", "Structural", "MEP", "Finishing", "Civil", "Aluminum", "Safety", "Other"];
 const EMPTY_SNAG = { pid: "", title: "", desc: "", location: "", category: "", sub: "", engineer: "", due: "", status: "Open", remarks: "", consultant: "", beforeUrl: "", afterUrl: "", beforeFile: null, afterFile: null };
 
-const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast }) => {
+const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_SNAG);
   const [search, setSearch] = useState("");
-  const [fStatus, setFStatus] = useState("All");
-  const [fProject, setFProject] = useState("All");
+  const [fStatus, setFStatus] = useState(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
   const [fCat, setFCat] = useState("All");
+  useEffect(() => {
+    setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
+    setFProject(navFilter.projectId || "All");
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -2395,7 +2436,8 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast 
   };
 
   const filtered = snags.filter(s => {
-    if (fStatus !== "All" && s.status !== fStatus) return false;
+    if (fStatus === "__overdue__") { if (!isOverdue(s.due, s.status)) return false; }
+    else if (fStatus !== "All" && s.status !== fStatus) return false;
     if (fProject !== "All" && s.pid !== fProject) return false;
     if (fCat !== "All" && s.category !== fCat) return false;
     if (search && !`${s.title} ${s.location} ${s.sub} ${s.engineer} ${s.num}`.toLowerCase().includes(search.toLowerCase())) return false;
@@ -2626,13 +2668,19 @@ const DynTable = ({ heads, rows, renderRow }) => (
   </div>
 );
 
-const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast }) => {
+const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
-  const [fProject, setFProject] = useState("All");
-  const [fStatus, setFStatus]   = useState("All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
+  const [fStatus, setFStatus]   = useState(navFilter.status || "All");
+  const [fDate, setFDate]       = useState(navFilter.date || "");
   const [search, setSearch]     = useState("");
+  useEffect(() => {
+    setFProject(navFilter.projectId || "All");
+    setFStatus(navFilter.status || "All");
+    setFDate(navFilter.date || "");
+  }, [navFilter]);
   const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [activeSection, setActiveSection] = useState("header");
@@ -2696,6 +2744,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const filtered = reports.filter(r => {
     if (fProject!=="All" && r.pid!==fProject) return false;
     if (fStatus!=="All" && r.status!==fStatus) return false;
+    if (fDate && r.date !== fDate) return false;
     if (search && !`${r.date} ${r.preparedBy} ${r.reportNum}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -2993,11 +3042,12 @@ const IR_STATUS = ["Draft", "Submitted", "Approved", "Rejected", "Resubmitted"];
 const IR_TYPES = ["WIR", "MIR", "IR", "MSIR"];
 const EMPTY_IR = { pid: "", type: "WIR", desc: "", location: "", trade: "", submitted: "", inspection: "", status: "Draft", remarks: "", submittedBy: "" };
 
-const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete, showToast }) => {
+const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_IR);
-  const [fStatus, setFStatus] = useState("All");
+  const [fStatus, setFStatus] = useState(navFilter.status || "All");
+  useEffect(() => { setFStatus(navFilter.status || "All"); }, [navFilter]);
   const [fProject, setFProject] = useState("All");
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
@@ -4984,13 +5034,17 @@ const EMPTY_MR = () => ({ pid:"", requestedBy:"", dept:"Civil", date: new Date()
 // ─────────────────────────────────────────────────────────────────────────────
 // MATERIAL REQUEST MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo }) => {
+const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_MR());
   const [search, setSearch] = useState("");
-  const [fStatus, setFStatus] = useState("All");
-  const [fProject, setFProject] = useState("All");
+  const [fStatus, setFStatus] = useState(navFilter.status || "All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
+  useEffect(() => {
+    setFStatus(navFilter.status || "All");
+    setFProject(navFilter.projectId || "All");
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -5220,13 +5274,21 @@ const EMPTY_LPO = (mrObj) => ({
 // ─────────────────────────────────────────────────────────────────────────────
 // LPO MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill }) => {
+const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill, navFilter = {} }) => {
   const [mode, setMode] = useState(prefillMr ? "form" : "list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(() => EMPTY_LPO(prefillMr));
   const [search, setSearch] = useState("");
-  const [fStatus, setFStatus] = useState("All");
-  const [fProject, setFProject] = useState("All");
+  const [fStatus, setFStatus] = useState(navFilter.status || "All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
+  const [fDelivery, setFDelivery] = useState(navFilter.delivery || "All");
+  useEffect(() => {
+    if (!prefillMr) {
+      setFStatus(navFilter.status || "All");
+      setFProject(navFilter.projectId || "All");
+      setFDelivery(navFilter.delivery || "All");
+    }
+  }, [navFilter, prefillMr]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -5281,6 +5343,9 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
   const filtered = lpos.filter(l => {
     if (fStatus!=="All" && l.status!==fStatus) return false;
     if (fProject!=="All" && l.pid!==fProject) return false;
+    if (fDelivery==="overdue") {
+      if (l.deliveryStatus==="Fully Delivered" || !l.deliveryDate || new Date(l.deliveryDate) >= new Date()) return false;
+    }
     if (search && !`${l.lpoNum} ${l.supplierName} ${l.mrNum}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -5707,7 +5772,7 @@ const EMPTY_STOCK_FORM = () => ({ code:"", name:"", category:"Cement & Concrete"
 const EMPTY_REC_FORM = (lpos=[]) => ({ pid:"", lpoId:"", supplier:"", deliveryNote:"", receivedDate: new Date().toISOString().split("T")[0], receivedBy:"", remarks:"", items:[EMPTY_STOCK_ITEM()] });
 const EMPTY_ISS_FORM = () => ({ pid:"", issuedTo:"", dept:"Civil", location:"", issueDate: new Date().toISOString().split("T")[0], issuedBy:"", purpose:"", remarks:"", items:[EMPTY_STOCK_ITEM()] });
 
-const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateStock, onRemoveStock, onAddReceipt, onRemoveReceipt, onAddIssue, onRemoveIssue, projects, lpos, showToast }) => {
+const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateStock, onRemoveStock, onAddReceipt, onRemoveReceipt, onAddIssue, onRemoveIssue, projects, lpos, showToast, navFilter = {} }) => {
   const [tab, setTab] = useState("stock"); // stock | receipts | issues
   const [mode, setMode] = useState("list"); // list | form | view
   const [subMode, setSubMode] = useState(""); // "receive" | "issue" for quick actions
@@ -5716,9 +5781,14 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
   const [search, setSearch] = useState("");
   const [fProject, setFProject] = useState("All");
   const [fCat, setFCat] = useState("All");
-  const [fStatus, setFStatus] = useState("All");
-  const [fLowOnly, setFLowOnly] = useState(false);
+  const [fLowOnly, setFLowOnly] = useState(navFilter.status === "Low Stock");
+  const [fStatus, setFStatus] = useState(navFilter.status === "Low Stock" ? "Low Stock" : "All");
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (navFilter.status === "Low Stock") { setFLowOnly(true); setFStatus("Low Stock"); }
+    else if (navFilter.status) setFStatus(navFilter.status);
+    if (navFilter.projectId) setFProject(navFilter.projectId);
+  }, [navFilter]);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
 
@@ -6301,15 +6371,20 @@ const isExpired = (expiryDate, status) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // NOC MODULE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToast }) => {
+const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_NOC());
   const [search, setSearch] = useState("");
-  const [fProject, setFProject] = useState("All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
   const [fAuth, setFAuth] = useState("All");
-  const [fStatus, setFStatus] = useState("All");
-  const [fExpiry, setFExpiry] = useState("All");
+  const [fStatus, setFStatus] = useState(navFilter.status || "All");
+  const [fExpiry, setFExpiry] = useState(navFilter.expiry || "All");
+  useEffect(() => {
+    setFProject(navFilter.projectId || "All");
+    setFStatus(navFilter.status || "All");
+    setFExpiry(navFilter.expiry || "All");
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -6776,13 +6851,16 @@ export default function App() {
   const { notifs, unreadCount, markRead, markAllRead, deleteNotif, generateNotifs } = useNotifications();
   const { toast, showToast, hideToast } = useToast();
   const [page, setPage] = useState("dashboard");
+  const [navFilter, setNavFilter] = useState({});
+  // navigate(page, filterObj) — used by dashboard cards and alerts
+  const navigate = (pg, filter = {}) => { setPage(pg); setNavFilter(filter); };
 
-  // Auto-generate notifications whenever live data changes
-  useEffect(() => {
+  // Auto-generate notifications whenever live data changes (lengths used intentionally)
+  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
     if (tasks.length || snags.length || mrs.length || lpos.length || nocs.length) {
       generateNotifs({ tasks, snags, inspections, mrs, lpos, drawings, nocs });
     }
-  }, [tasks.length, snags.length, inspections.length, mrs.length, lpos.length, drawings.length, nocs.length]);
+  }, [tasks.length, snags.length, inspections.length, mrs.length, lpos.length, drawings.length, nocs.length]); // eslint-disable-line
   const [collapsed, setCollapsed] = useState(false);
 
   if (authLoading) return (
@@ -6796,11 +6874,11 @@ export default function App() {
 
   if (!user) return <Login onLogin={() => {}} />;
 
-  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq };
+  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter };
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs}/>;
+      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs} onNavigate={navigate}/>;
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
@@ -6810,7 +6888,7 @@ export default function App() {
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} userIsAdmin={userIsAdmin} userProfile={userProfile} permReqs={permReqs} onUpdatePermReq={updatePermReq}/>;
-      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);setPage("lpo");}}/>;
+      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}}/>;
       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
@@ -6829,7 +6907,7 @@ export default function App() {
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
       `}</style>
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
-      <Sidebar active={page} onNav={setPage} collapsed={collapsed} user={user} onSignOut={() => supabase.auth.signOut()} />
+      <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} user={user} onSignOut={() => supabase.auth.signOut()} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header
           title={PAGE_TITLES[page] || "AGBC"}
@@ -6840,7 +6918,7 @@ export default function App() {
           onMarkRead={markRead}
           onMarkAll={markAllRead}
           onDelete={deleteNotif}
-          onNavigate={setPage}
+          onNavigate={navigate}
         />
         <main className="flex-1 overflow-y-auto">{renderPage()}</main>
       </div>
