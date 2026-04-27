@@ -1185,7 +1185,7 @@ const Btn = ({ onClick, disabled, saving, label, color = "amber" }) => {
 };
 const ActBtn = ({ onClick, label, color }) => {
   const c = { view: "text-blue-600 hover:bg-blue-50 border-blue-200", edit: "text-amber-600 hover:bg-amber-50 border-amber-200", del: "text-red-600 hover:bg-red-50 border-red-200" };
-  return <button onClick={onClick} className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold border transition-colors ${c[color] || ""}`}>{label}</button>;
+  return <button onClick={onClick} className={`px-2 py-1 rounded-lg text-xs font-bold border transition-colors active:opacity-70 ${c[color] || ""}`}>{label}</button>;
 };
 // Permission-aware action buttons
 const PermActBtns = ({ userCanEdit, userIsAdmin, onEdit, onDelete, onView, module, recordId, recordTitle, userProfile, onAddPermReq, showToast }) => {
@@ -1207,9 +1207,9 @@ const PermActBtns = ({ userCanEdit, userIsAdmin, onEdit, onDelete, onView, modul
 };
 const BackBtn = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 font-medium mb-3 active:text-slate-900">← Back</button>;
 const PageTitle = ({ title, count, btn, exportBtn }) => (
-  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-    <div><h2 className="text-lg sm:text-xl font-bold text-slate-800">{title}</h2>{count !== undefined && <p className="text-xs text-slate-400 mt-0.5">{count} records</p>}</div>
-    <div className="flex items-center gap-2 flex-wrap">
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 sm:mb-4 gap-2">
+    <div className="min-w-0"><h2 className="text-base sm:text-xl font-bold text-slate-800 truncate">{title}</h2>{count !== undefined && <p className="text-xs text-slate-400 mt-0.5">{count} records</p>}</div>
+    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0">
       {exportBtn}
       {btn}
     </div>
@@ -1574,7 +1574,7 @@ const NotificationBell = ({ unreadCount, notifs, onMarkRead, onMarkAll, onDelete
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-96 max-w-sm bg-white border border-slate-200 rounded-xl shadow-2xl z-[200] overflow-hidden">
+        <div className="fixed right-2 top-16 w-[calc(100vw-1rem)] sm:w-96 max-w-sm bg-white border border-slate-200 rounded-xl shadow-2xl z-[200] overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
             <div>
@@ -1735,17 +1735,17 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 sm:gap-3">
         {CARDS.map(c => (
           <div key={c.label} onClick={c.onClick}
-            className={`bg-gradient-to-br ${c.color} rounded-xl p-4 text-white shadow-sm cursor-pointer
-              hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-150 select-none`}>
+            className={`bg-gradient-to-br ${c.color} rounded-xl p-3 sm:p-4 text-white shadow-sm cursor-pointer
+              hover:shadow-lg active:scale-95 transition-all duration-150 select-none`}>
             <div className="flex items-start justify-between">
-              <div>
-                <div className="text-3xl font-black">{c.v}</div>
-                <div className="text-xs font-semibold opacity-90 mt-1 leading-tight">{c.label}</div>
-                <div className="text-xs opacity-60 mt-0.5">{c.sub}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-2xl sm:text-3xl font-black">{c.v}</div>
+                <div className="text-xs font-semibold opacity-90 mt-0.5 leading-tight truncate">{c.label}</div>
+                <div className="text-xs opacity-60 mt-0.5 hidden sm:block truncate">{c.sub}</div>
               </div>
-              <span className="text-2xl opacity-80">{c.icon}</span>
+              <span className="text-xl sm:text-2xl opacity-80 ml-1 shrink-0">{c.icon}</span>
             </div>
-            <div className="mt-2 text-xs opacity-50 font-semibold">Click to view →</div>
+            <div className="mt-1 text-xs opacity-50 font-semibold hidden sm:block">Tap →</div>
           </div>
         ))}
       </div>
@@ -2407,7 +2407,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
           exportBtn={<ExportButtons data={exportData} excelCols={TASK_COLS} fileName="Task_Management" pdfTitle="Task Management Register" />}
           btn={<AddBtn onClick={openCreate} label="New Task" />} />;
       })()}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks..." />
         <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{TASK_STATUS.map(s => <option key={s}>{s}</option>)}</Sel>
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
@@ -2610,14 +2610,14 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast,
       })()}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search snags..." />
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
         <Sel value={fCat} onChange={e => setFCat(e.target.value)} className="w-auto"><option value="All">All Categories</option>{SNAG_CATS.map(c => <option key={c}>{c}</option>)}</Sel>
       </div>
 
       {/* Status filter pills */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {["All", ...SNAG_STATUS].map(s => {
           const count = s === "All" ? snags.length : snags.filter(sn => sn.status === s).length;
           return (
@@ -3049,14 +3049,13 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       <PageTitle title="Daily Site Reports" count={filtered.length}
         exportBtn={<ExportButtons data={exportData} excelCols={RPT_COLS} fileName="Daily_Reports" pdfTitle="Daily Site Reports" orientation="landscape"/>}
         btn={<AddBtn onClick={openCreate} label="New Report"/>}/>
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Date, report no, prepared by..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
-        <div className="flex gap-1">{["All",...RPT_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s}</button>)}</div>
+        <div className="flex gap-1">{["All",...RPT_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s}</button>)}</div>
       </div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No reports yet" onCreate={openCreate}/>:(
-        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
-          <table className="w-full text-sm min-w-[700px]">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm"><table className="w-full text-sm min-w-[700px]">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>{["Report No.","Date","Project","Prepared By","Manpower","Weather","Status","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
             </thead>
@@ -3079,7 +3078,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
               })}
             </tbody>
           </table>
-        </div>
       )}
     </div>
   );
@@ -3199,10 +3197,10 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
           exportBtn={<ExportButtons data={exportData} excelCols={IR_COLS} fileName="Inspection_Requests" pdfTitle="Inspection Request Tracker" />}
           btn={<AddBtn onClick={openCreate} label="New IR / WIR" />} />;
       })()}
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
-      <div className="flex flex-wrap gap-2 mb-4">{["All", ...IR_STATUS].map(s => <button key={s} onClick={() => setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus === s ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s === "All" ? inspections.length : inspections.filter(i => i.status === s).length})</button>)}</div>
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All", ...IR_STATUS].map(s => <button key={s} onClick={() => setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus === s ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s === "All" ? inspections.length : inspections.filter(i => i.status === s).length})</button>)}</div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No inspections found" onCreate={openCreate} /> : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
           <table className="w-full text-sm">
@@ -3866,7 +3864,7 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
           exportBtn={<ExportButtons data={exportData} excelCols={DWG_COLS} fileName="Drawing_Register" pdfTitle="Drawing Register" />}
           btn={<AddBtn onClick={openCreate} label="Add Drawing" />} />;
       })()}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search drawings..." />
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
         <div className="flex gap-1">{["All", ...DISC].map(d => <button key={d} onClick={() => setFDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${fDisc === d ? "bg-amber-500 text-white border-amber-500" : "bg-white border-slate-200 text-slate-600 hover:border-amber-300"}`}>{d}</button>)}</div>
@@ -4539,7 +4537,7 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
           btn={<AddBtn onClick={openCreate} label="Add Subcontractor" />} />;
       })()}
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, project, trade..." />
         <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></Sel>
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{(projects||[]).map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel>
@@ -4789,7 +4787,7 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
             pdfTitle="Team Members"
             orientation="portrait" />}
         btn={<AddBtn onClick={openCreate} label="Add User" />} />
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {userIsAdmin&&<PermRequestsPanel reqs={permReqs} onUpdate={onUpdatePermReq} showToast={showToast} isAdminUser={userIsAdmin}/>}
         {userIsAdmin&&users.filter(u=>u.status==="Pending Approval").length>0&&(
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -5264,12 +5262,12 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           excelCols={[{header:"MR No.",key:"mrNum",width:12},{header:"Project No.",key:"projectNum",width:14},{header:"Project",key:"projectName",width:35},{header:"Dept",key:"dept",width:14},{header:"Requested By",key:"requestedBy",width:20},{header:"Date",key:"date",width:14,type:"date"},{header:"Required Date",key:"requiredDate",width:14,type:"date"},{header:"Priority",key:"priority",width:12},{header:"Status",key:"status",width:22},{header:"LPO Status",key:"lpoStatus",width:16},{header:"LPO No.",key:"linkedLpoNum",width:14},{header:"Delivery",key:"deliveryStatus",width:18}]}
           fileName="Material_Requests" pdfTitle="Material Requests Register"/>}
         btn={<AddBtn onClick={openCreate} label="New MR"/>}/>
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
-      <div className="flex flex-wrap gap-2 mb-4">
-        {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
+        {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
       </div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No MRs found" onCreate={openCreate}/>:(
         <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
@@ -5556,11 +5554,11 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
           excelCols={[{header:"LPO No.",key:"lpoNum",width:12},{header:"Project",key:"projectNum",width:14},{header:"Supplier",key:"supplierName",width:30},{header:"TRN",key:"supplierTrn",width:18},{header:"MR No.",key:"mrNum",width:12},{header:"Date",key:"date",width:14,type:"date"},{header:"Del. Date",key:"deliveryDate",width:14,type:"date"},{header:"Payment",key:"paymentTerms",width:14},{header:"Status",key:"status",width:16},{header:"Delivery",key:"deliveryStatus",width:18},{header:"Total",key:"totalFmt",width:18}]}
           fileName="Local_Purchase_Orders" pdfTitle="Local Purchase Orders"/>}
         btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
-      <div className="flex flex-wrap gap-2 mb-4">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
         <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
           <table className="w-full text-sm min-w-[900px]">
@@ -5967,6 +5965,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
             <span className="font-semibold text-slate-700 text-sm">Items Received</span>
             <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
           </div>
+          <div className="overflow-x-auto w-full">
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
             <thead className="bg-slate-50"><tr>{["#","Material*","Unit","Qty Received*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
             <tbody>{(form.items||[]).map((it,idx)=>(
@@ -5985,6 +5984,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
               </tr>
             ))}</tbody>
           </table></div>
+          </div>
         </div>
         <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveReceipt} label="Save GRN"/><Btn onClick={goList} label="Cancel" color="slate"/></div>
       </div>
@@ -6014,6 +6014,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
             <span className="font-semibold text-slate-700 text-sm">Items to Issue</span>
             <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
           </div>
+          <div className="overflow-x-auto w-full">
           <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
             <thead className="bg-slate-50"><tr>{["#","Material*","Available","Qty Issue*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
             <tbody>{(form.items||[]).map((it,idx)=>{
@@ -6041,6 +6042,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
               );
             })}</tbody>
           </table></div>
+          </div>
         </div>
         <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveIssue} label="Issue Materials"/><Btn onClick={goList} label="Cancel" color="slate"/></div>
       </div>
@@ -6807,10 +6809,10 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
       </div>
 
       {/* Status filter pills */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
+      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {["All",...NOC_STATUS].map(s=>(
           <button key={s} onClick={()=>setFStatus(s)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>
+            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>
             {s} ({s==="All"?nocs.length:nocs.filter(n=>n.status===s).length})
           </button>
         ))}
@@ -6949,26 +6951,50 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-800 relative">
+    <div className="flex bg-slate-50 overflow-hidden font-sans text-slate-800 relative" style={{height:"100dvh"}}>
       <style>{`
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { margin: 0; height: 100%; overflow: hidden; }
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        #root { height: 100%; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        /* Responsive table scroll */
-        .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        /* Prevent form overflow on small screens */
-        .form-max { max-width: 100%; }
-        /* Mobile padding */
-        @media (max-width: 640px) {
-          .p-6 { padding: 1rem !important; }
-          .p-5 { padding: 0.875rem !important; }
-          .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
-          .max-w-3xl, .max-w-4xl, .max-w-2xl { max-width: 100% !important; }
-          .gap-4 { gap: 0.75rem !important; }
+        /* All tables scroll horizontally on mobile */
+        table { min-width: max-content; }
+        .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+        /* Mobile global fixes */
+        @media (max-width: 767px) {
+          /* Reduce all padding on mobile */
+          .p-6 { padding: 0.875rem !important; }
+          .p-5 { padding: 0.75rem !important; }
+          .px-6 { padding-left: 0.875rem !important; padding-right: 0.875rem !important; }
+          .px-5 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+          /* Remove max-width constraints so forms use full width */
+          .max-w-3xl, .max-w-4xl, .max-w-2xl, .max-w-xl { max-width: 100% !important; }
+          /* Reduce grid gaps */
+          .gap-4 { gap: 0.625rem !important; }
+          .gap-5 { gap: 0.75rem !important; }
+          /* Make space-y tighter */
+          .space-y-4 > * + * { margin-top: 0.75rem !important; }
+          .space-y-5 > * + * { margin-top: 0.875rem !important; }
+          /* Smaller text in tables */
+          table td, table th { font-size: 0.7rem !important; padding: 0.375rem 0.5rem !important; }
+          /* Full width selects and inputs */
+          select, input[type="text"], input[type="date"], input[type="number"], input[type="email"], textarea { width: 100% !important; }
+          /* Action buttons wrap */
+          .flex.gap-1\.5 { flex-wrap: wrap; }
+          /* Notification dropdown full width */
+          .w-96 { width: calc(100vw - 1rem) !important; right: 0.5rem !important; left: auto !important; }
         }
+        /* Touch improvements */
+        button { touch-action: manipulation; cursor: pointer; }
+        input, select, textarea { touch-action: manipulation; font-size: 16px !important; }
+        /* Prevent iOS text size adjust */
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        /* Make overflow-x-auto work on iOS */
+        .overflow-x-auto { -webkit-overflow-scrolling: touch; }
       `}</style>
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
       <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} user={user} onSignOut={() => supabase.auth.signOut()} />
@@ -6985,7 +7011,7 @@ export default function App() {
           onDelete={deleteNotif}
           onNavigate={navigate}
         />
-        <main className="flex-1 overflow-y-auto">{renderPage()}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-safe">{renderPage()}</main>
       </div>
     </div>
   );
