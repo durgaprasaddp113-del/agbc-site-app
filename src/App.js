@@ -1185,7 +1185,7 @@ const Btn = ({ onClick, disabled, saving, label, color = "amber" }) => {
 };
 const ActBtn = ({ onClick, label, color }) => {
   const c = { view: "text-blue-600 hover:bg-blue-50 border-blue-200", edit: "text-amber-600 hover:bg-amber-50 border-amber-200", del: "text-red-600 hover:bg-red-50 border-red-200" };
-  return <button onClick={onClick} className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${c[color] || ""}`}>{label}</button>;
+  return <button onClick={onClick} className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold border transition-colors ${c[color] || ""}`}>{label}</button>;
 };
 // Permission-aware action buttons
 const PermActBtns = ({ userCanEdit, userIsAdmin, onEdit, onDelete, onView, module, recordId, recordTitle, userProfile, onAddPermReq, showToast }) => {
@@ -1205,10 +1205,10 @@ const PermActBtns = ({ userCanEdit, userIsAdmin, onEdit, onDelete, onView, modul
     </div>
   );
 };
-const BackBtn = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 font-medium mb-1">← Back</button>;
+const BackBtn = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 font-medium mb-3 active:text-slate-900">← Back</button>;
 const PageTitle = ({ title, count, btn, exportBtn }) => (
-  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-    <div><h2 className="text-xl font-bold text-slate-800">{title}</h2>{count !== undefined && <p className="text-xs text-slate-400 mt-0.5">{count} records</p>}</div>
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+    <div><h2 className="text-lg sm:text-xl font-bold text-slate-800">{title}</h2>{count !== undefined && <p className="text-xs text-slate-400 mt-0.5">{count} records</p>}</div>
     <div className="flex items-center gap-2 flex-wrap">
       {exportBtn}
       {btn}
@@ -1250,13 +1250,13 @@ const ExportButtons = ({ data, excelCols, pdfCols, fileName, pdfTitle, orientati
     </div>
   );
 };
-const AddBtn = ({ onClick, label }) => (
+const AddBtn = ({ onClick, label, icon = '+' }) => (
   <button onClick={onClick} className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm">
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
     {label}
   </button>
 );
-const SearchBar = ({ value, onChange, placeholder }) => (
+const SearchBar = ({ value, onChange, placeholder, className="" }) => (
   <div className="relative">
     <svg className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
     <Inp value={value} onChange={onChange} placeholder={placeholder || "Search..."} className="pl-9 w-56" />
@@ -1271,8 +1271,8 @@ const EmptyState = ({ msg, onCreate }) => (
     {onCreate && <button onClick={onCreate} className="text-amber-500 font-semibold text-sm hover:underline">+ Add First Record</button>}
   </div>
 );
-const FormCard = ({ children }) => <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 shadow-sm">{children}</div>;
-const Grid2 = ({ children }) => <div className="grid grid-cols-2 gap-4">{children}</div>;
+const FormCard = ({ children }) => <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-3 shadow-sm">{children}</div>;
+const Grid2 = ({ children, cols3 }) => <div className={`grid gap-3 ${cols3 ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}>{children}</div>;
 const Grid3 = ({ children }) => <div className="grid grid-cols-3 gap-4">{children}</div>;
 const FormActions = ({ saving, onSave, onCancel, label = "Save" }) => (
   <div className="flex gap-3 pt-2 border-t border-slate-100">
@@ -1330,40 +1330,66 @@ const NAV = [
   { id: "noc", label: "NOC & Permits", icon: "noc" },
 ];
 
-const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => (
-  <aside className={`${collapsed ? "w-16" : "w-60"} bg-slate-900 text-white flex flex-col transition-all duration-200 shrink-0`}>
-    <div className="p-4 border-b border-slate-700 flex items-center gap-3 min-h-[57px]">
-      <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center shrink-0">
-        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-      </div>
-      {!collapsed && <div><div className="text-sm font-bold leading-tight">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>}
-    </div>
-    <nav className="flex-1 py-2 overflow-y-auto">
-      {NAV.map(n => (
-        <button key={n.id} onClick={() => onNav(n.id)}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${active === n.id ? "bg-amber-500 text-white font-semibold" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
-          <Icon name={n.icon} cls="w-5 h-5 shrink-0" />
-          {!collapsed && <span className="truncate">{n.label}</span>}
-        </button>
-      ))}
-    </nav>
-    <div className="p-4 border-t border-slate-700">
-      {!collapsed ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{getInit(user?.email)}</div>
-            <div className="min-w-0"><div className="text-xs font-semibold truncate">{user?.email}</div><div className="text-xs text-slate-400">Al Ghaith Building</div></div>
-          </div>
-          <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500 px-3 py-1.5 rounded-lg transition-colors">
-            <Icon name="logout" cls="w-3.5 h-3.5" />Sign Out
-          </button>
+const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const handleNav = (id) => { onNav(id); setMobileOpen(false); };
+  const SideInner = ({ mini }) => (
+    <>
+      <div className={`${mini?"p-2 justify-center":"p-4"} border-b border-slate-700 flex items-center gap-3 min-h-[57px]`}>
+        <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center shrink-0">
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
         </div>
-      ) : (
-        <button onClick={onSignOut} className="w-full flex justify-center text-slate-400 hover:text-red-400 p-1"><Icon name="logout" cls="w-4 h-4" /></button>
+        {!mini && <div><div className="text-sm font-bold leading-tight">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>}
+      </div>
+      <nav className="flex-1 py-2 overflow-y-auto">
+        {NAV.map(n => (
+          <button key={n.id} onClick={() => handleNav(n.id)}
+            className={`w-full flex items-center gap-3 ${mini?"px-0 justify-center":"px-4"} py-2.5 text-sm transition-colors ${active === n.id ? "bg-amber-500 text-white font-semibold" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
+            <Icon name={n.icon} cls="w-5 h-5 shrink-0" />
+            {!mini && <span className="truncate">{n.label}</span>}
+          </button>
+        ))}
+      </nav>
+      <div className={`${mini?"p-2":"p-4"} border-t border-slate-700`}>
+        {!mini ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{getInit(user?.email)}</div>
+              <div className="min-w-0"><div className="text-xs font-semibold truncate">{user?.email}</div><div className="text-xs text-slate-400">Al Ghaith Building</div></div>
+            </div>
+            <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500 px-3 py-1.5 rounded-lg transition-colors">
+              <Icon name="logout" cls="w-3.5 h-3.5" />Sign Out
+            </button>
+          </div>
+        ) : (
+          <button onClick={onSignOut} className="w-full flex justify-center text-slate-400 hover:text-red-400 p-1"><Icon name="logout" cls="w-4 h-4" /></button>
+        )}
+      </div>
+    </>
+  );
+  return (
+    <>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 flex md:hidden">
+          <div className="fixed inset-0 bg-black/60" onClick={()=>setMobileOpen(false)}/>
+          <aside className="relative z-50 w-64 bg-slate-900 text-white flex flex-col h-full shadow-2xl">
+            <button onClick={()=>setMobileOpen(false)} className="absolute top-3 right-3 text-slate-400 hover:text-white z-10">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <SideInner mini={false}/>
+          </aside>
+        </div>
       )}
-    </div>
-  </aside>
-);
+      {/* Mobile trigger button (bottom of header — injected via CSS) */}
+      <aside className={`${collapsed ? "w-16" : "w-60"} bg-slate-900 text-white flex-col transition-all duration-200 shrink-0 hidden md:flex`}>
+        <SideInner mini={collapsed}/>
+      </aside>
+      {/* Expose open fn via custom event so Header can call it */}
+      <span id="__sidebar_open__" style={{display:"none"}} onClick={()=>setMobileOpen(true)}/>
+    </>
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATIONS HOOK
@@ -1528,7 +1554,7 @@ const NotificationBell = ({ unreadCount, notifs, onMarkRead, onMarkAll, onDelete
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-96 bg-white border border-slate-200 rounded-xl shadow-2xl z-[200] overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-96 max-w-sm bg-white border border-slate-200 rounded-xl shadow-2xl z-[200] overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
             <div>
@@ -1588,11 +1614,16 @@ const NotificationBell = ({ unreadCount, notifs, onMarkRead, onMarkAll, onDelete
 // HEADER
 // ─────────────────────────────────────────────────────────────────────────────
 const Header = ({ title, onToggle, user, unreadCount, notifs, onMarkRead, onMarkAll, onDelete, onNavigate }) => (
-  <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 shrink-0 shadow-sm">
-    <button onClick={onToggle} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100">
+  <header className="h-14 bg-white border-b border-slate-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 shadow-sm">
+    {/* Desktop collapse toggle */}
+    <button onClick={onToggle} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 hidden md:block">
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
-    <span className="font-semibold text-slate-800">{title}</span>
+    {/* Mobile sidebar toggle */}
+    <button onClick={()=>document.getElementById("__sidebar_open__")?.click()} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 md:hidden">
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+    </button>
+    <span className="font-semibold text-slate-800 text-sm sm:text-base truncate">{title}</span>
     <div className="ml-auto flex items-center gap-2">
       <NotificationBell
         unreadCount={unreadCount || 0}
@@ -1681,7 +1712,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
       </div>
 
       {/* Clickable KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 sm:gap-3">
         {CARDS.map(c => (
           <div key={c.label} onClick={c.onClick}
             className={`bg-gradient-to-br ${c.color} rounded-xl p-4 text-white shadow-sm cursor-pointer
@@ -1699,7 +1730,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         {/* Left: Projects + Activity */}
         <div className="xl:col-span-2 space-y-5">
           {/* Project Progress */}
@@ -2356,7 +2387,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
           exportBtn={<ExportButtons data={exportData} excelCols={TASK_COLS} fileName="Task_Management" pdfTitle="Task Management Register" />}
           btn={<AddBtn onClick={openCreate} label="New Task" />} />;
       })()}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks..." />
         <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{TASK_STATUS.map(s => <option key={s}>{s}</option>)}</Sel>
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
@@ -2559,7 +2590,7 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast,
       })()}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search snags..." />
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
         <Sel value={fCat} onChange={e => setFCat(e.target.value)} className="w-auto"><option value="All">All Categories</option>{SNAG_CATS.map(c => <option key={c}>{c}</option>)}</Sel>
@@ -2835,7 +2866,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       <BackBtn onClick={goList}/>
       <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?`Edit — ${sel.reportNum||"Report"}`:"New Daily Site Report"}</h2>
       {/* Section tabs */}
-      <div className="flex gap-1 mb-4 flex-wrap">
+      <div className="flex gap-1 mb-4 overflow-x-auto pb-1 flex-nowrap sm:flex-wrap">
         {SECTIONS.map(s=>(
           <button key={s.id} onClick={()=>setActiveSection(s.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${activeSection===s.id?"bg-amber-500 text-white shadow":"bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
@@ -2998,7 +3029,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       <PageTitle title="Daily Site Reports" count={filtered.length}
         exportBtn={<ExportButtons data={exportData} excelCols={RPT_COLS} fileName="Daily_Reports" pdfTitle="Daily Site Reports" orientation="landscape"/>}
         btn={<AddBtn onClick={openCreate} label="New Report"/>}/>
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Date, report no, prepared by..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
         <div className="flex gap-1">{["All",...RPT_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s}</button>)}</div>
@@ -3148,7 +3179,7 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
           exportBtn={<ExportButtons data={exportData} excelCols={IR_COLS} fileName="Inspection_Requests" pdfTitle="Inspection Request Tracker" />}
           btn={<AddBtn onClick={openCreate} label="New IR / WIR" />} />;
       })()}
-      <div className="flex flex-wrap gap-3 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">{["All", ...IR_STATUS].map(s => <button key={s} onClick={() => setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus === s ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s === "All" ? inspections.length : inspections.filter(i => i.status === s).length})</button>)}</div>
@@ -3815,7 +3846,7 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
           exportBtn={<ExportButtons data={exportData} excelCols={DWG_COLS} fileName="Drawing_Register" pdfTitle="Drawing Register" />}
           btn={<AddBtn onClick={openCreate} label="Add Drawing" />} />;
       })()}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search drawings..." />
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
         <div className="flex gap-1">{["All", ...DISC].map(d => <button key={d} onClick={() => setFDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${fDisc === d ? "bg-amber-500 text-white border-amber-500" : "bg-white border-slate-200 text-slate-600 hover:border-amber-300"}`}>{d}</button>)}</div>
@@ -4488,7 +4519,7 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
           btn={<AddBtn onClick={openCreate} label="Add Subcontractor" />} />;
       })()}
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, project, trade..." />
         <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option><option value="Active">Active</option><option value="Inactive">Inactive</option></Sel>
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{(projects||[]).map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel>
@@ -4738,7 +4769,7 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
             pdfTitle="Team Members"
             orientation="portrait" />}
         btn={<AddBtn onClick={openCreate} label="Add User" />} />
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4">
         {userIsAdmin&&<PermRequestsPanel reqs={permReqs} onUpdate={onUpdatePermReq} showToast={showToast} isAdminUser={userIsAdmin}/>}
         {userIsAdmin&&users.filter(u=>u.status==="Pending Approval").length>0&&(
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
@@ -5213,7 +5244,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           excelCols={[{header:"MR No.",key:"mrNum",width:12},{header:"Project No.",key:"projectNum",width:14},{header:"Project",key:"projectName",width:35},{header:"Dept",key:"dept",width:14},{header:"Requested By",key:"requestedBy",width:20},{header:"Date",key:"date",width:14,type:"date"},{header:"Required Date",key:"requiredDate",width:14,type:"date"},{header:"Priority",key:"priority",width:12},{header:"Status",key:"status",width:22},{header:"LPO Status",key:"lpoStatus",width:16},{header:"LPO No.",key:"linkedLpoNum",width:14},{header:"Delivery",key:"deliveryStatus",width:18}]}
           fileName="Material_Requests" pdfTitle="Material Requests Register"/>}
         btn={<AddBtn onClick={openCreate} label="New MR"/>}/>
-      <div className="flex flex-wrap gap-3 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
@@ -5505,7 +5536,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
           excelCols={[{header:"LPO No.",key:"lpoNum",width:12},{header:"Project",key:"projectNum",width:14},{header:"Supplier",key:"supplierName",width:30},{header:"TRN",key:"supplierTrn",width:18},{header:"MR No.",key:"mrNum",width:12},{header:"Date",key:"date",width:14,type:"date"},{header:"Del. Date",key:"deliveryDate",width:14,type:"date"},{header:"Payment",key:"paymentTerms",width:14},{header:"Status",key:"status",width:16},{header:"Delivery",key:"deliveryStatus",width:18},{header:"Total",key:"totalFmt",width:18}]}
           fileName="Local_Purchase_Orders" pdfTitle="Local Purchase Orders"/>}
         btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
-      <div className="flex flex-wrap gap-3 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
@@ -6035,7 +6066,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
       {confirmId&&<ConfirmDialog message="Delete permanently?" onConfirm={()=>handleDelete(confirmId.type,confirmId.id)} onCancel={()=>setConfirmId(null)}/>}
 
       {/* Dashboard Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-4">
         {[
           {l:"Total Materials",v:stock.length,c:"bg-blue-500"},
           {l:"Low Stock",v:stock.filter(s=>s.status==="Low Stock").length,c:"bg-amber-500"},
@@ -6697,7 +6728,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
       {confirmId&&<ConfirmDialog message="Delete this NOC permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 mb-4">
         {[
           {l:"Total NOCs",    v:stats.total,    c:"from-blue-600 to-blue-500",     icon:"📋"},
           {l:"Pending",       v:stats.pending,  c:"from-amber-500 to-amber-400",   icon:"⏳"},
@@ -6897,7 +6928,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-800">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-800 relative">
       <style>{`
         * { box-sizing: border-box; }
         body { margin: 0; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
@@ -6905,6 +6936,18 @@ export default function App() {
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        /* Responsive table scroll */
+        .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        /* Prevent form overflow on small screens */
+        .form-max { max-width: 100%; }
+        /* Mobile padding */
+        @media (max-width: 640px) {
+          .p-6 { padding: 1rem !important; }
+          .p-5 { padding: 0.875rem !important; }
+          .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+          .max-w-3xl, .max-w-4xl, .max-w-2xl { max-width: 100% !important; }
+          .gap-4 { gap: 0.75rem !important; }
+        }
       `}</style>
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
       <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} user={user} onSignOut={() => supabase.auth.signOut()} />
