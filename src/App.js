@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabase";
 import Login from "./Login";
 
@@ -330,6 +330,232 @@ function useAuth() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ROLE-BASED PERMISSIONS SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Roles with full edit/delete access
+const ADMIN_ROLES = ["Admin"];
+const EDIT_ROLES  = ["Admin","QS Engineer","Project Manager"];
+
+// Check if current user profile can edit/delete
+const canEdit = (userProfile) => {
+  if (!userProfile) return false;
+  return EDIT_ROLES.includes(userProfile.role);
+};
+
+const isAdmin = (userProfile) => {
+  if (!userProfile) return false;
+  return userProfile.role === "Admin";
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERMISSION REQUEST HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function usePermRequests() {
+  const [reqs, setReqs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("permission_requests")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && data) setReqs(data.map(r => ({
+      id: r.id, userId: r.user_id, module: r.module_name,
+      recordId: r.record_id, reqType: r.request_type,
+      reason: r.reason || "", status: r.status || "Pending",
+      approvedBy: r.approved_by || "", remarks: r.approval_remarks || "",
+      createdAt: r.created_at || "",
+    })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const addReq = async (f) => {
+    const { error } = await supabase.from("permission_requests").insert([{
+      user_id: f.userId, module_name: f.module, record_id: f.recordId || null,
+      request_type: f.reqType, reason: f.reason, status: "Pending",
+    }]);
+    if (error) return { ok: false, error: error.message };
+    // Notify admin
+    await supabase.from("notifications").insert([{
+      reference_id: f.recordId || f.userId,
+      module_name: "users",
+      title: `Permission Request — ${f.module}`,
+      message: `${f.userName || "A user"} requests ${f.reqType} permission on ${f.module}. Reason: ${f.reason || "Not specified"}`,
+      type: "permission_request",
+      is_read: false,
+    }]).then(()=>{});
+    await loadData();
+    return { ok: true };
+  };
+
+  const updateReq = async (id, status, remarks) => {
+    const { error } = await supabase.from("permission_requests")
+      .update({ status, approval_remarks: remarks || "" }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  return { reqs, loading, addReq, updateReq, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERMISSION REQUEST BUTTON — replaces Edit/Delete for restricted users
+// ─────────────────────────────────────────────────────────────────────────────
+const PermReqBtn = ({ userProfile, module, recordId, recordTitle, onAdd, showToast }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [reqType, setReqType] = useState("Edit");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!reason.trim()) { showToast("Please explain the reason","error"); return; }
+    setSaving(true);
+    const res = await onAdd({
+      userId: userProfile?.id || userProfile?.email || "",
+      userName: userProfile?.full_name || userProfile?.email,
+      module, recordId, reqType, reason,
+    });
+    setSaving(false);
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("Permission request sent to Admin!"); setShowModal(false); setReason("");
+  };
+
+  return (
+    <>
+      <button onClick={()=>setShowModal(true)}
+        className="text-xs bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-lg font-semibold hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 transition-colors"
+        title="Request edit/delete permission from Admin">
+        🔒 Request
+      </button>
+      {showModal&&(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={()=>setShowModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5" onClick={e=>e.stopPropagation()}>
+            <h3 className="font-bold text-slate-800 mb-1">Request Permission</h3>
+            <p className="text-xs text-slate-500 mb-3">{recordTitle&&<><span className="font-semibold">{recordTitle}</span> — </>}Module: <span className="font-semibold">{module}</span></p>
+            <div className="mb-3">
+              <label className="text-xs font-bold text-slate-500 mb-1 block">Request Type</label>
+              <div className="flex gap-2">
+                {["Edit","Delete"].map(t=>(
+                  <button key={t} onClick={()=>setReqType(t)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-bold border-2 transition-colors ${reqType===t?"border-amber-400 bg-amber-50 text-amber-700":"border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                    {t==="Edit"?"✏️ Edit":"🗑️ Delete"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="text-xs font-bold text-slate-500 mb-1 block">Reason <span className="text-red-500">*</span></label>
+              <textarea value={reason} onChange={e=>setReason(e.target.value)} rows={3}
+                placeholder="Explain why you need this permission..."
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 resize-none"/>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleSubmit} disabled={saving}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl text-sm disabled:opacity-50 transition-colors">
+                {saving ? "Sending..." : "Send Request"}
+              </button>
+              <button onClick={()=>setShowModal(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-sm transition-colors">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERMISSION REQUESTS ADMIN PANEL (embedded in Users module)
+// ─────────────────────────────────────────────────────────────────────────────
+const PermRequestsPanel = ({ reqs, onUpdate, showToast, isAdminUser }) => {
+  const [remarkMap, setRemarkMap] = useState({});
+  if (!isAdminUser) return null;
+  const pending = reqs.filter(r=>r.status==="Pending");
+  if (pending.length===0) return (
+    <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700 font-semibold">
+      ✅ No pending permission requests
+    </div>
+  );
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+        <span className="text-amber-600 text-lg">🔐</span>
+        <span className="font-bold text-slate-800 text-sm">Pending Permission Requests ({pending.length})</span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {pending.map(r=>(
+          <div key={r.id} className="px-4 py-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${r.reqType==="Delete"?"bg-red-100 text-red-700":"bg-blue-100 text-blue-700"}`}>{r.reqType}</span>
+                  <span className="text-xs font-semibold text-slate-700">{r.module}</span>
+                </div>
+                <div className="text-xs text-slate-500">User: <span className="font-semibold text-slate-700">{r.userId}</span></div>
+                {r.reason&&<div className="text-xs text-slate-500 mt-0.5">Reason: {r.reason}</div>}
+                <div className="text-xs text-slate-400 mt-0.5">{r.createdAt ? new Date(r.createdAt).toLocaleString("en-GB",{dateStyle:"short",timeStyle:"short"}) : ""}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input value={remarkMap[r.id]||""} onChange={e=>setRemarkMap(p=>({...p,[r.id]:e.target.value}))}
+                placeholder="Remarks (optional)" className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-xs outline-none focus:border-amber-400"/>
+              <button onClick={async()=>{const res=await onUpdate(r.id,"Approved",remarkMap[r.id]);if(res.ok)showToast("Request approved!");else showToast(res.error,"error");}}
+                className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1 rounded-lg">✓ Approve</button>
+              <button onClick={async()=>{const res=await onUpdate(r.id,"Rejected",remarkMap[r.id]);if(res.ok)showToast("Request rejected");else showToast(res.error,"error");}}
+                className="text-xs bg-red-500 hover:bg-red-600 text-white font-bold px-3 py-1 rounded-lg">✗ Reject</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOOK: get current user profile from users table
+// ─────────────────────────────────────────────────────────────────────────────
+function useUserProfile(authUser) {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadProfile = useCallback(async () => {
+    if (!authUser?.email) { setLoading(false); return; }
+    const { data } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", authUser.email)
+      .single();
+    if (data) {
+      setProfile({
+        id: data.id,
+        email: data.email || "",
+        full_name: data.full_name || authUser.email,
+        role: data.role || "Site Engineer",
+        status: data.status || "Active",
+        project_ids: Array.isArray(data.project_ids) ? data.project_ids : [],
+      });
+    } else {
+      // Fallback: create minimal profile from auth data
+      setProfile({
+        id: authUser.id,
+        email: authUser.email,
+        full_name: authUser.user_metadata?.full_name || authUser.email,
+        role: "Admin", // default for existing users
+        status: "Active",
+        project_ids: [],
+      });
+    }
+    setLoading(false);
+  }, [authUser]);
+
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+  return { profile, loading, reload: loadProfile };
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PROJECTS HOOK
 // ─────────────────────────────────────────────────────────────────────────────
 function useProjects() {
@@ -565,40 +791,81 @@ function useDailyReports() {
   const loadData = useCallback(async () => {
     const { data, error } = await supabase.from("daily_reports").select("*").order("report_date", { ascending: false });
     if (error) console.error("Reports:", error.message);
-    if (data) setReports(data.map(r => ({
-      id: r.id, pid: r.project_id, date: r.report_date || "",
-      weather: r.weather || "", temp: r.temperature_high || "",
-      manpower: r.manpower_total || 0, activities: r.work_activities || "",
-      completed: r.work_completed || "", issues: r.issues_delays || "",
-      safety: r.safety_observations || "", materials: r.materials_received || "",
-      status: r.status || "Draft", preparedBy: r.prepared_by_name || "",
-    })));
+    if (data) setReports(data.map(r => {
+      const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
+      return {
+        id: r.id, pid: r.project_id, date: r.report_date || "",
+        reportNum: r.report_number || "",
+        weather: r.weather || "Sunny", temp: r.temperature_high || "",
+        workHours: r.work_hours || "8",
+        manpower: parse("manpower_json"),
+        equipment: parse("equipment_json"),
+        activities: parse("activities_json"),
+        materials: parse("materials_json"),
+        inspections: parse("inspections_json"),
+        safety: parse("safety_json"),
+        manpowerTotal: r.manpower_total || 0,
+        issues: r.issues_delays || "",
+        visitors: r.visitors || "",
+        remarks: r.remarks || "",
+        status: r.status || "Draft",
+        preparedBy: r.prepared_by_name || "",
+      };
+    }));
     setLoading(false);
   }, []);
   useEffect(() => { loadData(); }, [loadData]);
 
+  const getNextNum = async () => {
+    const y = new Date().getFullYear();
+    const { data } = await supabase.from("daily_reports").select("report_number").like("report_number", `DR-${y}-%`).order("created_at", { ascending: false }).limit(1);
+    const last = data?.[0]?.report_number || `DR-${y}-000`;
+    const n = parseInt(last.split("-")[2] || "0") || 0;
+    return `DR-${y}-${String(n + 1).padStart(3, "0")}`;
+  };
+
   const add = async (f) => {
+    const reportNum = await getNextNum();
     const { error } = await supabase.from("daily_reports").insert([{
-      project_id: f.pid, report_date: f.date, weather: f.weather,
-      temperature_high: parseInt(f.temp) || null, manpower_total: parseInt(f.manpower) || 0,
-      work_activities: f.activities, work_completed: f.completed,
-      issues_delays: f.issues, safety_observations: f.safety,
-      materials_received: f.materials, status: "Draft", prepared_by_name: f.preparedBy,
+      report_number: reportNum,
+      project_id: f.pid, report_date: f.date || null,
+      weather: f.weather, temperature_high: parseInt(f.temp) || null,
+      work_hours: f.workHours || "8",
+      manpower_total: f.manpowerTotal || 0,
+      manpower_json: JSON.stringify(f.manpower || []),
+      equipment_json: JSON.stringify(f.equipment || []),
+      activities_json: JSON.stringify(f.activities || []),
+      materials_json: JSON.stringify(f.materials || []),
+      inspections_json: JSON.stringify(f.inspections || []),
+      safety_json: JSON.stringify(f.safety || []),
+      issues_delays: f.issues, visitors: f.visitors,
+      remarks: f.remarks, status: f.status || "Draft",
+      prepared_by_name: f.preparedBy,
     }]);
     if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true };
+    await loadData(); return { ok: true, reportNum };
   };
+
   const update = async (id, f) => {
     const { error } = await supabase.from("daily_reports").update({
-      project_id: f.pid, report_date: f.date, weather: f.weather,
-      temperature_high: parseInt(f.temp) || null, manpower_total: parseInt(f.manpower) || 0,
-      work_activities: f.activities, work_completed: f.completed,
-      issues_delays: f.issues, safety_observations: f.safety,
-      materials_received: f.materials, status: f.status, prepared_by_name: f.preparedBy,
+      project_id: f.pid, report_date: f.date || null,
+      weather: f.weather, temperature_high: parseInt(f.temp) || null,
+      work_hours: f.workHours || "8",
+      manpower_total: f.manpowerTotal || 0,
+      manpower_json: JSON.stringify(f.manpower || []),
+      equipment_json: JSON.stringify(f.equipment || []),
+      activities_json: JSON.stringify(f.activities || []),
+      materials_json: JSON.stringify(f.materials || []),
+      inspections_json: JSON.stringify(f.inspections || []),
+      safety_json: JSON.stringify(f.safety || []),
+      issues_delays: f.issues, visitors: f.visitors,
+      remarks: f.remarks, status: f.status || "Draft",
+      prepared_by_name: f.preparedBy,
     }).eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
   };
+
   const remove = async (id) => {
     const { error } = await supabase.from("daily_reports").delete().eq("id", id);
     if (error) return { ok: false, error: error.message };
@@ -606,6 +873,7 @@ function useDailyReports() {
   };
   return { reports, loading, add, update, remove };
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INSPECTIONS HOOK
@@ -919,6 +1187,24 @@ const ActBtn = ({ onClick, label, color }) => {
   const c = { view: "text-blue-600 hover:bg-blue-50 border-blue-200", edit: "text-amber-600 hover:bg-amber-50 border-amber-200", del: "text-red-600 hover:bg-red-50 border-red-200" };
   return <button onClick={onClick} className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors ${c[color] || ""}`}>{label}</button>;
 };
+// Permission-aware action buttons
+const PermActBtns = ({ userCanEdit, userIsAdmin, onEdit, onDelete, onView, module, recordId, recordTitle, userProfile, onAddPermReq, showToast }) => {
+  const showFull = userCanEdit || userIsAdmin;
+  return (
+    <div className="flex gap-1.5 flex-wrap items-center">
+      {onView&&<ActBtn onClick={onView} label="View" color="view"/>}
+      {showFull ? (
+        <>
+          {onEdit&&<ActBtn onClick={onEdit} label="Edit" color="edit"/>}
+          {onDelete&&<ActBtn onClick={onDelete} label="Del" color="del"/>}
+        </>
+      ) : onAddPermReq ? (
+        <PermReqBtn userProfile={userProfile} module={module} recordId={recordId}
+          recordTitle={recordTitle} onAdd={onAddPermReq} showToast={showToast}/>
+      ) : null}
+    </div>
+  );
+};
 const BackBtn = ({ onClick }) => <button onClick={onClick} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800 font-medium mb-1">← Back</button>;
 const PageTitle = ({ title, count, btn, exportBtn }) => (
   <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -1014,6 +1300,8 @@ const Icon = ({ name, cls: c = "w-5 h-5" }) => {
     map: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
     mr: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     lpo: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z",
+    store: "M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4",
+    noc: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
     eye: "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z",
     warn: "M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z",
     edit: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z",
@@ -1038,6 +1326,8 @@ const NAV = [
   { id: "users", label: "Team Members", icon: "subs" },
   { id: "mr", label: "Material Request", icon: "mr" },
   { id: "lpo", label: "LPO", icon: "lpo" },
+  { id: "store", label: "Material Store", icon: "store" },
+  { id: "noc", label: "NOC & Permits", icon: "noc" },
 ];
 
 const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => (
@@ -1075,17 +1365,243 @@ const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => (
   </aside>
 );
 
-const Header = ({ title, onToggle, user }) => (
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useNotifications() {
+  const [notifs, setNotifs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (!error && data) setNotifs(data.map(n => ({
+      id: n.id, refId: n.reference_id || "", module: n.module_name || "",
+      title: n.title || "", message: n.message || "",
+      type: n.type || "info", isRead: n.is_read || false,
+      createdAt: n.created_at || "",
+    })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Auto-generate notifications from data (called from App with live data)
+  const generateNotifs = useCallback(async ({ tasks, snags, inspections, mrs, lpos, drawings, nocs = [] }) => {
+    // Fetch existing notification reference IDs to avoid duplicates
+    const { data: existing } = await supabase
+      .from("notifications")
+      .select("reference_id, type");
+    const existingSet = new Set((existing || []).map(e => `${e.reference_id}::${e.type}`));
+
+    const toInsert = [];
+    const now = new Date();
+
+    // Helper
+    const has = (refId, type) => existingSet.has(`${refId}::${type}`);
+    const push = (refId, module, title, message, type) => {
+      if (!has(refId, type)) toInsert.push({ reference_id: refId, module_name: module, title, message, type, is_read: false });
+    };
+
+    // 1. Overdue tasks
+    (tasks || []).filter(t => isOverdue(t.due, t.status)).forEach(t =>
+      push(t.id, "tasks", "Overdue Task", `"${t.title}" was due ${fmtDate(t.due)}`, "overdue_task")
+    );
+
+    // 2. Overdue snags
+    (snags || []).filter(s => isOverdue(s.due, s.status)).forEach(s =>
+      push(s.id, "snags", "Overdue Snag", `"${s.title}" was due ${fmtDate(s.due)}`, "overdue_snag")
+    );
+
+    // 3. Pending inspections (Draft or Submitted)
+    (inspections || []).filter(i => ["Draft","Submitted"].includes(i.status)).forEach(i =>
+      push(i.id, "inspections", "Pending Inspection", `${i.inspNum || "IR"} is ${i.status} — awaiting consultant approval`, "pending_ir")
+    );
+
+    // 4. MR submitted for approval
+    (mrs || []).filter(m => m.status === "Submitted").forEach(m =>
+      push(m.id, "mr", "MR Awaiting Approval", `${m.mrNum} submitted by ${m.requestedBy || "team"} — needs approval`, "mr_pending_approval")
+    );
+
+    // 5. MR approved (LPO not yet raised)
+    (mrs || []).filter(m => m.status === "Approved" && m.lpoStatus === "Not Raised").forEach(m =>
+      push(m.id, "mr", "MR Approved — Raise LPO", `${m.mrNum} approved. Create LPO to proceed with procurement`, "mr_approved")
+    );
+
+    // 6. LPO delivery overdue (status not Fully Delivered and past delivery date)
+    (lpos || []).filter(l => {
+      if (!l.deliveryDate || l.deliveryStatus === "Fully Delivered") return false;
+      return new Date(l.deliveryDate) < now;
+    }).forEach(l =>
+      push(l.id, "lpo", "LPO Delivery Overdue", `${l.lpoNum} — delivery was due ${fmtDate(l.deliveryDate)} from ${l.supplierName}`, "lpo_overdue")
+    );
+
+    // 7. Partial delivery pending balance
+    (lpos || []).filter(l => l.deliveryStatus === "Partially Delivered").forEach(l =>
+      push(l.id + "_partial", "lpo", "Partial Delivery — Balance Pending", `${l.lpoNum}: items partially delivered. Follow up with ${l.supplierName}`, "partial_delivery")
+    );
+
+    // 8. NOC expiring within 30 days
+    (nocs || []).filter(n => isExpiringSoon(n.expiryDate, n.status)).forEach(n =>
+      push(n.id, "noc", "NOC Expiring Soon", `${n.nocNum} — ${n.nocType} (${n.authority}) expires ${fmtDate(n.expiryDate)}`, "noc_expiring")
+    );
+    (nocs || []).filter(n => isExpired(n.expiryDate, n.status) && n.status !== "Expired").forEach(n =>
+      push(n.id + "_exp", "noc", "NOC EXPIRED", `${n.nocNum} — ${n.nocType} (${n.authority}) expired on ${fmtDate(n.expiryDate)}`, "noc_expired")
+    );
+
+    // 9. Drawing revision uploaded (latest revisions in last 7 days)
+    const sevenDaysAgo = new Date(now - 7 * 86400000);
+    (drawings || []).filter(d => d.received && new Date(d.received) > sevenDaysAgo).forEach(d =>
+      push(d.id, "drawings", "Drawing Revision Uploaded", `${d.drawingNum || "Drawing"} Rev.${d.rev} — ${d.title} received ${fmtDate(d.received)}`, "drawing_revision")
+    );
+
+    if (toInsert.length > 0) {
+      await supabase.from("notifications").insert(toInsert);
+      await loadData();
+    }
+  }, [loadData]);
+
+  const markRead = useCallback(async (id) => {
+    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  }, []);
+
+  const markAllRead = useCallback(async () => {
+    await supabase.from("notifications").update({ is_read: true }).eq("is_read", false);
+    setNotifs(prev => prev.map(n => ({ ...n, isRead: true })));
+  }, []);
+
+  const deleteNotif = useCallback(async (id) => {
+    await supabase.from("notifications").delete().eq("id", id);
+    setNotifs(prev => prev.filter(n => n.id !== id));
+  }, []);
+
+  const unreadCount = notifs.filter(n => !n.isRead).length;
+  return { notifs, loading, unreadCount, markRead, markAllRead, deleteNotif, generateNotifs, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATION BELL + DROPDOWN
+// ─────────────────────────────────────────────────────────────────────────────
+const NOTIF_ICONS = {
+  overdue_task:        { icon: "⚠️", color: "bg-red-100 text-red-600 border-red-200" },
+  overdue_snag:        { icon: "🔴", color: "bg-orange-100 text-orange-600 border-orange-200" },
+  pending_ir:          { icon: "🔍", color: "bg-purple-100 text-purple-600 border-purple-200" },
+  mr_pending_approval: { icon: "📋", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  mr_approved:         { icon: "✅", color: "bg-green-100 text-green-700 border-green-200" },
+  lpo_overdue:         { icon: "🚚", color: "bg-red-100 text-red-600 border-red-200" },
+  partial_delivery:    { icon: "📦", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  drawing_revision:    { icon: "📐", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  noc_expiring:        { icon: "🛡️", color: "bg-orange-100 text-orange-600 border-orange-200" },
+  noc_expired:         { icon: "🚨", color: "bg-red-100 text-red-700 border-red-200" },
+  new_user_signup:     { icon: "👤", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  permission_request:  { icon: "🔐", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  info:                { icon: "ℹ️", color: "bg-slate-100 text-slate-600 border-slate-200" },
+};
+
+const NotificationBell = ({ unreadCount, notifs, onMarkRead, onMarkAll, onDelete, onNavigate }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const recent = notifs.slice(0, 15);
+  const MODULE_NAV = { tasks:"tasks", snags:"snags", inspections:"inspections", mr:"mr", lpo:"lpo", drawings:"drawings", noc:"noc", users:"users" };
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)}
+        className="relative p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors">
+        <Icon name="bell" cls="w-5 h-5" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-96 bg-white border border-slate-200 rounded-xl shadow-2xl z-[200] overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <div>
+              <span className="font-bold text-slate-800 text-sm">Notifications</span>
+              {unreadCount > 0 && <span className="ml-2 text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold">{unreadCount} new</span>}
+            </div>
+            {unreadCount > 0 && (
+              <button onClick={() => { onMarkAll(); }} className="text-xs text-amber-600 hover:text-amber-700 font-semibold">
+                Mark all read
+              </button>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
+            {recent.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-sm">
+                <div className="text-3xl mb-2">🔔</div>
+                <div>No notifications</div>
+              </div>
+            ) : recent.map(n => {
+              const style = NOTIF_ICONS[n.type] || NOTIF_ICONS.info;
+              return (
+                <div key={n.id} className={`flex gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${!n.isRead ? "bg-amber-50/40" : ""}`}>
+                  <div className={`w-8 h-8 rounded-lg border flex items-center justify-center text-base shrink-0 mt-0.5 ${style.color}`}>
+                    {style.icon}
+                  </div>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => {
+                    onMarkRead(n.id);
+                    if (MODULE_NAV[n.module]) { onNavigate(MODULE_NAV[n.module]); setOpen(false); }
+                  }}>
+                    <div className={`text-sm font-semibold leading-tight ${!n.isRead ? "text-slate-900" : "text-slate-600"}`}>{n.title}</div>
+                    <div className="text-xs text-slate-500 mt-0.5 leading-snug line-clamp-2">{n.message}</div>
+                    <div className="text-xs text-slate-400 mt-1">{n.createdAt ? new Date(n.createdAt).toLocaleString("en-GB", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" }) : ""}</div>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    {!n.isRead && <button onClick={() => onMarkRead(n.id)} className="text-[10px] text-amber-600 hover:text-amber-700 font-semibold whitespace-nowrap">Mark read</button>}
+                    <button onClick={() => onDelete(n.id)} className="text-[10px] text-red-400 hover:text-red-600">Remove</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {notifs.length > 15 && (
+            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-center text-slate-400">
+              Showing latest 15 of {notifs.length} notifications
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEADER
+// ─────────────────────────────────────────────────────────────────────────────
+const Header = ({ title, onToggle, user, unreadCount, notifs, onMarkRead, onMarkAll, onDelete, onNavigate }) => (
   <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 shrink-0 shadow-sm">
     <button onClick={onToggle} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100">
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
     <span className="font-semibold text-slate-800">{title}</span>
     <div className="ml-auto flex items-center gap-2">
-      <button className="relative p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100">
-        <Icon name="bell" cls="w-5 h-5" />
-        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
-      </button>
+      <NotificationBell
+        unreadCount={unreadCount || 0}
+        notifs={notifs || []}
+        onMarkRead={onMarkRead}
+        onMarkAll={onMarkAll}
+        onDelete={onDelete}
+        onNavigate={onNavigate}
+      />
       <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold text-white">{getInit(user?.email)}</div>
     </div>
   </header>
@@ -1101,53 +1617,240 @@ const StatCard = ({ label, value, sub, color, icon }) => (
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
-const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [] }) => {
-  const openTasks = tasks.filter(t => !["Completed", "Closed"].includes(t.status)).length;
-  const openSnags = snags.filter(s => s.status !== "Closed").length;
-  const today = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
-  const pendingMrs = mrs.filter(m => ["Draft","Submitted","Approved"].includes(m.status)).length;
-  const pendingLpos = lpos.filter(l => ["Draft","Issued","Partially Delivered"].includes(l.status)).length;
+const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [], stock = [], nocs = [] }) => {
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
+  const dateStr = now.toLocaleDateString("en-GB", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+
+  // Computed metrics
+  const openTasks   = tasks.filter(t => !["Completed","Closed"].includes(t.status)).length;
+  const openSnags   = snags.filter(s => s.status !== "Closed").length;
+  const pendingIRs  = inspections.filter(i => ["Draft","Submitted"].includes(i.status)).length;
+  const pendingMrs  = mrs.filter(m => ["Draft","Submitted","Approved"].includes(m.status)).length;
+  const activeLpos  = lpos.filter(l => ["Draft","Issued","Partially Delivered"].includes(l.status)).length;
+  const pendingDel  = lpos.filter(l => l.deliveryStatus !== "Fully Delivered" && l.deliveryDate && new Date(l.deliveryDate) < now).length;
+  const lowStock    = stock.filter(s => ["Low Stock","Out of Stock"].includes(s.status)).length;
+  const overdue     = tasks.filter(t => isOverdue(t.due, t.status)).length + snags.filter(s => isOverdue(s.due, s.status)).length;
+  const todayRpts   = reports.filter(r => r.date === todayStr).length;
+  const nocExpiring = nocs.filter(n => isExpiringSoon(n.expiryDate, n.status)).length;
+  const nocExpired  = nocs.filter(n => isExpired(n.expiryDate, n.status) && n.status !== "Expired").length;
+
+  // Today's site activity from today's reports
+  const todayReports = reports.filter(r => r.date === todayStr);
+  const totalMP = todayReports.reduce((s,r) => s + (Number(r.manpower)||0), 0);
+
+  // Alerts
+  const overdueTasks   = tasks.filter(t => isOverdue(t.due, t.status)).slice(0,5);
+  const overdueSnags   = snags.filter(s => isOverdue(s.due, s.status)).slice(0,5);
+  const pendingIRList  = inspections.filter(i => ["Draft","Submitted"].includes(i.status)).slice(0,4);
+  const pendingMRList  = mrs.filter(m => m.status === "Submitted").slice(0,4);
+  const overdueDelList = lpos.filter(l => l.deliveryStatus !== "Fully Delivered" && l.deliveryDate && new Date(l.deliveryDate) < now).slice(0,4);
+  const lowStockList   = stock.filter(s => ["Low Stock","Out of Stock"].includes(s.status)).slice(0,4);
+
+  const totalAlerts = overdueTasks.length + overdueSnags.length + pendingMRList.length + overdueDelList.length;
+
+  const CARDS = [
+    { label:"Active Projects",   v:projects.filter(p=>p.status==="Active").length,  sub:`${projects.length} total`,   color:"from-blue-600 to-blue-500",   icon:"🏗️" },
+    { label:"Open Tasks",        v:openTasks,   sub:`${tasks.length} total`,         color:"from-amber-500 to-amber-400",   icon:"✅" },
+    { label:"Open Snags",        v:openSnags,   sub:`${snags.length} total`,         color:"from-orange-500 to-orange-400", icon:"🔴" },
+    { label:"Pending IRs",       v:pendingIRs,  sub:"Awaiting approval",             color:"from-purple-600 to-purple-500", icon:"🔍" },
+    { label:"Pending MRs",       v:pendingMrs,  sub:`${mrs.length} total`,           color:"from-indigo-600 to-indigo-500", icon:"📋" },
+    { label:"Active LPOs",       v:activeLpos,  sub:`${lpos.length} total`,          color:"from-teal-600 to-teal-500",    icon:"🛒" },
+    { label:"Pending Deliveries",v:pendingDel,  sub:"Overdue LPOs",                  color:"from-rose-600 to-rose-500",    icon:"🚚" },
+    { label:"Low Stock",         v:lowStock,    sub:`${stock.length} materials`,      color:"from-red-600 to-red-500",      icon:"📦" },
+    { label:"NOC Alerts",        v:nocExpiring+nocExpired, sub:`${nocExpiring} expiring · ${nocExpired} expired`, color:"from-purple-700 to-purple-600", icon:"🛡️" },
+    { label:"Overdue Items",     v:overdue,     sub:"Tasks + Snags",                  color:"from-red-700 to-red-600",      icon:"⚠️" },
+    { label:"Reports Today",     v:todayRpts,   sub:todayStr,                        color:"from-green-600 to-green-500",  icon:"📝" },
+  ];
+
   return (
-    <div className="p-6 space-y-6">
-      <div><h2 className="text-xl font-bold text-slate-800">Good morning 👋</h2><p className="text-sm text-slate-400 mt-0.5">{today} — Dubai, UAE</p></div>
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard label="Active Projects" value={projects.filter(p => p.status === "Active").length} sub={`${projects.length} total`} color="bg-blue-500" icon="projects" />
-        <StatCard label="Open Tasks" value={openTasks} sub={`${tasks.length} total`} color="bg-amber-500" icon="tasks" />
-        <StatCard label="Open Snags" value={openSnags} sub={`${snags.length} total`} color="bg-orange-500" icon="snags" />
-        <StatCard label="Pending MRs" value={pendingMrs} sub={`${mrs.length} total`} color="bg-indigo-500" icon="mr" />
-        <StatCard label="Active LPOs" value={pendingLpos} sub={`${lpos.length} total`} color="bg-teal-500" icon="lpo" />
-        <StatCard label="Overdue" value={tasks.filter(t => isOverdue(t.due, t.status)).length} sub="Need attention" color="bg-red-500" icon="warn" />
+    <div className="p-5 space-y-6 max-w-screen-xl">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">{greeting} 👷</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{dateStr} — Dubai, UAE</p>
+        </div>
+        {totalAlerts > 0 && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2">
+            <span className="text-lg">🚨</span> {totalAlerts} item{totalAlerts!==1?"s":""} need attention
+          </div>
+        )}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between"><span className="font-semibold text-slate-800 text-sm">Projects Overview</span><span className="text-xs text-slate-400">{projects.length} projects</span></div>
-          <div className="divide-y divide-slate-100">
-            {projects.slice(0, 6).map(p => (
-              <div key={p.id} className="px-5 py-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0"><div className="text-sm font-semibold text-slate-800 truncate">{p.number}</div><div className="text-xs text-slate-400 truncate">{p.location}</div></div>
-                <div className="text-xs text-slate-500">{p.duration ? `${p.duration}M` : ""}</div>
-                <Badge text={p.status} />
+
+      {/* 10 KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {CARDS.map(c => (
+          <div key={c.label} className={`bg-gradient-to-br ${c.color} rounded-xl p-4 text-white shadow-sm`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-3xl font-black">{c.v}</div>
+                <div className="text-xs font-semibold opacity-90 mt-1 leading-tight">{c.label}</div>
+                <div className="text-xs opacity-70 mt-0.5">{c.sub}</div>
               </div>
-            ))}
+              <span className="text-2xl opacity-80">{c.icon}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        {/* Left col: Projects + Activity */}
+        <div className="xl:col-span-2 space-y-5">
+          {/* Project Progress Overview */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <span className="font-bold text-slate-800 text-sm">🏗️ Project Progress Overview</span>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{projects.filter(p=>p.status==="Active").length} Active</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {projects.filter(p=>p.status==="Active").slice(0,7).map(p => {
+                const pct = p.overallPct || 0;
+                const bar = pct===100?"bg-green-500":pct>=60?"bg-blue-500":pct>=30?"bg-amber-500":"bg-orange-400";
+                return (
+                  <div key={p.id} className="px-5 py-3.5 flex items-center gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{p.number}</span>
+                        <span className="text-sm font-semibold text-slate-800 truncate">{p.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-2 rounded-full ${bar} transition-all`} style={{width:`${pct}%`}}/>
+                        </div>
+                        <span className="text-xs font-bold text-slate-600 w-8 shrink-0">{pct}%</span>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">{p.location}{p.duration ? ` · ${p.duration}M` : ""}</div>
+                    </div>
+                    <Badge text={p.status}/>
+                  </div>
+                );
+              })}
+              {projects.filter(p=>p.status==="Active").length===0&&<div className="px-5 py-8 text-center text-slate-400 text-sm">No active projects</div>}
+            </div>
+          </div>
+
+          {/* Today's Site Activity */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <span className="font-bold text-slate-800 text-sm">📊 Today's Site Activity</span>
+              <span className="text-xs text-slate-400">{new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</span>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                {[
+                  {l:"Reports Submitted",v:todayRpts,icon:"📝",c:"bg-blue-50 text-blue-700"},
+                  {l:"Total Manpower",v:totalMP,icon:"👷",c:"bg-amber-50 text-amber-700"},
+                  {l:"Pending IRs",v:pendingIRs,icon:"🔍",c:"bg-purple-50 text-purple-700"},
+                ].map(s=>(
+                  <div key={s.l} className={`${s.c} rounded-xl p-3 text-center`}>
+                    <div className="text-2xl">{s.icon}</div>
+                    <div className="text-2xl font-black mt-1">{s.v}</div>
+                    <div className="text-xs font-semibold mt-0.5 opacity-80">{s.l}</div>
+                  </div>
+                ))}
+              </div>
+              {todayReports.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Today's Reports</div>
+                  {todayReports.map(r=>{
+                    const proj = projects.find(p=>p.id===r.pid);
+                    return (
+                      <div key={r.id} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                        <span className="text-xs font-mono font-bold text-amber-700">{proj?.number||"—"}</span>
+                        <div className="flex-1 min-w-0 text-xs text-slate-700 truncate">{proj?.name||"—"}</div>
+                        <span className="text-xs text-slate-500">{r.manpower?`${r.manpower} workers`:""}</span>
+                        <Badge text={r.status}/>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-slate-400 text-sm">📋 No daily reports submitted today</div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between"><span className="font-semibold text-slate-800 text-sm">Open Snags</span><span className="text-xs text-slate-400">{openSnags} open</span></div>
-          <div className="divide-y divide-slate-100">
-            {snags.filter(s => s.status !== "Closed").slice(0, 5).map(s => (
-              <div key={s.id} className="px-5 py-3 flex items-center gap-3">
-                <span className="text-xs font-mono font-bold text-amber-600">{s.num}</span>
-                <div className="flex-1 min-w-0 text-sm text-slate-700 truncate">{s.title}</div>
-                <Badge text={s.status} />
-              </div>
-            ))}
-            {openSnags === 0 && <div className="px-5 py-8 text-center text-slate-400 text-sm">No open snags 🎉</div>}
+
+        {/* Right col: Alerts + Recent */}
+        <div className="space-y-5">
+          {/* Alerts Panel */}
+          <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-red-100 bg-red-50 flex items-center gap-2">
+              <span className="text-red-500 text-lg">🚨</span>
+              <span className="font-bold text-slate-800 text-sm">Alerts & Actions Required</span>
+            </div>
+            <div className="divide-y divide-slate-100 max-h-[380px] overflow-y-auto">
+              {overdueTasks.map(t=>(
+                <div key={t.id} className="px-4 py-2.5 flex items-start gap-2">
+                  <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold shrink-0">TASK</span>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">{t.title}</div><div className="text-xs text-red-500">Due {fmtDate(t.due)}</div></div>
+                </div>
+              ))}
+              {overdueSnags.map(s=>(
+                <div key={s.id} className="px-4 py-2.5 flex items-start gap-2">
+                  <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold shrink-0">SNAG</span>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">{s.title}</div><div className="text-xs text-orange-500">Due {fmtDate(s.due)}</div></div>
+                </div>
+              ))}
+              {pendingMRList.map(m=>(
+                <div key={m.id} className="px-4 py-2.5 flex items-start gap-2">
+                  <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold shrink-0">MR</span>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800">{m.mrNum}</div><div className="text-xs text-amber-600">Awaiting approval</div></div>
+                </div>
+              ))}
+              {pendingIRList.map(i=>(
+                <div key={i.id} className="px-4 py-2.5 flex items-start gap-2">
+                  <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold shrink-0">IR</span>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800">{i.inspNum||"IR"}</div><div className="text-xs text-purple-600">{i.status}</div></div>
+                </div>
+              ))}
+              {overdueDelList.map(l=>(
+                <div key={l.id} className="px-4 py-2.5 flex items-start gap-2">
+                  <span className="text-xs bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold shrink-0">LPO</span>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800">{l.lpoNum}</div><div className="text-xs text-rose-500">Delivery overdue</div></div>
+                </div>
+              ))}
+              {lowStockList.map(s=>(
+                <div key={s.id} className="px-4 py-2.5 flex items-start gap-2">
+                  <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold shrink-0">STK</span>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-semibold text-slate-800 truncate">{s.name}</div><div className="text-xs text-red-500">{s.status} · {s.balance} {s.unit}</div></div>
+                </div>
+              ))}
+              {totalAlerts===0&&lowStockList.length===0&&<div className="px-5 py-8 text-center text-green-600 text-sm font-semibold">✅ All clear — no alerts!</div>}
+            </div>
+          </div>
+
+          {/* Recent Activity */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+              <span className="font-bold text-slate-800 text-sm">🕒 Recent Activity</span>
+            </div>
+            <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto">
+              {[
+                ...reports.slice(0,3).map(r=>({type:"Report",label:fmtDate(r.date)+" — "+(projects.find(p=>p.id===r.pid)?.number||""),sub:r.status,icon:"📝",col:"text-green-600"})),
+                ...tasks.slice(0,2).map(t=>({type:"Task",label:t.title,sub:t.status,icon:"✅",col:"text-amber-600"})),
+                ...snags.slice(0,2).map(s=>({type:"Snag",label:s.title,sub:s.status,icon:"🔴",col:"text-orange-600"})),
+                ...mrs.slice(0,2).map(m=>({type:"MR",label:m.mrNum,sub:m.status,icon:"📋",col:"text-indigo-600"})),
+              ].slice(0,10).map((a,i)=>(
+                <div key={i} className="px-4 py-2.5 flex items-center gap-2.5">
+                  <span className="text-base">{a.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-slate-800 truncate">{a.label}</div>
+                    <div className={`text-xs ${a.col}`}>{a.type} · {a.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 };
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROJECTS MODULE — Full CRUD
@@ -1878,148 +2581,410 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast 
 // ─────────────────────────────────────────────────────────────────────────────
 // DAILY REPORTS MODULE
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// DAILY REPORTS MODULE — Professional Construction Site Report
+// ─────────────────────────────────────────────────────────────────────────────
 const RPT_STATUS = ["Draft", "Submitted", "Approved"];
-const EMPTY_RPT = { pid: "", date: "", weather: "Sunny", temp: "", manpower: "", activities: "", completed: "", issues: "", safety: "", materials: "", preparedBy: "", status: "Draft" };
+const WEATHER_OPT = ["Sunny","Partly Cloudy","Cloudy","Dusty","Humid","Rain","Fog","Sandstorm","Clear"];
+const SEV_OPT = ["Low","Medium","High","Critical"];
+const INSP_TYPE = ["Concrete Pour","Rebar Inspection","Waterproofing","MEP Inspection","Safety Audit","Snag Inspection","Foundation","Structural","Finishing","General"];
+const INSP_STATUS = ["Scheduled","Passed","Failed","Pending Remarks","Re-inspection Required"];
+
+const EMPTY_MP  = () => ({ id:Date.now()+Math.random(), trade:"",company:"",count:"",foreman:"",area:"",remarks:"" });
+const EMPTY_EQ  = () => ({ id:Date.now()+Math.random(), name:"",qty:"",status:"Working",operator:"",remarks:"" });
+const EMPTY_ACT = () => ({ id:Date.now()+Math.random(), location:"",activity:"",trade:"",progress:"",remarks:"" });
+const EMPTY_MAT = () => ({ id:Date.now()+Math.random(), material:"",qty:"",unit:"Nos",supplier:"",dn:"",remarks:"" });
+const EMPTY_INS = () => ({ id:Date.now()+Math.random(), type:"Concrete Pour",location:"",consultant:"",status:"Scheduled",remarks:"" });
+const EMPTY_SAF = () => ({ id:Date.now()+Math.random(), obs:"",severity:"Low",action:"",responsible:"",status:"Open" });
+
+const EMPTY_DR = () => ({
+  pid:"", date:new Date().toISOString().split("T")[0],
+  reportNum:"", preparedBy:"", weather:"Sunny", temp:"", workHours:"8",
+  issues:"", visitors:"", remarks:"", status:"Draft",
+  manpower:[EMPTY_MP()], equipment:[EMPTY_EQ()],
+  activities:[EMPTY_ACT()], materials:[EMPTY_MAT()],
+  inspections:[EMPTY_INS()], safety:[EMPTY_SAF()],
+});
+
+const SectionHead = ({ icon, title, count, onAdd, addLabel }) => (
+  <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+    <div className="flex items-center gap-2">
+      <span className="text-base">{icon}</span>
+      <span className="font-bold text-slate-700 text-sm">{title}</span>
+      <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-semibold">{count}</span>
+    </div>
+    <button onClick={onAdd} className="text-xs font-bold text-amber-600 hover:text-amber-700 border border-amber-300 px-2.5 py-1 rounded-lg">+ {addLabel||"Add Row"}</button>
+  </div>
+);
+
+const DynTable = ({ heads, rows, renderRow }) => (
+  <div className="overflow-x-auto">
+    <table className="w-full text-sm">
+      <thead className="bg-slate-50"><tr>{heads.map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500 whitespace-nowrap">{h}</th>)}</tr></thead>
+      <tbody className="divide-y divide-slate-100">{rows.map(renderRow)}</tbody>
+    </table>
+  </div>
+);
 
 const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
-  const [form, setForm] = useState(EMPTY_RPT);
+  const [form, setForm] = useState(EMPTY_DR());
   const [fProject, setFProject] = useState("All");
-  const [saving, setSaving] = useState(false);
+  const [fStatus, setFStatus]   = useState("All");
+  const [search, setSearch]     = useState("");
+  const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+  const [activeSection, setActiveSection] = useState("header");
 
-  const openCreate = () => { setForm(EMPTY_RPT); setSel(null); setMode("form"); };
-  const openEdit = r => { setSel(r); setForm({ pid: r.pid, date: r.date, weather: r.weather, temp: String(r.temp || ""), manpower: String(r.manpower || ""), activities: r.activities, completed: r.completed, issues: r.issues, safety: r.safety, materials: r.materials, preparedBy: r.preparedBy, status: r.status }); setMode("form"); };
-  const openView = r => { setSel(r); setMode("view"); };
+  const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
+
+  // Dynamic row helpers
+  const addRow  = k => () => setForm(p=>({...p,[k]:[...(p[k]||[]), k==="manpower"?EMPTY_MP():k==="equipment"?EMPTY_EQ():k==="activities"?EMPTY_ACT():k==="materials"?EMPTY_MAT():k==="inspections"?EMPTY_INS():EMPTY_SAF()]}));
+  const delRow  = (k,id) => setForm(p=>({...p,[k]:(p[k]||[]).filter(r=>r.id!==id)}));
+  const setRow  = (k,id,field,val) => setForm(p=>({...p,[k]:(p[k]||[]).map(r=>r.id===id?{...r,[field]:val}:r)}));
+
   const goList = () => { setMode("list"); setSel(null); };
 
-  const handleSave = async () => {
-    if (!form.pid || !form.date) { showToast("Project and Date are required", "error"); return; }
-    setSaving(true);
-    const res = sel ? await onUpdate(sel.id, form) : await onAdd(form);
-    setSaving(false);
-    if (!res.ok) { showToast(res.error || "Save failed", "error"); return; }
-    showToast(sel ? "Report updated!" : "Report saved!"); goList();
+  const openCreate = () => { setForm(EMPTY_DR()); setSel(null); setActiveSection("header"); setMode("form"); };
+  const openEdit = r => {
+    setSel(r);
+    setForm({
+      pid:r.pid, date:r.date, reportNum:r.reportNum||"", preparedBy:r.preparedBy||"",
+      weather:r.weather||"Sunny", temp:String(r.temp||""), workHours:String(r.workHours||"8"),
+      issues:r.issues||"", visitors:r.visitors||"", remarks:r.remarks||"", status:r.status||"Draft",
+      manpower:r.manpower?.length?r.manpower.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_MP()],
+      equipment:r.equipment?.length?r.equipment.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_EQ()],
+      activities:r.activities?.length?r.activities.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_ACT()],
+      materials:r.materials?.length?r.materials.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_MAT()],
+      inspections:r.inspections?.length?r.inspections.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_INS()],
+      safety:r.safety?.length?r.safety.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_SAF()],
+    });
+    setActiveSection("header"); setMode("form");
   };
+  const openView = r => { setSel(r); setMode("view"); };
+
+  const handleSave = async (submitStatus) => {
+    if (!form.pid || !form.date) { showToast("Project and Date are required","error"); return; }
+    setSaving(true);
+    const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+    const payload = {
+      pid:form.pid, date:form.date, reportNum:form.reportNum, preparedBy:form.preparedBy,
+      weather:form.weather, temp:form.temp, workHours:form.workHours,
+      manpower:form.manpower.filter(r=>r.trade||r.count),
+      equipment:form.equipment.filter(r=>r.name),
+      activities:form.activities.filter(r=>r.activity),
+      materials:form.materials.filter(r=>r.material),
+      inspections:form.inspections.filter(r=>r.location||r.type),
+      safety:form.safety.filter(r=>r.obs),
+      manpowerTotal: totalMP,
+      issues:form.issues, visitors:form.visitors, remarks:form.remarks,
+      status: submitStatus || form.status,
+    };
+    const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
+  };
+
   const handleDelete = async id => {
     const res = await onDelete(id);
-    if (!res.ok) { showToast(res.error || "Delete failed", "error"); return; }
-    showToast("Report deleted!"); setConfirmId(null); if (mode !== "list") goList();
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("Report deleted!"); setConfirmId(null); if(mode!=="list") goList();
   };
 
-  const filtered = reports.filter(r => fProject === "All" || r.pid === fProject);
+  const filtered = reports.filter(r => {
+    if (fProject!=="All" && r.pid!==fProject) return false;
+    if (fStatus!=="All" && r.status!==fStatus) return false;
+    if (search && !`${r.date} ${r.preparedBy} ${r.reportNum}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
-  if (mode === "view" && sel) return (
-    <div className="p-6 max-w-3xl">
-      {confirmId && <ConfirmDialog message="Delete this report?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <BackBtn onClick={goList} />
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="bg-gradient-to-r from-green-700 to-emerald-600 px-6 py-5 flex items-center justify-between">
-          <div><div className="text-green-200 text-xs">{projects.find(p => p.id === sel.pid)?.number}</div><h2 className="text-xl font-bold text-white">{fmtDate(sel.date)}</h2></div>
-          <Badge text={sel.status} cls="bg-white/20 text-white border-white/30" />
-        </div>
-        <div className="p-6 space-y-5">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-blue-50 rounded-xl p-4"><div className="text-3xl font-bold text-blue-700">{sel.manpower}</div><div className="text-xs text-blue-500 mt-1">Manpower</div></div>
-            <div className="bg-amber-50 rounded-xl p-4"><div className="text-xl font-bold text-amber-700">{sel.weather}</div><div className="text-xs text-amber-500 mt-1">Weather</div></div>
-            <div className="bg-green-50 rounded-xl p-4"><div className="text-xl font-bold text-green-700">{sel.temp ? `${sel.temp}°C` : "—"}</div><div className="text-xs text-green-500 mt-1">Temperature</div></div>
+  const SECTIONS = [
+    {id:"header",label:"📋 Report Info"},
+    {id:"manpower",label:`👷 Manpower (${(form.manpower||[]).filter(r=>r.trade||r.count).length})`},
+    {id:"equipment",label:`🚜 Equipment (${(form.equipment||[]).filter(r=>r.name).length})`},
+    {id:"activities",label:`🔨 Activities (${(form.activities||[]).filter(r=>r.activity).length})`},
+    {id:"materials",label:`📦 Materials (${(form.materials||[]).filter(r=>r.material).length})`},
+    {id:"inspections",label:`🔍 Inspections (${(form.inspections||[]).filter(r=>r.location||r.type).length})`},
+    {id:"safety",label:`⛑️ Safety (${(form.safety||[]).filter(r=>r.obs).length})`},
+    {id:"remarks",label:"📝 Notes"},
+  ];
+
+  // ── VIEW ────────────────────────────────────────────────────────────────────
+  if (mode==="view"&&sel) {
+    const proj = projects.find(p=>p.id===sel.pid);
+    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+    return (
+      <div className="p-6 max-w-4xl space-y-4">
+        {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+        <BackBtn onClick={goList}/>
+        {/* Header banner */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-5 text-white">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-amber-400 text-xs font-mono font-bold">{sel.reportNum||"DAILY REPORT"}</div>
+              <h2 className="text-xl font-bold mt-1">Daily Site Report</h2>
+              <p className="text-slate-300 text-sm mt-1">{proj?.number} — {proj?.name}</p>
+            </div>
+            <Badge text={sel.status}/>
           </div>
-          {[["Work Activities", sel.activities], ["Work Completed", sel.completed], ["Issues / Delays", sel.issues], ["Safety Observations", sel.safety], ["Materials Received", sel.materials]].filter(([, v]) => v).map(([k, v]) => (
-            <div key={k}><div className="text-xs text-slate-400 font-bold uppercase tracking-wide mb-1">{k}</div><p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg leading-relaxed">{v}</p></div>
-          ))}
-          <div className="text-xs text-slate-400 pt-2 border-t border-slate-100">Prepared by: <strong className="text-slate-600">{sel.preparedBy || "—"}</strong></div>
-          <div className="flex flex-wrap gap-3">
-            <Btn onClick={() => openEdit(sel)} label="Edit Report" />
-            <button onClick={() => exportDailyReportPDF(sel, (projects.find(p => p.id === sel.pid)||{}).name || sel.pid)}
-              className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-              Export PDF Report
-            </button>
-            <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            {[{l:"Date",v:fmtDate(sel.date)},{l:"Prepared By",v:sel.preparedBy||"—"},{l:"Weather",v:sel.weather||"—"},{l:"Work Hours",v:sel.workHours?sel.workHours+"h":"—"}].map(c=>(
+              <div key={c.l} className="bg-white/10 rounded-lg p-2.5 text-center">
+                <div className="text-xs text-slate-300">{c.l}</div>
+                <div className="text-sm font-bold mt-0.5">{c.v}</div>
+              </div>
+            ))}
           </div>
         </div>
+        {/* Summary cards */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-blue-700">{totalMP}</div><div className="text-xs text-blue-600 font-semibold">Total Manpower</div></div>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-green-700">{(sel.equipment||[]).filter(e=>e.status==="Working").length}</div><div className="text-xs text-green-600 font-semibold">Equipment Working</div></div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-amber-700">{(sel.activities||[]).filter(a=>a.activity).length}</div><div className="text-xs text-amber-600 font-semibold">Activities</div></div>
+        </div>
+        {/* Sections */}
+        {[
+          { title:"👷 Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+            cols:["trade","count","foreman","area","remarks"] },
+          { title:"🚜 Equipment", rows:sel.equipment||[], heads:["Equipment","Qty","Status","Operator","Remarks"],
+            cols:["name","qty","status","operator","remarks"] },
+          { title:"🔨 Work Activities", rows:sel.activities||[], heads:["Location","Activity","Trade","Progress%","Remarks"],
+            cols:["location","activity","trade","progress","remarks"] },
+          { title:"📦 Materials Received", rows:sel.materials||[], heads:["Material","Qty","Unit","Supplier","DN No.","Remarks"],
+            cols:["material","qty","unit","supplier","dn","remarks"] },
+          { title:"🔍 Inspections", rows:sel.inspections||[], heads:["Type","Location","Consultant","Status","Remarks"],
+            cols:["type","location","consultant","status","remarks"] },
+          { title:"⛑️ Safety Observations", rows:sel.safety||[], heads:["Observation","Severity","Action","Responsible","Status"],
+            cols:["obs","severity","action","responsible","status"] },
+        ].filter(s=>s.rows.length>0).map(sec=>(
+          <div key={sec.title} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 font-semibold text-slate-700 text-sm">{sec.title}</div>
+            <div className="overflow-x-auto"><table className="w-full text-sm">
+              <thead className="bg-slate-50"><tr>{sec.heads.map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-100">{sec.rows.map((r,i)=>(
+                <tr key={i} className="hover:bg-slate-50">{sec.cols.map(c=><td key={c} className="px-3 py-2 text-xs text-slate-700">{r[c]||"—"}</td>)}</tr>
+              ))}</tbody>
+            </table></div>
+          </div>
+        ))}
+        {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
+        {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
+        <div className="flex flex-wrap gap-3">
+          <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
+          {sel.status==="Draft"&&<button onClick={async()=>{setSaving(true);const r=await onUpdate(sel.id,{...sel,status:"Submitted"});setSaving(false);if(r.ok){setSel(p=>({...p,status:"Submitted"}));showToast("Report submitted!");}}} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">Submit Final</button>}
+          <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+        </div>
+      </div>
+    );
+  }
+
+  // ── FORM ────────────────────────────────────────────────────────────────────
+  if (mode==="form") return (
+    <div className="p-6 max-w-4xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?`Edit — ${sel.reportNum||"Report"}`:"New Daily Site Report"}</h2>
+      {/* Section tabs */}
+      <div className="flex gap-1 mb-4 flex-wrap">
+        {SECTIONS.map(s=>(
+          <button key={s.id} onClick={()=>setActiveSection(s.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${activeSection===s.id?"bg-amber-500 text-white shadow":"bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {/* HEADER section */}
+      {activeSection==="header"&&<div className="space-y-4">
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Report Information</div>
+          <Grid2>
+            <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Report Date" req/><Inp type="date" value={form.date} onChange={set("date")}/></div>
+            <div><Lbl t="Prepared By"/><Inp value={form.preparedBy} onChange={set("preparedBy")} placeholder="Site Engineer / PM"/></div>
+            <div><Lbl t="Work Hours"/><Inp type="number" value={form.workHours} onChange={set("workHours")} placeholder="8"/></div>
+            <div><Lbl t="Weather"/><Sel value={form.weather} onChange={set("weather")}>{WEATHER_OPT.map(w=><option key={w}>{w}</option>)}</Sel></div>
+            <div><Lbl t="Temperature (°C)"/><Inp type="number" value={form.temp} onChange={set("temp")} placeholder="38"/></div>
+            {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{RPT_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
+          </Grid2>
+        </FormCard>
+      </div>}
+
+      {/* MANPOWER section */}
+      {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
+        <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
+          rows={form.manpower||[]} renderRow={r=>(
+          <tr key={r.id} className="border-t border-slate-100">
+            <td className="px-2 py-1.5"><Inp value={r.trade} onChange={e=>setRow("manpower",r.id,"trade",e.target.value)} placeholder="Concretor / HVAC..."/></td>
+            <td className="px-2 py-1.5 w-24"><Inp type="number" value={r.count} onChange={e=>setRow("manpower",r.id,"count",e.target.value)} placeholder="0"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.foreman} onChange={e=>setRow("manpower",r.id,"foreman",e.target.value)} placeholder="Name"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.area} onChange={e=>setRow("manpower",r.id,"area",e.target.value)} placeholder="Floor 3, Grid A"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("manpower",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+            <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("manpower",r.id)} disabled={(form.manpower||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+          </tr>
+        )}/>
+        <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200 text-sm font-bold text-slate-700">
+          Total Workers: <span className="text-blue-600">{(form.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0)}</span>
+        </div>
+      </div>}
+
+      {/* EQUIPMENT section */}
+      {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <SectionHead icon="🚜" title="Equipment Summary" count={(form.equipment||[]).filter(r=>r.name).length} onAdd={addRow("equipment")}/>
+        <DynTable heads={["Equipment Name","Qty","Status","Operator","Remarks",""]}
+          rows={form.equipment||[]} renderRow={r=>(
+          <tr key={r.id} className="border-t border-slate-100">
+            <td className="px-2 py-1.5"><Inp value={r.name} onChange={e=>setRow("equipment",r.id,"name",e.target.value)} placeholder="Tower Crane, Pump..."/></td>
+            <td className="px-2 py-1.5 w-20"><Inp type="number" value={r.qty} onChange={e=>setRow("equipment",r.id,"qty",e.target.value)} placeholder="1"/></td>
+            <td className="px-2 py-1.5 w-32"><Sel value={r.status} onChange={e=>setRow("equipment",r.id,"status",e.target.value)}>{["Working","Idle","Under Repair","Off Hire"].map(s=><option key={s}>{s}</option>)}</Sel></td>
+            <td className="px-2 py-1.5"><Inp value={r.operator} onChange={e=>setRow("equipment",r.id,"operator",e.target.value)} placeholder="Operator"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("equipment",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+            <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("equipment",r.id)} disabled={(form.equipment||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+          </tr>
+        )}/>
+      </div>}
+
+      {/* ACTIVITIES section */}
+      {activeSection==="activities"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <SectionHead icon="🔨" title="Work Activities" count={(form.activities||[]).filter(r=>r.activity).length} onAdd={addRow("activities")}/>
+        <DynTable heads={["Location/Floor","Activity Description","Trade","Progress%","Remarks",""]}
+          rows={form.activities||[]} renderRow={r=>(
+          <tr key={r.id} className="border-t border-slate-100">
+            <td className="px-2 py-1.5"><Inp value={r.location} onChange={e=>setRow("activities",r.id,"location",e.target.value)} placeholder="Floor 3"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.activity} onChange={e=>setRow("activities",r.id,"activity",e.target.value)} placeholder="Concrete column pour"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.trade} onChange={e=>setRow("activities",r.id,"trade",e.target.value)} placeholder="Civil"/></td>
+            <td className="px-2 py-1.5 w-20"><Inp type="number" value={r.progress} onChange={e=>setRow("activities",r.id,"progress",e.target.value)} placeholder="75"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("activities",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+            <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("activities",r.id)} disabled={(form.activities||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+          </tr>
+        )}/>
+      </div>}
+
+      {/* MATERIALS section */}
+      {activeSection==="materials"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <SectionHead icon="📦" title="Materials Received" count={(form.materials||[]).filter(r=>r.material).length} onAdd={addRow("materials")}/>
+        <DynTable heads={["Material Name","Qty","Unit","Supplier","DN No.","Remarks",""]}
+          rows={form.materials||[]} renderRow={r=>(
+          <tr key={r.id} className="border-t border-slate-100">
+            <td className="px-2 py-1.5"><Inp value={r.material} onChange={e=>setRow("materials",r.id,"material",e.target.value)} placeholder="OPC Cement 50kg"/></td>
+            <td className="px-2 py-1.5 w-20"><Inp type="number" value={r.qty} onChange={e=>setRow("materials",r.id,"qty",e.target.value)} placeholder="0"/></td>
+            <td className="px-2 py-1.5 w-20"><Sel value={r.unit} onChange={e=>setRow("materials",r.id,"unit",e.target.value)}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel></td>
+            <td className="px-2 py-1.5"><Inp value={r.supplier} onChange={e=>setRow("materials",r.id,"supplier",e.target.value)} placeholder="Supplier"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.dn} onChange={e=>setRow("materials",r.id,"dn",e.target.value)} placeholder="DN-001"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("materials",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+            <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("materials",r.id)} disabled={(form.materials||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+          </tr>
+        )}/>
+      </div>}
+
+      {/* INSPECTIONS section */}
+      {activeSection==="inspections"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <SectionHead icon="🔍" title="Inspections" count={(form.inspections||[]).filter(r=>r.location||r.type).length} onAdd={addRow("inspections")}/>
+        <DynTable heads={["Type","Location","Consultant/Client","Status","Remarks",""]}
+          rows={form.inspections||[]} renderRow={r=>(
+          <tr key={r.id} className="border-t border-slate-100">
+            <td className="px-2 py-1.5 w-36"><Sel value={r.type} onChange={e=>setRow("inspections",r.id,"type",e.target.value)}>{INSP_TYPE.map(t=><option key={t}>{t}</option>)}</Sel></td>
+            <td className="px-2 py-1.5"><Inp value={r.location} onChange={e=>setRow("inspections",r.id,"location",e.target.value)} placeholder="Column C5, Level 3"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.consultant} onChange={e=>setRow("inspections",r.id,"consultant",e.target.value)} placeholder="ANT Engineering"/></td>
+            <td className="px-2 py-1.5 w-40"><Sel value={r.status} onChange={e=>setRow("inspections",r.id,"status",e.target.value)}>{INSP_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></td>
+            <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("inspections",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+            <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("inspections",r.id)} disabled={(form.inspections||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+          </tr>
+        )}/>
+      </div>}
+
+      {/* SAFETY section */}
+      {activeSection==="safety"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <SectionHead icon="⛑️" title="Safety Observations" count={(form.safety||[]).filter(r=>r.obs).length} onAdd={addRow("safety")}/>
+        <DynTable heads={["Observation","Severity","Action Taken","Responsible","Status",""]}
+          rows={form.safety||[]} renderRow={r=>(
+          <tr key={r.id} className="border-t border-slate-100">
+            <td className="px-2 py-1.5"><Inp value={r.obs} onChange={e=>setRow("safety",r.id,"obs",e.target.value)} placeholder="No PPE observed..."/></td>
+            <td className="px-2 py-1.5 w-28"><Sel value={r.severity} onChange={e=>setRow("safety",r.id,"severity",e.target.value)}>{SEV_OPT.map(s=><option key={s}>{s}</option>)}</Sel></td>
+            <td className="px-2 py-1.5"><Inp value={r.action} onChange={e=>setRow("safety",r.id,"action",e.target.value)} placeholder="Issued PPE"/></td>
+            <td className="px-2 py-1.5"><Inp value={r.responsible} onChange={e=>setRow("safety",r.id,"responsible",e.target.value)} placeholder="Safety Officer"/></td>
+            <td className="px-2 py-1.5 w-28"><Sel value={r.status} onChange={e=>setRow("safety",r.id,"status",e.target.value)}>{["Open","Closed","In Progress"].map(s=><option key={s}>{s}</option>)}</Sel></td>
+            <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("safety",r.id)} disabled={(form.safety||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+          </tr>
+        )}/>
+      </div>}
+
+      {/* REMARKS section */}
+      {activeSection==="remarks"&&<FormCard>
+        <div><Lbl t="Issues / Delays"/><Txta value={form.issues} onChange={set("issues")} rows={3} placeholder="Describe any site issues, delays, or blockers..."/></div>
+        <div><Lbl t="Visitors / Consultant Visit"/><Txta value={form.visitors} onChange={set("visitors")} rows={2} placeholder="Visitor name, purpose..."/></div>
+        <div><Lbl t="General Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Additional notes..."/></div>
+      </FormCard>}
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-3 mt-4">
+        <Btn saving={saving} onClick={()=>handleSave("Draft")} label="Save Draft"/>
+        <button onClick={()=>handleSave("Submitted")} disabled={saving} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg disabled:opacity-50">
+          Submit Final Report
+        </button>
+        <Btn onClick={goList} label="Cancel" color="slate"/>
       </div>
     </div>
   );
 
-  if (mode === "form") return (
-    <div className="p-6 max-w-2xl">
-      <BackBtn onClick={goList} />
-      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel ? "Edit Report" : "New Daily Report"}</h2>
-      <FormCard>
-        <Grid2>
-          <div><Lbl t="Project" req /><Sel value={form.pid} onChange={set("pid")}><option value="">Select...</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
-          <div><Lbl t="Date" req /><Inp type="date" value={form.date} onChange={set("date")} /></div>
-          <div><Lbl t="Weather" /><Inp value={form.weather} onChange={set("weather")} placeholder="e.g. Sunny, Cloudy" /></div>
-          <div><Lbl t="Temperature (°C)" /><Inp type="number" value={form.temp} onChange={set("temp")} placeholder="e.g. 38" /></div>
-          <div><Lbl t="Total Manpower" /><Inp type="number" value={form.manpower} onChange={set("manpower")} placeholder="e.g. 87" /></div>
-          <div><Lbl t="Prepared By" /><Inp value={form.preparedBy} onChange={set("preparedBy")} placeholder="Engineer name" /></div>
-        </Grid2>
-        {[["Work Activities Today", "activities"], ["Work Completed", "completed"], ["Issues / Delays", "issues"], ["Safety Observations", "safety"], ["Materials Received", "materials"]].map(([label, key]) => (
-          <div key={key}><Lbl t={label} /><Txta value={form[key]} onChange={set(key)} placeholder={`Enter ${label.toLowerCase()}...`} /></div>
-        ))}
-        {sel && <div><Lbl t="Status" /><Sel value={form.status} onChange={set("status")}>{RPT_STATUS.map(s => <option key={s}>{s}</option>)}</Sel></div>}
-        <FormActions saving={saving} onSave={handleSave} onCancel={goList} label={sel ? "Update Report" : "Save Report"} />
-      </FormCard>
-    </div>
-  );
+  // ── LIST ────────────────────────────────────────────────────────────────────
+  const exportData = filtered.map(r=>({
+    ...r,
+    projectNum:(projects.find(p=>p.id===r.pid)||{}).number||"—",
+    projectName:(projects.find(p=>p.id===r.pid)||{}).name||"—",
+    manpowerTotal:(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0),
+  }));
+  const RPT_COLS = [
+    {header:"Report No.",key:"reportNum",width:14},{header:"Date",key:"date",width:14,type:"date"},
+    {header:"Project",key:"projectNum",width:14},{header:"Project Name",key:"projectName",width:28},
+    {header:"Prepared By",key:"preparedBy",width:20},{header:"Weather",key:"weather",width:14},
+    {header:"Manpower",key:"manpowerTotal",width:12},{header:"Status",key:"status",width:14},
+  ];
 
   return (
     <div className="p-6">
-      {confirmId && <ConfirmDialog message="Delete this report permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      {(() => {
-        const exportData = filtered.map(r => ({
-          ...r,
-          projectNum: (projects.find(p => p.id === r.pid) || {}).number || "—",
-          projectName: (projects.find(p => p.id === r.pid) || {}).name || "—",
-        }));
-        const RPT_COLS = [
-          { header: "Date", key: "date", width: 16, type: "date" },
-          { header: "Project No.", key: "projectNum", width: 14 },
-          { header: "Project Name", key: "projectName", width: 30 },
-          { header: "Weather", key: "weather", width: 14 },
-          { header: "Temp (°C)", key: "temp", width: 12 },
-          { header: "Manpower", key: "manpower", width: 12, type: "number" },
-          { header: "Activities", key: "activities", width: 40 },
-          { header: "Work Completed", key: "completed", width: 35 },
-          { header: "Issues / Delays", key: "issues", width: 35 },
-          { header: "Safety", key: "safety", width: 30 },
-          { header: "Materials", key: "materials", width: 30 },
-          { header: "Prepared By", key: "preparedBy", width: 20 },
-          { header: "Status", key: "status", width: 14 },
-        ];
-        return <PageTitle title="Daily Site Reports" count={filtered.length}
-          exportBtn={<ExportButtons data={exportData} excelCols={RPT_COLS} fileName="Daily_Reports" pdfTitle="Daily Site Reports" orientation="landscape" />}
-          btn={<AddBtn onClick={openCreate} label="New Report" />} />;
-      })()}
-      <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
-      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No reports yet" onCreate={openCreate} /> : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map(r => (
-            <div key={r.id} className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
-                <div><div className="font-bold text-slate-800">{fmtDate(r.date)}</div><div className="text-xs text-slate-400">{projects.find(p => p.id === r.pid)?.number || "—"}</div></div>
-                <Badge text={r.status} />
-              </div>
-              <div className="grid grid-cols-3 gap-2 mb-3 text-center text-xs">
-                <div className="bg-blue-50 rounded-lg p-2"><div className="font-bold text-blue-700 text-lg">{r.manpower}</div><div className="text-blue-500">Manpower</div></div>
-                <div className="bg-amber-50 rounded-lg p-2"><div className="font-bold text-amber-700">{r.weather}</div><div className="text-amber-500">Weather</div></div>
-                <div className="bg-green-50 rounded-lg p-2"><div className="font-bold text-green-700">{r.temp ? `${r.temp}°C` : "—"}</div><div className="text-green-500">Temp</div></div>
-              </div>
-              {r.activities && <p className="text-xs text-slate-600 mb-3 line-clamp-2">{r.activities}</p>}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">By: <strong className="text-slate-600">{r.preparedBy || "—"}</strong></span>
-                <div className="flex gap-1.5"><ActBtn onClick={() => openView(r)} label="View" color="view" /><ActBtn onClick={() => openEdit(r)} label="Edit" color="edit" /><ActBtn onClick={() => setConfirmId(r.id)} label="Del" color="del" /></div>
-              </div>
-            </div>
-          ))}
+      {confirmId&&<ConfirmDialog message="Delete this report permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+      <PageTitle title="Daily Site Reports" count={filtered.length}
+        exportBtn={<ExportButtons data={exportData} excelCols={RPT_COLS} fileName="Daily_Reports" pdfTitle="Daily Site Reports" orientation="landscape"/>}
+        btn={<AddBtn onClick={openCreate} label="New Report"/>}/>
+      <div className="flex flex-wrap gap-3 mb-4">
+        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Date, report no, prepared by..."/>
+        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+        <div className="flex gap-1">{["All",...RPT_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s}</button>)}</div>
+      </div>
+      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No reports yet" onCreate={openCreate}/>:(
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm min-w-[700px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["Report No.","Date","Project","Prepared By","Manpower","Weather","Status","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(r=>{
+                const proj=projects.find(p=>p.id===r.pid);
+                const mp=(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+                return (
+                  <tr key={r.id} className="hover:bg-amber-50 transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-slate-800 whitespace-nowrap">{fmtDate(r.date)}</td>
+                    <td className="px-4 py-3"><div className="text-xs font-bold text-slate-700">{proj?.number||"—"}</div><div className="text-xs text-slate-400 truncate max-w-[120px]">{proj?.name}</div></td>
+                    <td className="px-4 py-3 text-xs text-slate-700">{r.preparedBy||"—"}</td>
+                    <td className="px-4 py-3"><span className="text-sm font-bold text-blue-700">{mp}</span><span className="text-xs text-slate-400 ml-1">workers</span></td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{r.weather||"—"}{r.temp?` · ${r.temp}°C`:""}</td>
+                    <td className="px-4 py-3"><Badge text={r.status}/></td>
+                    <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={()=>openView(r)} label="View" color="view"/><ActBtn onClick={()=>openEdit(r)} label="Edit" color="edit"/><ActBtn onClick={()=>setConfirmId(r.id)} label="Del" color="del"/></div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
 };
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INSPECTIONS MODULE
@@ -2169,9 +3134,517 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
 const DISC = ["Architectural", "Structural", "MEP", "Civil"];
 const EMPTY_DWG = { pid: "", num: "", title: "", rev: "A", discipline: "", received: "", remarks: "", fileUrl: "", file: null };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAWING MARKUPS HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useMarkups(drawingId) {
+  const [pins, setPins] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadData = useCallback(async () => {
+    if (!drawingId) return;
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("drawing_markups")
+      .select("*")
+      .eq("drawing_id", drawingId)
+      .order("created_at", { ascending: true });
+    if (!error && data) setPins(data.map(p => ({
+      id: p.id, drawingId: p.drawing_id, pid: p.project_id,
+      pinNum: p.pin_number || "", x: Number(p.x_position) || 0, y: Number(p.y_position) || 0,
+      type: p.markup_type || "comment", title: p.title || "",
+      desc: p.description || "", status: p.status || "Open",
+      assignedTo: p.assigned_to || "", trade: p.trade || "",
+      dueDate: p.due_date || "", createdBy: p.created_by || "",
+      linkedModule: p.linked_module || "", linkedId: p.linked_record_id || "",
+      createdAt: p.created_at || "",
+    })));
+    setLoading(false);
+  }, [drawingId]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const getNextPinNum = async (dId) => {
+    const { data } = await supabase.from("drawing_markups").select("pin_number")
+      .eq("drawing_id", dId).order("created_at", { ascending: false }).limit(1);
+    const last = data?.[0]?.pin_number || "PIN-000";
+    const n = parseInt(last.replace("PIN-", "")) || 0;
+    return `PIN-${String(n + 1).padStart(3, "0")}`;
+  };
+
+  const addPin = async (f) => {
+    const pinNum = await getNextPinNum(f.drawingId);
+    const { error } = await supabase.from("drawing_markups").insert([{
+      drawing_id: f.drawingId, project_id: f.pid,
+      pin_number: pinNum, x_position: f.x, y_position: f.y,
+      markup_type: f.type, title: f.title, description: f.desc,
+      status: f.status || "Open", assigned_to: f.assignedTo,
+      trade: f.trade, due_date: f.dueDate || null,
+      created_by: f.createdBy, linked_module: f.linkedModule,
+      linked_record_id: f.linkedId || null,
+    }]);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true, pinNum };
+  };
+
+  const updatePin = async (id, f) => {
+    const { error } = await supabase.from("drawing_markups").update({
+      markup_type: f.type, title: f.title, description: f.desc,
+      status: f.status, assigned_to: f.assignedTo,
+      trade: f.trade, due_date: f.dueDate || null,
+      linked_module: f.linkedModule, linked_record_id: f.linkedId || null,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const removePin = async (id) => {
+    const { error } = await supabase.from("drawing_markups").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  return { pins, loading, addPin, updatePin, removePin, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PIN TYPE CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+const PIN_TYPES = [
+  { id:"snag",       label:"Snag",        color:"#ef4444", bg:"bg-red-500",    border:"border-red-500",    text:"text-red-600",    light:"bg-red-50"    },
+  { id:"task",       label:"Task",        color:"#3b82f6", bg:"bg-blue-500",   border:"border-blue-500",   text:"text-blue-600",   light:"bg-blue-50"   },
+  { id:"inspection", label:"Inspection",  color:"#8b5cf6", bg:"bg-purple-500", border:"border-purple-500", text:"text-purple-600", light:"bg-purple-50" },
+  { id:"progress",   label:"Progress",    color:"#22c55e", bg:"bg-green-500",  border:"border-green-500",  text:"text-green-600",  light:"bg-green-50"  },
+  { id:"mep",        label:"MEP Issue",   color:"#f97316", bg:"bg-orange-500", border:"border-orange-500", text:"text-orange-600", light:"bg-orange-50" },
+  { id:"comment",    label:"Comment",     color:"#64748b", bg:"bg-slate-500",  border:"border-slate-500",  text:"text-slate-600",  light:"bg-slate-50"  },
+  { id:"completed",  label:"Completed",   color:"#10b981", bg:"bg-emerald-500",border:"border-emerald-500",text:"text-emerald-600",light:"bg-emerald-50"},
+];
+const PIN_STATUS = ["Open","In Progress","Completed","Closed","Rejected"];
+const PIN_TRADES = ["Civil","MEP","Architecture","Structural","QAQC","Safety","Finishing","External","General"];
+const PT = (typeId) => PIN_TYPES.find(t => t.id === typeId) || PIN_TYPES[5];
+
+const EMPTY_PIN_FORM = (x, y, drawingId, pid) => ({
+  drawingId, pid, x, y,
+  type:"comment", title:"", desc:"", status:"Open",
+  assignedTo:"", trade:"General", dueDate:"", createdBy:"",
+  linkedModule:"", linkedId:"",
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKUP EXPORT PDF
+// ─────────────────────────────────────────────────────────────────────────────
+const exportMarkupPDF = (drawing, pins, projectName) => {
+  try {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) { alert("PDF library not loaded."); return; }
+    const doc = new jsPDF({ orientation:"landscape", format:"a4", compress:true });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const now = new Date().toLocaleString("en-GB", { dateStyle:"medium", timeStyle:"short" });
+    const MARGIN = 10;
+    const HDR_H = 38;
+    const LOGO_ASPECT = 4.7;
+    const LOGO_H = 28;
+    const LOGO_MAX_W = (pageW - MARGIN*2) * 0.55;
+    const LOGO_W = Math.min(LOGO_H * LOGO_ASPECT, LOGO_MAX_W);
+
+    // Header
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageW, HDR_H, "F");
+    doc.setFillColor(245, 158, 11);
+    doc.rect(0, HDR_H, pageW, 2.5, "F");
+    try { doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", MARGIN, (HDR_H-LOGO_H)/2, LOGO_W, LOGO_H); } catch(e){}
+    doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont("helvetica","bold");
+    doc.text("Drawing Markup Report", pageW - MARGIN, 15, { align:"right" });
+    doc.setFontSize(7); doc.setFont("helvetica","normal"); doc.setTextColor(160,160,160);
+    doc.text(now + "  ·  " + pins.length + " pins", pageW - MARGIN, HDR_H - 6, { align:"right" });
+
+    // Drawing info box
+    let y = HDR_H + 8;
+    doc.setFillColor(248,250,252); doc.setDrawColor(220,220,220); doc.setLineWidth(0.3);
+    doc.roundedRect(MARGIN, y, pageW - MARGIN*2, 22, 3, 3, "FD");
+    doc.setTextColor(30,41,59); doc.setFontSize(8); doc.setFont("helvetica","bold");
+    doc.text(`Drawing No: ${drawing.num}  |  Title: ${drawing.title}  |  Rev: ${drawing.rev}  |  Discipline: ${drawing.discipline}  |  Project: ${projectName}`, MARGIN + 4, y + 8);
+    doc.setFont("helvetica","normal"); doc.setFontSize(7); doc.setTextColor(100,100,100);
+    doc.text(`Total Pins: ${pins.length}  |  Open: ${pins.filter(p=>p.status==="Open").length}  |  In Progress: ${pins.filter(p=>p.status==="In Progress").length}  |  Completed: ${pins.filter(p=>p.status==="Completed").length}`, MARGIN + 4, y + 16);
+
+    // Pins table
+    y += 26;
+    const heads = [["Pin No.","Type","Title","Description","Status","Assigned To","Trade","Due Date","Linked"]];
+    const rows = pins.map(p => [
+      p.pinNum, PT(p.type).label, p.title||"—", (p.desc||"").slice(0,60)+(p.desc?.length>60?"...":""),
+      p.status, p.assignedTo||"—", p.trade||"—",
+      p.dueDate ? new Date(p.dueDate).toLocaleDateString("en-GB") : "—",
+      p.linkedModule ? `${p.linkedModule}` : "—",
+    ]);
+    doc.autoTable({
+      startY: y, margin:{left:MARGIN,right:MARGIN,bottom:12},
+      head: heads, body: rows, theme:"grid",
+      styles:{ fontSize:7, cellPadding:{top:2.5,bottom:2.5,left:3,right:3}, overflow:"linebreak", textColor:[30,41,59] },
+      headStyles:{ fillColor:[245,158,11], textColor:[255,255,255], fontStyle:"bold", fontSize:7 },
+      alternateRowStyles:{ fillColor:[248,250,252] },
+      columnStyles:{ 3:{cellWidth:55}, 0:{cellWidth:18} },
+      didDrawPage:({pageNumber})=>{
+        const total = doc.internal.getNumberOfPages();
+        doc.setFontSize(7); doc.setTextColor(150);
+        doc.text(`${pageNumber} / ${total}`, pageW/2, pageH-5, {align:"center"});
+      },
+    });
+    doc.save(`Markup_${drawing.num}_Rev${drawing.rev}_${new Date().toISOString().split("T")[0]}.pdf`);
+  } catch(e) { console.error(e); alert("Export failed: "+e.message); }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DRAWING VIEWER COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+const DrawingViewer = ({ drawing, project, onClose, showToast }) => {
+  const { pins, loading: pinsLoading, addPin, updatePin, removePin } = useMarkups(drawing.id);
+  const imgRef = useRef(null);
+  const containerRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  const [zoom, setZoom] = useState(1);
+  const [addMode, setAddMode] = useState(false);
+  const [selPin, setSelPin] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [pendingCoord, setPendingCoord] = useState(null);
+  const [pinForm, setPinForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [pdfRendered, setPdfRendered] = useState(false);
+  const [filterType, setFilterType] = useState("All");
+  const [confirmDelId, setConfirmDelId] = useState(null);
+
+  const isPDF = drawing.fileUrl && /\.pdf(\?|$)/i.test(drawing.fileUrl);
+  const isImg = drawing.fileUrl && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(drawing.fileUrl);
+
+  // Render PDF page 1 to canvas
+  useEffect(() => {
+    if (!isPDF || !drawing.fileUrl || !window._PDFJS) return;
+    const pdfjs = window._PDFJS;
+    pdfjs.getDocument(drawing.fileUrl).promise.then(pdf => {
+      pdf.getPage(1).then(page => {
+        const viewport = page.getViewport({ scale: 1.8 });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d");
+        page.render({ canvasContext: ctx, viewport }).promise.then(() => setPdfRendered(true));
+      });
+    }).catch(e => console.error("PDF render:", e));
+  }, [isPDF, drawing.fileUrl]);
+
+  const getClickPercent = (e) => {
+    const rect = (imgRef.current || canvasRef.current)?.getBoundingClientRect();
+    if (!rect) return null;
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
+  };
+
+  const handleDrawingClick = (e) => {
+    if (!addMode) return;
+    const coord = getClickPercent(e);
+    if (!coord) return;
+    setPendingCoord(coord);
+    setPinForm(EMPTY_PIN_FORM(coord.x, coord.y, drawing.id, drawing.pid));
+    setShowForm(true);
+    setAddMode(false);
+  };
+
+  const handleSavePin = async () => {
+    if (!pinForm.title.trim()) { showToast("Pin title required","error"); return; }
+    setSaving(true);
+    const res = selPin
+      ? await updatePin(selPin.id, pinForm)
+      : await addPin(pinForm);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
+    showToast(selPin ? "Pin updated!" : "Pin added: "+res.pinNum);
+    setShowForm(false); setSelPin(null); setPendingCoord(null);
+  };
+
+  const handleDeletePin = async (id) => {
+    const res = await removePin(id);
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("Pin removed!"); setConfirmDelId(null); setSelPin(null);
+  };
+
+  const openEditPin = (pin) => {
+    setSelPin(pin);
+    setPinForm({ drawingId:pin.drawingId, pid:pin.pid, x:pin.x, y:pin.y,
+      type:pin.type, title:pin.title, desc:pin.desc, status:pin.status,
+      assignedTo:pin.assignedTo, trade:pin.trade, dueDate:pin.dueDate,
+      createdBy:pin.createdBy, linkedModule:pin.linkedModule, linkedId:pin.linkedId });
+    setShowForm(true);
+  };
+
+  const visiblePins = filterType === "All" ? pins : pins.filter(p => p.type === filterType);
+
+  const setF = k => e => setPinForm(p => ({...p, [k]: e.target.value}));
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col">
+      {/* ── Toolbar ── */}
+      <div className="h-14 bg-slate-800 border-b border-slate-700 flex items-center px-4 gap-3 shrink-0">
+        <button onClick={onClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+        <div className="text-white font-bold text-sm truncate max-w-[200px]">{drawing.num}</div>
+        <div className="text-slate-400 text-xs truncate max-w-[200px] hidden sm:block">{drawing.title} — Rev.{drawing.rev}</div>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 bg-slate-700 rounded-lg p-1">
+            <button onClick={()=>setZoom(z=>Math.max(0.3,z-0.2))} className="text-white w-7 h-7 flex items-center justify-center hover:bg-slate-600 rounded font-bold text-lg">−</button>
+            <span className="text-white text-xs font-bold w-12 text-center">{Math.round(zoom*100)}%</span>
+            <button onClick={()=>setZoom(z=>Math.min(4,z+0.2))} className="text-white w-7 h-7 flex items-center justify-center hover:bg-slate-600 rounded font-bold text-lg">+</button>
+            <button onClick={()=>setZoom(1)} className="text-slate-400 text-xs hover:text-white px-1">Fit</button>
+          </div>
+          {/* Add Pin toggle */}
+          <button onClick={()=>{setAddMode(m=>!m); setSelPin(null);}}
+            className={`flex items-center gap-2 font-semibold text-xs px-3 py-2 rounded-lg transition-colors ${addMode?"bg-amber-500 text-white animate-pulse":"bg-slate-700 text-slate-300 hover:bg-slate-600"}`}>
+            📍 {addMode ? "Click on drawing to place pin..." : "Add Pin"}
+          </button>
+          {/* Export */}
+          <button onClick={()=>exportMarkupPDF(drawing, pins, project?.name||"—")}
+            className="flex items-center gap-1.5 bg-red-700 hover:bg-red-600 text-white font-semibold text-xs px-3 py-2 rounded-lg">
+            📄 Export PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* ── Drawing Canvas ── */}
+        <div ref={containerRef}
+          className={`flex-1 overflow-auto bg-slate-950 relative ${addMode?"cursor-crosshair":""}`}
+          style={{minWidth:0}}>
+          <div className="min-h-full flex items-start justify-center p-6">
+            <div style={{transform:`scale(${zoom})`,transformOrigin:"top center",transition:"transform 0.15s",position:"relative",display:"inline-block"}}>
+              {/* Image drawing */}
+              {isImg && drawing.fileUrl && (
+                <img ref={imgRef} src={drawing.fileUrl} alt={drawing.title}
+                  onLoad={()=>setImgLoaded(true)}
+                  onClick={handleDrawingClick}
+                  className="max-w-full block shadow-2xl rounded"
+                  style={{cursor:addMode?"crosshair":"default", minWidth:"400px"}}
+                  draggable={false}
+                />
+              )}
+              {/* PDF drawing */}
+              {isPDF && (
+                <canvas ref={canvasRef}
+                  onClick={handleDrawingClick}
+                  className="shadow-2xl rounded block"
+                  style={{cursor:addMode?"crosshair":"default", maxWidth:"100%"}}
+                />
+              )}
+              {/* No file / other format */}
+              {!isImg && !isPDF && (
+                <div className="w-[600px] h-[400px] bg-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-400">
+                  <div className="text-5xl mb-3">📐</div>
+                  <div className="text-sm font-semibold">No preview available</div>
+                  <div className="text-xs mt-1">{drawing.fileUrl ? "DWG/DXF files — pins still work below" : "No file uploaded"}</div>
+                  {drawing.fileUrl && <a href={drawing.fileUrl} target="_blank" rel="noreferrer" className="mt-3 text-xs text-blue-400 hover:underline">Download file</a>}
+                </div>
+              )}
+
+              {/* ── PIN DOTS ── */}
+              {(isImg&&imgLoaded || isPDF&&pdfRendered || (!isImg&&!isPDF)) && visiblePins.map(pin => {
+                const pt = PT(pin.type);
+                const isSel = selPin?.id === pin.id;
+                return (
+                  <div key={pin.id}
+                    onClick={e=>{e.stopPropagation();setSelPin(isSel?null:pin);setShowForm(false);}}
+                    style={{position:"absolute",left:`${pin.x}%`,top:`${pin.y}%`,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:10}}
+                    title={`${pin.pinNum}: ${pin.title}`}>
+                    {/* Pin dot */}
+                    <div className={`relative flex items-center justify-center rounded-full shadow-lg transition-all
+                      ${isSel?"w-10 h-10 ring-2 ring-white":"w-7 h-7 hover:w-9 hover:h-9"}`}
+                      style={{backgroundColor:pt.color,transition:"all 0.15s"}}>
+                      <span className="text-white font-black text-xs select-none leading-none">
+                        {pin.pinNum.replace("PIN-","") || "?"}
+                      </span>
+                    </div>
+                    {/* Tooltip */}
+                    {isSel && (
+                      <div className="absolute left-full ml-2 top-0 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 min-w-[200px] z-20">
+                        <div className={`text-xs font-bold px-2 py-0.5 rounded-full inline-flex mb-1 ${pt.light} ${pt.text}`}>{pt.label}</div>
+                        <div className="text-sm font-bold text-slate-800">{pin.title}</div>
+                        {pin.desc&&<div className="text-xs text-slate-600 mt-1 leading-relaxed">{pin.desc}</div>}
+                        <div className="flex gap-2 mt-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${pin.status==="Completed"||pin.status==="Closed"?"bg-green-100 text-green-700":pin.status==="Open"?"bg-red-100 text-red-700":"bg-amber-100 text-amber-700"}`}>{pin.status}</span>
+                          {pin.trade&&<span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{pin.trade}</span>}
+                        </div>
+                        {pin.assignedTo&&<div className="text-xs text-slate-500 mt-1">👤 {pin.assignedTo}</div>}
+                        <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100">
+                          <button onClick={e=>{e.stopPropagation();openEditPin(pin);}} className="text-xs text-blue-600 font-semibold hover:underline">Edit</button>
+                          <button onClick={e=>{e.stopPropagation();setConfirmDelId(pin.id);}} className="text-xs text-red-500 font-semibold hover:underline">Delete</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Pending pin placement indicator */}
+              {pendingCoord && !showForm && (
+                <div style={{position:"absolute",left:`${pendingCoord.x}%`,top:`${pendingCoord.y}%`,transform:"translate(-50%,-50%)",zIndex:20}}>
+                  <div className="w-8 h-8 bg-amber-500 rounded-full animate-pulse flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">+</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Right Panel: Pin List ── */}
+        <div className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-hidden">
+          {/* Panel Header */}
+          <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-bold text-slate-800 text-sm">📍 Pins ({pins.length})</span>
+              <div className="flex gap-1 text-xs">
+                {["Open","Completed"].map(s=>(
+                  <span key={s} className={`px-1.5 py-0.5 rounded-full font-semibold ${s==="Open"?"bg-red-100 text-red-600":"bg-green-100 text-green-600"}`}>
+                    {pins.filter(p=>p.status===s).length} {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* Type filter */}
+            <div className="flex flex-wrap gap-1">
+              {["All",...PIN_TYPES.map(t=>t.id)].map(t=>(
+                <button key={t} onClick={()=>setFilterType(t)}
+                  className={`text-xs px-2 py-0.5 rounded-full font-semibold border transition-colors ${filterType===t?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-500 border-slate-200 hover:border-amber-300"}`}>
+                  {t==="All"?"All":PT(t).label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Pin list */}
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+            {pinsLoading ? <div className="p-4 text-center text-slate-400 text-xs">Loading pins...</div>
+              : visiblePins.length === 0 ? (
+                <div className="p-6 text-center text-slate-400">
+                  <div className="text-3xl mb-2">📍</div>
+                  <div className="text-xs font-semibold">No pins yet</div>
+                  <div className="text-xs mt-1">Click "Add Pin" then click on the drawing</div>
+                </div>
+              ) : visiblePins.map(pin => {
+                const pt = PT(pin.type);
+                const isSel = selPin?.id === pin.id;
+                return (
+                  <div key={pin.id}
+                    onClick={()=>setSelPin(isSel?null:pin)}
+                    className={`px-3 py-2.5 cursor-pointer transition-colors ${isSel?"bg-amber-50 border-l-4 border-amber-500":"hover:bg-slate-50 border-l-4 border-transparent"}`}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-black shrink-0"
+                        style={{backgroundColor:pt.color}}>
+                        {pin.pinNum.replace("PIN-","")}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-slate-800 truncate">{pin.title||"Untitled"}</div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className={`text-[10px] px-1.5 py-0 rounded-full font-semibold ${pt.light} ${pt.text}`}>{pt.label}</span>
+                          <span className={`text-[10px] font-semibold ${pin.status==="Completed"||pin.status==="Closed"?"text-green-600":pin.status==="Open"?"text-red-500":"text-amber-600"}`}>· {pin.status}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {isSel&&(
+                      <div className="mt-2 flex gap-2">
+                        <button onClick={e=>{e.stopPropagation();openEditPin(pin);}} className="text-xs bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-lg font-semibold">Edit</button>
+                        <button onClick={e=>{e.stopPropagation();setConfirmDelId(pin.id);}} className="text-xs bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-lg font-semibold">Delete</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+
+          {/* Legend */}
+          <div className="px-3 py-2 border-t border-slate-200 bg-slate-50">
+            <div className="text-xs text-slate-400 font-semibold mb-1">Pin Types</div>
+            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+              {PIN_TYPES.map(t=>(
+                <div key={t.id} className="flex items-center gap-1">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor:t.color}}/>
+                  <span className="text-[10px] text-slate-600">{t.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Pin Form Modal ── */}
+      {showForm && pinForm && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={()=>{setShowForm(false);setPendingCoord(null);}}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800">{selPin?"Edit Pin":"New Pin"}</h3>
+              <button onClick={()=>{setShowForm(false);setPendingCoord(null);setSelPin(null);}} className="text-slate-400 hover:text-slate-700 text-xl">×</button>
+            </div>
+            <div className="p-5 space-y-3">
+              {/* Type selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 block">Pin Type</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {PIN_TYPES.map(t=>(
+                    <button key={t.id} onClick={()=>setPinForm(p=>({...p,type:t.id}))}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-lg border-2 transition-colors ${pinForm.type===t.id?`border-transparent text-white`:"border-slate-200 text-slate-600 bg-white hover:border-slate-300"}`}
+                      style={pinForm.type===t.id?{backgroundColor:t.color,borderColor:t.color}:{}}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div><Lbl t="Title" req/><Inp value={pinForm.title} onChange={setF("title")} placeholder="Brief title of the issue..."/></div>
+              <div><Lbl t="Description"/><Txta value={pinForm.desc} onChange={setF("desc")} rows={3} placeholder="Detailed description..."/></div>
+              <Grid2>
+                <div><Lbl t="Status"/><Sel value={pinForm.status} onChange={setF("status")}>{PIN_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>
+                <div><Lbl t="Trade"/><Sel value={pinForm.trade} onChange={setF("trade")}>{PIN_TRADES.map(t=><option key={t}>{t}</option>)}</Sel></div>
+                <div><Lbl t="Assigned To"/><Inp value={pinForm.assignedTo} onChange={setF("assignedTo")} placeholder="Name"/></div>
+                <div><Lbl t="Due Date"/><Inp type="date" value={pinForm.dueDate} onChange={setF("dueDate")}/></div>
+                <div><Lbl t="Created By"/><Inp value={pinForm.createdBy} onChange={setF("createdBy")} placeholder="Your name"/></div>
+                <div><Lbl t="Link to Module"/><Sel value={pinForm.linkedModule} onChange={setF("linkedModule")}>
+                  <option value="">None</option>
+                  {["tasks","snags","inspections","reports"].map(m=><option key={m} value={m}>{m.charAt(0).toUpperCase()+m.slice(1)}</option>)}
+                </Sel></div>
+              </Grid2>
+              <div className="flex gap-3 pt-2">
+                <Btn saving={saving} onClick={handleSavePin} label={selPin?"Update Pin":"Save Pin"}/>
+                <Btn onClick={()=>{setShowForm(false);setPendingCoord(null);setSelPin(null);}} label="Cancel" color="slate"/>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm Delete ── */}
+      {confirmDelId && (
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/60">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+            <div className="text-lg font-bold text-slate-800 mb-2">Delete Pin?</div>
+            <p className="text-sm text-slate-600 mb-4">This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={()=>handleDeletePin(confirmDelId)} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-xl text-sm">Delete</button>
+              <button onClick={()=>setConfirmDelId(null)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-xl text-sm">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, showToast }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
+  const [viewerDrawing, setViewerDrawing] = useState(null);
   const [form, setForm] = useState(EMPTY_DWG);
   const [search, setSearch] = useState("");
   const [fDisc, setFDisc] = useState("All");
@@ -2183,6 +3656,7 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
   const openCreate = () => { setForm(EMPTY_DWG); setSel(null); setMode("form"); };
   const openEdit = d => { setSel(d); setForm({ pid: d.pid, num: d.num, title: d.title, rev: d.rev, discipline: d.discipline, received: d.received, remarks: d.remarks, fileUrl: d.fileUrl, file: null }); setMode("form"); };
   const openView = d => { setSel(d); setMode("view"); };
+  const openViewer = d => { setViewerDrawing(d); };
   const goList = () => { setMode("list"); setSel(null); };
 
   const handleSave = async () => {
@@ -2201,6 +3675,16 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
 
   const filtered = drawings.filter(d => (fDisc === "All" || d.discipline === fDisc) && (fProject === "All" || d.pid === fProject) && (!search || `${d.num} ${d.title}`.toLowerCase().includes(search.toLowerCase())));
 
+  // Full-screen drawing viewer
+  if (viewerDrawing) return (
+    <DrawingViewer
+      drawing={viewerDrawing}
+      project={projects.find(p=>p.id===viewerDrawing.pid)}
+      onClose={()=>setViewerDrawing(null)}
+      showToast={showToast}
+    />
+  );
+
   if (mode === "view" && sel) return (
     <div className="p-6 max-w-2xl">
       {confirmId && <ConfirmDialog message="Delete this drawing?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
@@ -2213,8 +3697,15 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
           ))}
         </div>
         {sel.remarks && <div className="bg-slate-50 p-3 rounded-lg text-sm text-slate-700">{sel.remarks}</div>}
-        {sel.fileUrl && <a href={sel.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"><Icon name="eye" cls="w-4 h-4" />Open Drawing File</a>}
-        <div className="flex gap-3 pt-2"><Btn onClick={() => openEdit(sel)} label="Edit Drawing" /><Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" /></div>
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button onClick={()=>openViewer(sel)}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+            📍 Open Viewer + Markup
+          </button>
+          {sel.fileUrl && <a href={sel.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"><Icon name="eye" cls="w-4 h-4" />Open File</a>}
+          <Btn onClick={() => openEdit(sel)} label="Edit Drawing" />
+          <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+        </div>
       </FormCard>
     </div>
   );
@@ -2295,7 +3786,9 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
                   <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p => p.id === d.pid)?.number || "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-600">{fmtDate(d.received)}</td>
                   <td className="px-4 py-3">{d.fileUrl ? <a href={d.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1"><Icon name="eye" cls="w-3.5 h-3.5" />View</a> : <span className="text-xs text-slate-300">No file</span>}</td>
-                  <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={() => openView(d)} label="View" color="view" /><ActBtn onClick={() => openEdit(d)} label="Edit" color="edit" /><ActBtn onClick={() => setConfirmId(d.id)} label="Del" color="del" /></div></td>
+                  <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={() => openView(d)} label="View" color="view" />
+                    <button onClick={()=>openViewer(d)} className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-lg font-semibold hover:bg-amber-200 whitespace-nowrap">📍 Markup</button>
+                    <ActBtn onClick={() => openEdit(d)} label="Edit" color="edit" /><ActBtn onClick={() => setConfirmId(d.id)} label="Del" color="del" /></div></td>
                 </tr>
               ))}
             </tbody>
@@ -3026,11 +4519,22 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
 // ─────────────────────────────────────────────────────────────────────────────
 // USERS MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const USER_ROLES = ["Admin", "Project Manager", "Site Engineer", "QS Engineer", "MEP Engineer", "Foreman", "Document Controller", "Safety Officer"];
+const USER_ROLES = [
+  "Admin","Project Manager","QS Engineer","Site Engineer",
+  "MEP Engineer","Document Controller","Safety Officer",
+  "Foreman","Store Keeper","Procurement Officer","QAQC Engineer",
+];
+const USER_STATUSES = ["Active","Pending Approval","Rejected","Inactive"];
 const USER_STATUS = ["Active", "Inactive"];
 const EMPTY_USER = { email: "", full_name: "", role: "", phone: "", project_ids: [], status: "Active", notes: "" };
+const PENDING_BADGE = {
+  "Pending Approval": "bg-amber-100 text-amber-700 border-amber-300 font-bold",
+  "Rejected": "bg-red-100 text-red-700 border-red-200",
+  "Inactive": "bg-slate-100 text-slate-500 border-slate-200",
+  "Active": "bg-green-100 text-green-700 border-green-200",
+};
 
-const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, projects, showToast }) => {
+const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, projects, showToast, userIsAdmin, userProfile, permReqs = [], onUpdatePermReq }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_USER);
@@ -3185,6 +4689,15 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
             orientation="portrait" />}
         btn={<AddBtn onClick={openCreate} label="Add User" />} />
       <div className="flex flex-wrap gap-3 mb-4">
+        {userIsAdmin&&<PermRequestsPanel reqs={permReqs} onUpdate={onUpdatePermReq} showToast={showToast} isAdminUser={userIsAdmin}/>}
+        {userIsAdmin&&users.filter(u=>u.status==="Pending Approval").length>0&&(
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            <span className="text-xl">⏳</span>
+            <div className="flex-1 text-sm font-semibold text-amber-800">
+              {users.filter(u=>u.status==="Pending Approval").length} user{users.filter(u=>u.status==="Pending Approval").length>1?"s":""} awaiting approval
+            </div>
+          </div>
+        )}
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email, role..." />
         <Sel value={fRole} onChange={e => setFRole(e.target.value)} className="w-auto"><option value="All">All Roles</option>{USER_ROLES.map(r => <option key={r}>{r}</option>)}</Sel>
         <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{USER_STATUS.map(s => <option key={s}>{s}</option>)}</Sel>
@@ -3972,7 +5485,1271 @@ const PAGE_TITLES = {
   snags: "Snag / Punch List", reports: "Daily Site Reports",
   inspections: "Inspection Request Tracker", drawings: "Drawing Register",
   photos: "Progress Photos", subcontractors: "Subcontractors",
+  users: "Team Members", mr: "Material Requests", lpo: "Local Purchase Orders",
+  store: "Material Store",
+  noc: "Authority NOC & Permits",
 };
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MATERIAL STORE HOOKS
+// ─────────────────────────────────────────────────────────────────────────────
+function useStore() {
+  const [stock, setStock] = useState([]);
+  const [receipts, setReceipts] = useState([]);
+  const [issues, setIssues] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    const [sRes, rRes, iRes] = await Promise.all([
+      supabase.from("material_stock").select("*").order("material_name"),
+      supabase.from("material_receipts").select("*, material_receipt_items(*)").order("created_at", { ascending: false }),
+      supabase.from("material_issues").select("*, material_issue_items(*)").order("created_at", { ascending: false }),
+    ]);
+    if (sRes.data) setStock(sRes.data.map(s => ({
+      id: s.id, code: s.material_code || "", name: s.material_name || "",
+      category: s.category || "", unit: s.unit || "Nos",
+      pid: s.project_id || "", location: s.store_location || "",
+      opening: Number(s.opening_stock) || 0, received: Number(s.received_quantity) || 0,
+      issued: Number(s.issued_quantity) || 0,
+      balance: Number(s.balance_stock) || 0,
+      minLevel: Number(s.minimum_stock_level) || 0,
+      supplier: s.supplier_name || "", rate: Number(s.last_purchase_rate) || 0,
+      status: s.status || "Available", remarks: s.remarks || "",
+    })));
+    if (rRes.data) setReceipts(rRes.data.map(r => ({
+      id: r.id, grnNum: r.grn_number || "", pid: r.project_id || "",
+      lpoId: r.lpo_id || "", supplier: r.supplier_name || "",
+      deliveryNote: r.delivery_note_number || "", receivedDate: r.received_date || "",
+      receivedBy: r.received_by || "", remarks: r.remarks || "",
+      attachUrl: r.attachment_url || "",
+      items: (r.material_receipt_items || []).map(i => ({
+        id: i.id, stockId: i.material_stock_id || "", name: i.material_name || "",
+        unit: i.unit || "", qty: Number(i.quantity_received) || 0, remarks: i.remarks || "",
+      })),
+    })));
+    if (iRes.data) setIssues(iRes.data.map(i => ({
+      id: i.id, issueNum: i.issue_number || "", pid: i.project_id || "",
+      issuedTo: i.issued_to || "", dept: i.department_trade || "",
+      location: i.location_area || "", issueDate: i.issue_date || "",
+      issuedBy: i.issued_by || "", purpose: i.purpose || "", remarks: i.remarks || "",
+      items: (i.material_issue_items || []).map(it => ({
+        id: it.id, stockId: it.material_stock_id || "", name: it.material_name || "",
+        unit: it.unit || "", qty: Number(it.quantity_issued) || 0, remarks: it.remarks || "",
+      })),
+    })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Auto-status helper
+  const computeStatus = (balance, minLevel) => {
+    if (balance <= 0) return "Out of Stock";
+    if (balance <= minLevel) return "Low Stock";
+    return "Available";
+  };
+
+  // ── STOCK CRUD ──
+  const addStock = async (f) => {
+    const balance = (Number(f.opening)||0) + (Number(f.received)||0) - (Number(f.issued)||0);
+    const status = computeStatus(balance, Number(f.minLevel)||0);
+    const { error } = await supabase.from("material_stock").insert([{
+      material_code: f.code, material_name: f.name, category: f.category,
+      unit: f.unit, project_id: f.pid || null, store_location: f.location,
+      opening_stock: Number(f.opening)||0, received_quantity: Number(f.received)||0,
+      issued_quantity: Number(f.issued)||0, balance_stock: balance,
+      minimum_stock_level: Number(f.minLevel)||0, supplier_name: f.supplier,
+      last_purchase_rate: Number(f.rate)||0, status, remarks: f.remarks,
+    }]);
+    if (error) return { ok: false, error: error.message };
+    await loadAll(); return { ok: true };
+  };
+  const updateStock = async (id, f) => {
+    const balance = (Number(f.opening)||0) + (Number(f.received)||0) - (Number(f.issued)||0);
+    const status = computeStatus(balance, Number(f.minLevel)||0);
+    const { error } = await supabase.from("material_stock").update({
+      material_code: f.code, material_name: f.name, category: f.category,
+      unit: f.unit, project_id: f.pid || null, store_location: f.location,
+      opening_stock: Number(f.opening)||0, received_quantity: Number(f.received)||0,
+      issued_quantity: Number(f.issued)||0, balance_stock: balance,
+      minimum_stock_level: Number(f.minLevel)||0, supplier_name: f.supplier,
+      last_purchase_rate: Number(f.rate)||0, status: f.status || status, remarks: f.remarks,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadAll(); return { ok: true };
+  };
+  const removeStock = async (id) => {
+    const { error } = await supabase.from("material_stock").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadAll(); return { ok: true };
+  };
+
+  // ── RECEIPTS ──
+  const getNextGRN = async () => {
+    const { data } = await supabase.from("material_receipts").select("grn_number").order("created_at", { ascending: false }).limit(1);
+    const last = data?.[0]?.grn_number || "GRN-000";
+    const n = parseInt(last.replace("GRN-", "")) || 0;
+    return `GRN-${String(n + 1).padStart(3, "0")}`;
+  };
+  const addReceipt = async (f) => {
+    const grnNum = await getNextGRN();
+    const { data: rData, error } = await supabase.from("material_receipts").insert([{
+      grn_number: grnNum, project_id: f.pid || null, lpo_id: f.lpoId || null,
+      supplier_name: f.supplier, delivery_note_number: f.deliveryNote,
+      received_date: f.receivedDate || null, received_by: f.receivedBy, remarks: f.remarks,
+    }]).select().single();
+    if (error) return { ok: false, error: error.message };
+    // Insert receipt items and update stock
+    for (const it of (f.items || []).filter(i => i.stockId && i.qty > 0)) {
+      await supabase.from("material_receipt_items").insert([{
+        receipt_id: rData.id, material_stock_id: it.stockId,
+        material_name: it.name, unit: it.unit,
+        quantity_received: Number(it.qty), remarks: it.remarks,
+      }]);
+      // Increase stock
+      const { data: st } = await supabase.from("material_stock").select("received_quantity,balance_stock,minimum_stock_level").eq("id", it.stockId).single();
+      if (st) {
+        const newRec = (st.received_quantity || 0) + Number(it.qty);
+        const newBal = (st.balance_stock || 0) + Number(it.qty);
+        await supabase.from("material_stock").update({
+          received_quantity: newRec, balance_stock: newBal,
+          status: newBal <= 0 ? "Out of Stock" : newBal <= (st.minimum_stock_level || 0) ? "Low Stock" : "Available",
+        }).eq("id", it.stockId);
+      }
+    }
+    // Update LPO delivery if linked
+    if (f.lpoId) {
+      const { data: lpo } = await supabase.from("lpo").select("status").eq("id", f.lpoId).single();
+      if (lpo) await supabase.from("lpo").update({ delivery_status: "Partially Delivered", status: "Partially Delivered" }).eq("id", f.lpoId);
+    }
+    await loadAll(); return { ok: true, grnNum };
+  };
+  const removeReceipt = async (id) => {
+    await supabase.from("material_receipt_items").delete().eq("receipt_id", id);
+    const { error } = await supabase.from("material_receipts").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadAll(); return { ok: true };
+  };
+
+  // ── ISSUES ──
+  const getNextIssueNum = async () => {
+    const { data } = await supabase.from("material_issues").select("issue_number").order("created_at", { ascending: false }).limit(1);
+    const last = data?.[0]?.issue_number || "ISS-000";
+    const n = parseInt(last.replace("ISS-", "")) || 0;
+    return `ISS-${String(n + 1).padStart(3, "0")}`;
+  };
+  const addIssue = async (f) => {
+    // Validate stock availability
+    for (const it of (f.items || []).filter(i => i.stockId && i.qty > 0)) {
+      const { data: st } = await supabase.from("material_stock").select("balance_stock,material_name").eq("id", it.stockId).single();
+      if (!st || (st.balance_stock || 0) < Number(it.qty)) {
+        return { ok: false, error: `Insufficient stock for "${st?.material_name || it.name}". Available: ${st?.balance_stock || 0}` };
+      }
+    }
+    const issueNum = await getNextIssueNum();
+    const { data: iData, error } = await supabase.from("material_issues").insert([{
+      issue_number: issueNum, project_id: f.pid || null,
+      issued_to: f.issuedTo, department_trade: f.dept,
+      location_area: f.location, issue_date: f.issueDate || null,
+      issued_by: f.issuedBy, purpose: f.purpose, remarks: f.remarks,
+    }]).select().single();
+    if (error) return { ok: false, error: error.message };
+    for (const it of (f.items || []).filter(i => i.stockId && i.qty > 0)) {
+      await supabase.from("material_issue_items").insert([{
+        issue_id: iData.id, material_stock_id: it.stockId,
+        material_name: it.name, unit: it.unit,
+        quantity_issued: Number(it.qty), remarks: it.remarks,
+      }]);
+      // Decrease stock
+      const { data: st } = await supabase.from("material_stock").select("issued_quantity,balance_stock,minimum_stock_level").eq("id", it.stockId).single();
+      if (st) {
+        const newIss = (st.issued_quantity || 0) + Number(it.qty);
+        const newBal = (st.balance_stock || 0) - Number(it.qty);
+        await supabase.from("material_stock").update({
+          issued_quantity: newIss, balance_stock: Math.max(0, newBal),
+          status: newBal <= 0 ? "Out of Stock" : newBal <= (st.minimum_stock_level || 0) ? "Low Stock" : "Available",
+        }).eq("id", it.stockId);
+      }
+    }
+    await loadAll(); return { ok: true, issueNum };
+  };
+  const removeIssue = async (id) => {
+    await supabase.from("material_issue_items").delete().eq("issue_id", id);
+    const { error } = await supabase.from("material_issues").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadAll(); return { ok: true };
+  };
+
+  return { stock, receipts, issues, loading,
+    addStock, updateStock, removeStock,
+    addReceipt, removeReceipt,
+    addIssue, removeIssue, reload: loadAll };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MATERIAL STORE MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+const STOCK_STATUS = ["Available","Low Stock","Out of Stock","Inactive"];
+const STOCK_CATS = ["Cement & Concrete","Steel & Rebar","Block & Brick","Sand & Aggregate","Tiles & Marble","Waterproofing","Electrical","Plumbing","Paint","Timber & Formwork","Safety","Tools","Other"];
+const DEPT_LIST = ["Civil","MEP","Architecture","QAQC","Safety","Store","Finishing"];
+
+const ST_BADGE = {
+  "Available":"bg-green-100 text-green-700 border-green-200",
+  "Low Stock":"bg-amber-100 text-amber-700 border-amber-200",
+  "Out of Stock":"bg-red-100 text-red-700 border-red-200",
+  "Inactive":"bg-slate-100 text-slate-500 border-slate-200",
+};
+
+const EMPTY_STOCK_ITEM = () => ({ id: Date.now()+Math.random(), stockId:"", name:"", unit:"Nos", qty:"", remarks:"" });
+const EMPTY_STOCK_FORM = () => ({ code:"", name:"", category:"Cement & Concrete", unit:"Nos", pid:"", location:"", opening:"0", received:"0", issued:"0", minLevel:"0", supplier:"", rate:"", status:"Available", remarks:"" });
+const EMPTY_REC_FORM = (lpos=[]) => ({ pid:"", lpoId:"", supplier:"", deliveryNote:"", receivedDate: new Date().toISOString().split("T")[0], receivedBy:"", remarks:"", items:[EMPTY_STOCK_ITEM()] });
+const EMPTY_ISS_FORM = () => ({ pid:"", issuedTo:"", dept:"Civil", location:"", issueDate: new Date().toISOString().split("T")[0], issuedBy:"", purpose:"", remarks:"", items:[EMPTY_STOCK_ITEM()] });
+
+const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateStock, onRemoveStock, onAddReceipt, onRemoveReceipt, onAddIssue, onRemoveIssue, projects, lpos, showToast }) => {
+  const [tab, setTab] = useState("stock"); // stock | receipts | issues
+  const [mode, setMode] = useState("list"); // list | form | view
+  const [subMode, setSubMode] = useState(""); // "receive" | "issue" for quick actions
+  const [sel, setSel] = useState(null);
+  const [form, setForm] = useState(EMPTY_STOCK_FORM());
+  const [search, setSearch] = useState("");
+  const [fProject, setFProject] = useState("All");
+  const [fCat, setFCat] = useState("All");
+  const [fStatus, setFStatus] = useState("All");
+  const [fLowOnly, setFLowOnly] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+  const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
+
+  // Receipt/Issue item helpers
+  const addItem = () => setForm(p => ({...p, items:[...(p.items||[]), EMPTY_STOCK_ITEM()]}));
+  const removeItem = id => setForm(p => ({...p, items: p.items.filter(i => i.id!==id)}));
+  const setItem = (id,k,v) => setForm(p => ({...p, items: p.items.map(i => i.id===id ? {...i,[k]:v} : i)}));
+  const setItemStock = (id, stockId) => {
+    const st = stock.find(s => s.id===stockId);
+    setForm(p => ({...p, items: p.items.map(i => i.id===id ? {...i, stockId, name:st?.name||"", unit:st?.unit||"Nos"} : i)}));
+  };
+
+  const goList = () => { setMode("list"); setSel(null); setSubMode(""); };
+
+  // ── COMPUTED ──
+  const filteredStock = stock.filter(s => {
+    if (fProject!=="All" && s.pid!==fProject) return false;
+    if (fCat!=="All" && s.category!==fCat) return false;
+    if (fStatus!=="All" && s.status!==fStatus) return false;
+    if (fLowOnly && s.status!=="Low Stock") return false;
+    if (search && !`${s.code} ${s.name} ${s.supplier}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0,0,0,0);
+  const recThisMonth = receipts.reduce((sum,r) => {
+    if (!r.receivedDate || new Date(r.receivedDate) < thisMonth) return sum;
+    return sum + r.items.reduce((s,i)=>s+i.qty,0);
+  }, 0);
+  const issThisMonth = issues.reduce((sum,i) => {
+    if (!i.issueDate || new Date(i.issueDate) < thisMonth) return sum;
+    return sum + i.items.reduce((s,it)=>s+it.qty,0);
+  }, 0);
+
+  // ── SAVE HANDLERS ──
+  const handleSaveStock = async () => {
+    if (!form.name.trim()) { showToast("Material name required","error"); return; }
+    setSaving(true);
+    const res = sel ? await onUpdateStock(sel.id, form) : await onAddStock(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
+    showToast(sel ? "Stock updated!" : "Stock item created!"); goList();
+  };
+  const handleSaveReceipt = async () => {
+    if (!form.supplier.trim()) { showToast("Supplier required","error"); return; }
+    if (!(form.items||[]).some(i=>i.stockId&&i.qty>0)) { showToast("Add at least one item","error"); return; }
+    setSaving(true);
+    const res = await onAddReceipt(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
+    showToast("Receipt saved: "+res.grnNum); goList();
+  };
+  const handleSaveIssue = async () => {
+    if (!form.issuedTo.trim()) { showToast("Issued to required","error"); return; }
+    if (!(form.items||[]).some(i=>i.stockId&&i.qty>0)) { showToast("Add at least one item","error"); return; }
+    setSaving(true);
+    const res = await onAddIssue(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
+    showToast("Issue saved: "+res.issueNum); goList();
+  };
+  const handleDelete = async (type, id) => {
+    let res;
+    if (type==="stock") res = await onRemoveStock(id);
+    else if (type==="receipt") res = await onRemoveReceipt(id);
+    else res = await onRemoveIssue(id);
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("Deleted!"); setConfirmId(null);
+  };
+
+  // ── EXPORT ──
+  const exportStockExcel = () => {
+    const cols = [
+      {header:"Code",key:"code",width:14},{header:"Name",key:"name",width:32},{header:"Category",key:"category",width:20},
+      {header:"Unit",key:"unit",width:10},{header:"Location",key:"location",width:18},
+      {header:"Opening",key:"opening",width:12},{header:"Received",key:"received",width:12},
+      {header:"Issued",key:"issued",width:12},{header:"Balance",key:"balance",width:12},
+      {header:"Min Level",key:"minLevel",width:12},{header:"Supplier",key:"supplier",width:24},
+      {header:"Rate (AED)",key:"rate",width:14},{header:"Status",key:"status",width:14},{header:"Remarks",key:"remarks",width:24},
+    ];
+    const exportData = filteredStock.map(s=>({...s, projectNum:(projects.find(p=>p.id===s.pid)||{}).number||"—"}));
+    exportToExcel(exportData, cols, "Stock_Balance_Report");
+  };
+  const exportStockPDF = () => {
+    const cols = [
+      {header:"Code",key:"code",pdfWidth:18},{header:"Name",key:"name",pdfWidth:42},
+      {header:"Cat.",key:"category",pdfWidth:22},{header:"Unit",key:"unit",pdfWidth:10},
+      {header:"Opening",key:"opening",pdfWidth:14},{header:"Received",key:"received",pdfWidth:14},
+      {header:"Issued",key:"issued",pdfWidth:14},{header:"Balance",key:"balance",pdfWidth:14},
+      {header:"Min",key:"minLevel",pdfWidth:10},{header:"Status",key:"status",pdfWidth:18},
+    ];
+    exportToPDF(filteredStock, cols, "Stock_Balance_Report", "Stock Balance Report", "landscape");
+  };
+
+  // ── TABS BAR ──
+  const TABS = [
+    {id:"stock", label:"📦 Stock Register", count:stock.length},
+    {id:"receipts", label:"📥 Material Receipts", count:receipts.length},
+    {id:"issues", label:"📤 Material Issues", count:issues.length},
+  ];
+
+  // ── RECEIPT FORM ──
+  if ((tab==="receipts"||subMode==="receive") && mode==="form") return (
+    <div className="p-6 max-w-3xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">
+        {subMode==="receive"&&sel ? `Receive Material → ${sel.name}` : "New Material Receipt (GRN)"}
+      </h2>
+      <div className="space-y-4">
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Receipt Details</div>
+          <Grid2>
+            <div><Lbl t="Project"/><Sel value={form.pid} onChange={set("pid")}><option value="">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Linked LPO"/><Sel value={form.lpoId} onChange={e=>{ const l=lpos.find(x=>x.id===e.target.value); setForm(p=>({...p,lpoId:e.target.value,supplier:l?.supplierName||p.supplier})); }}><option value="">None</option>{lpos.map(l=><option key={l.id} value={l.id}>{l.lpoNum} — {l.supplierName}</option>)}</Sel></div>
+            <div><Lbl t="Supplier Name" req/><Inp value={form.supplier} onChange={set("supplier")} placeholder="Supplier"/></div>
+            <div><Lbl t="Delivery Note No."/><Inp value={form.deliveryNote} onChange={set("deliveryNote")} placeholder="DN-XXXX"/></div>
+            <div><Lbl t="Received Date"/><Inp type="date" value={form.receivedDate} onChange={set("receivedDate")}/></div>
+            <div><Lbl t="Received By"/><Inp value={form.receivedBy} onChange={set("receivedBy")} placeholder="Name"/></div>
+          </Grid2>
+          <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
+        </FormCard>
+        {/* Items */}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <span className="font-semibold text-slate-700 text-sm">Items Received</span>
+            <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
+          </div>
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
+            <thead className="bg-slate-50"><tr>{["#","Material*","Unit","Qty Received*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+            <tbody>{(form.items||[]).map((it,idx)=>(
+              <tr key={it.id} className="border-t border-slate-100">
+                <td className="px-3 py-1 text-xs text-slate-400 w-8">{idx+1}</td>
+                <td className="px-2 py-1">
+                  <Sel value={it.stockId} onChange={e=>setItemStock(it.id,e.target.value)}>
+                    <option value="">Select material...</option>
+                    {stock.map(s=><option key={s.id} value={s.id}>{s.code ? `[${s.code}] ` : ""}{s.name} ({s.unit})</option>)}
+                  </Sel>
+                </td>
+                <td className="px-2 py-1 w-16"><span className="text-xs text-slate-500 font-semibold">{it.unit||"—"}</span></td>
+                <td className="px-2 py-1 w-24"><Inp type="number" value={it.qty} onChange={e=>setItem(it.id,"qty",e.target.value)} placeholder="0"/></td>
+                <td className="px-2 py-1"><Inp value={it.remarks} onChange={e=>setItem(it.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+                <td className="px-2 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={(form.items||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </div>
+        <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveReceipt} label="Save GRN"/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+      </div>
+    </div>
+  );
+
+  // ── ISSUE FORM ──
+  if ((tab==="issues"||subMode==="issue") && mode==="form") return (
+    <div className="p-6 max-w-3xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">New Material Issue</h2>
+      <div className="space-y-4">
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Issue Details</div>
+          <Grid2>
+            <div><Lbl t="Project"/><Sel value={form.pid} onChange={set("pid")}><option value="">All</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Issue Date"/><Inp type="date" value={form.issueDate} onChange={set("issueDate")}/></div>
+            <div><Lbl t="Issued To" req/><Inp value={form.issuedTo} onChange={set("issuedTo")} placeholder="Name / Subcontractor"/></div>
+            <div><Lbl t="Department / Trade"/><Sel value={form.dept} onChange={set("dept")}>{DEPT_LIST.map(d=><option key={d}>{d}</option>)}</Sel></div>
+            <div><Lbl t="Location / Area"/><Inp value={form.location} onChange={set("location")} placeholder="Floor 3, Column Grid A"/></div>
+            <div><Lbl t="Issued By"/><Inp value={form.issuedBy} onChange={set("issuedBy")} placeholder="Store keeper"/></div>
+          </Grid2>
+          <div><Lbl t="Purpose"/><Txta value={form.purpose} onChange={set("purpose")} rows={2} placeholder="Purpose of issue..."/></div>
+        </FormCard>
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <span className="font-semibold text-slate-700 text-sm">Items to Issue</span>
+            <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
+          </div>
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
+            <thead className="bg-slate-50"><tr>{["#","Material*","Available","Qty Issue*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+            <tbody>{(form.items||[]).map((it,idx)=>{
+              const st = stock.find(s=>s.id===it.stockId);
+              const overLimit = it.qty && st && Number(it.qty) > st.balance;
+              return (
+                <tr key={it.id} className="border-t border-slate-100">
+                  <td className="px-3 py-1 text-xs text-slate-400 w-8">{idx+1}</td>
+                  <td className="px-2 py-1">
+                    <Sel value={it.stockId} onChange={e=>setItemStock(it.id,e.target.value)}>
+                      <option value="">Select material...</option>
+                      {stock.filter(s=>s.balance>0).map(s=><option key={s.id} value={s.id}>{s.code?`[${s.code}] `:""}{s.name}</option>)}
+                    </Sel>
+                  </td>
+                  <td className="px-2 py-1 w-20">
+                    {st&&<span className={`text-xs font-bold ${st.balance<=0?"text-red-600":st.balance<=st.minLevel?"text-amber-600":"text-green-600"}`}>{st.balance} {st.unit}</span>}
+                  </td>
+                  <td className="px-2 py-1 w-24">
+                    <Inp type="number" value={it.qty} onChange={e=>setItem(it.id,"qty",e.target.value)} placeholder="0" className={overLimit?"border-red-400":""} />
+                    {overLimit&&<div className="text-red-500 text-xs mt-0.5">Exceeds stock!</div>}
+                  </td>
+                  <td className="px-2 py-1"><Inp value={it.remarks} onChange={e=>setItem(it.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+                  <td className="px-2 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={(form.items||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+                </tr>
+              );
+            })}</tbody>
+          </table></div>
+        </div>
+        <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveIssue} label="Issue Materials"/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+      </div>
+    </div>
+  );
+
+  // ── STOCK FORM ──
+  if (tab==="stock" && mode==="form") return (
+    <div className="p-6 max-w-2xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?"Edit Stock Item":"New Stock Item"}</h2>
+      <div className="space-y-4">
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Material Details</div>
+          <Grid2>
+            <div><Lbl t="Material Code"/><Inp value={form.code} onChange={set("code")} placeholder="e.g. CEM-001"/></div>
+            <div><Lbl t="Material Name" req/><Inp value={form.name} onChange={set("name")} placeholder="OPC Cement 50kg"/></div>
+            <div><Lbl t="Category"/><Sel value={form.category} onChange={set("category")}>{STOCK_CATS.map(c=><option key={c}>{c}</option>)}</Sel></div>
+            <div><Lbl t="Unit"/><Sel value={form.unit} onChange={set("unit")}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel></div>
+            <div><Lbl t="Project"/><Sel value={form.pid} onChange={set("pid")}><option value="">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Store Location"/><Inp value={form.location} onChange={set("location")} placeholder="Site Store A"/></div>
+          </Grid2>
+        </FormCard>
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Stock Quantities</div>
+          <Grid2>
+            <div><Lbl t="Opening Stock"/><Inp type="number" value={form.opening} onChange={set("opening")} placeholder="0"/></div>
+            <div><Lbl t="Minimum Stock Level"/><Inp type="number" value={form.minLevel} onChange={set("minLevel")} placeholder="0"/></div>
+            <div><Lbl t="Supplier"/><Inp value={form.supplier} onChange={set("supplier")} placeholder="Supplier name"/></div>
+            <div><Lbl t="Last Purchase Rate (AED)"/><Inp type="number" value={form.rate} onChange={set("rate")} placeholder="0.00"/></div>
+          </Grid2>
+          {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{STOCK_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
+          <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
+        </FormCard>
+        <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveStock} label={sel?"Update":"Add to Stock"}/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+      </div>
+    </div>
+  );
+
+  // ── MAIN LIST VIEW ──
+  return (
+    <div className="p-6">
+      {confirmId&&<ConfirmDialog message="Delete permanently?" onConfirm={()=>handleDelete(confirmId.type,confirmId.id)} onCancel={()=>setConfirmId(null)}/>}
+
+      {/* Dashboard Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
+        {[
+          {l:"Total Materials",v:stock.length,c:"bg-blue-500"},
+          {l:"Low Stock",v:stock.filter(s=>s.status==="Low Stock").length,c:"bg-amber-500"},
+          {l:"Out of Stock",v:stock.filter(s=>s.status==="Out of Stock").length,c:"bg-red-500"},
+          {l:"Receipts (Month)",v:recThisMonth,c:"bg-green-500"},
+          {l:"Issues (Month)",v:issThisMonth,c:"bg-indigo-500"},
+          {l:"Pending LPOs",v:lpos.filter(l=>!["Fully Delivered","Completed","Cancelled"].includes(l.status)).length,c:"bg-orange-500"},
+        ].map(c=>(
+          <div key={c.l} className={`${c.c} rounded-xl p-3 text-white`}>
+            <div className="text-2xl font-bold">{c.v}</div>
+            <div className="text-xs opacity-80 mt-0.5">{c.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tab Bar */}
+      <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-xl w-fit">
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>{setTab(t.id);setMode("list");setSel(null);}}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${tab===t.id?"bg-white text-slate-800 shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
+            {t.label} <span className="text-xs opacity-60">({t.count})</span>
+          </button>
+        ))}
+      </div>
+
+      {/* STOCK TAB */}
+      {tab==="stock"&&(
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex flex-wrap gap-2">
+              <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Code, name, supplier..."/>
+              <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+              <Sel value={fCat} onChange={e=>setFCat(e.target.value)} className="w-auto"><option value="All">All Categories</option>{STOCK_CATS.map(c=><option key={c}>{c}</option>)}</Sel>
+              <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{STOCK_STATUS.map(s=><option key={s}>{s}</option>)}</Sel>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 cursor-pointer"><input type="checkbox" checked={fLowOnly} onChange={e=>setFLowOnly(e.target.checked)} className="rounded"/>Low Stock Only</label>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={exportStockExcel} className="text-xs bg-green-50 border border-green-200 text-green-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-green-100">⬇ Excel</button>
+              <button onClick={exportStockPDF} className="text-xs bg-red-50 border border-red-200 text-red-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100">⬇ PDF</button>
+              <AddBtn onClick={()=>{setForm(EMPTY_STOCK_FORM());setSel(null);setMode("form");}} label="Add Material"/>
+            </div>
+          </div>
+          {loading?<Spinner/>:filteredStock.length===0?<EmptyState msg="No stock items found" onCreate={()=>{setForm(EMPTY_STOCK_FORM());setSel(null);setMode("form");}}/>:(
+            <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+              <table className="w-full text-sm min-w-[1000px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>{["Code","Name","Category","Unit","Project","Opening","Received","Issued","Balance","Min Level","Status","Actions"].map(h=><th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredStock.map(s=>{
+                    const proj = projects.find(p=>p.id===s.pid);
+                    return (
+                      <tr key={s.id} className={`hover:bg-slate-50 transition-colors ${s.status==="Out of Stock"?"bg-red-50/30":s.status==="Low Stock"?"bg-amber-50/30":""}`}>
+                        <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{s.code||"—"}</td>
+                        <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[160px] truncate">{s.name}</td>
+                        <td className="px-3 py-2.5 text-xs text-slate-600">{s.category}</td>
+                        <td className="px-3 py-2.5 text-xs text-slate-600">{s.unit}</td>
+                        <td className="px-3 py-2.5 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+                        <td className="px-3 py-2.5 text-xs text-center">{s.opening}</td>
+                        <td className="px-3 py-2.5 text-xs text-center text-green-700 font-semibold">{s.received}</td>
+                        <td className="px-3 py-2.5 text-xs text-center text-red-600 font-semibold">{s.issued}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`text-sm font-bold ${s.balance<=0?"text-red-700":s.balance<=s.minLevel?"text-amber-600":"text-slate-800"}`}>{s.balance}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-center text-slate-500">{s.minLevel}</td>
+                        <td className="px-3 py-2.5"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${ST_BADGE[s.status]||ST_BADGE.Inactive}`}>{s.status}</span></td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex gap-1 flex-wrap">
+                            <ActBtn onClick={()=>{setSel(s);setForm({code:s.code,name:s.name,category:s.category,unit:s.unit,pid:s.pid,location:s.location,opening:String(s.opening),received:String(s.received),issued:String(s.issued),minLevel:String(s.minLevel),supplier:s.supplier,rate:String(s.rate),status:s.status,remarks:s.remarks});setMode("form");}} label="Edit" color="edit"/>
+                            <button onClick={()=>{setSel(s);setSubMode("receive");setForm({...EMPTY_REC_FORM(),items:[{...EMPTY_STOCK_ITEM(),stockId:s.id,name:s.name,unit:s.unit}]});setTab("receipts");setMode("form");}} className="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-lg font-semibold hover:bg-green-200">+Recv</button>
+                            <button onClick={()=>{setSel(s);setSubMode("issue");setForm({...EMPTY_ISS_FORM(),items:[{...EMPTY_STOCK_ITEM(),stockId:s.id,name:s.name,unit:s.unit}]});setTab("issues");setMode("form");}} className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-lg font-semibold hover:bg-orange-200">Issue</button>
+                            <ActBtn onClick={()=>setConfirmId({type:"stock",id:s.id})} label="Del" color="del"/>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* RECEIPTS TAB */}
+      {tab==="receipts"&&(
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="GRN, supplier..."/>
+            <AddBtn onClick={()=>{setForm(EMPTY_REC_FORM());setSel(null);setMode("form");}} label="New Receipt (GRN)"/>
+          </div>
+          {loading?<Spinner/>:receipts.length===0?<EmptyState msg="No receipts yet" onCreate={()=>{setForm(EMPTY_REC_FORM());setSel(null);setMode("form");}}/>:(
+            <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+              <table className="w-full text-sm min-w-[800px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>{["GRN No.","Project","Supplier","DN No.","Received Date","By","Items","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {receipts.filter(r=>!search||`${r.grnNum} ${r.supplier}`.toLowerCase().includes(search.toLowerCase())).map(r=>{
+                    const proj=projects.find(p=>p.id===r.pid);
+                    return (
+                      <tr key={r.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-green-700">{r.grnNum}</td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+                        <td className="px-4 py-3 font-medium text-slate-800 max-w-[140px] truncate">{r.supplier}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{r.deliveryNote||"—"}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.receivedDate)}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{r.receivedBy||"—"}</td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-0.5">{r.items.map(i=><div key={i.id} className="text-xs text-slate-600"><span className="font-semibold">{i.name}</span>: {i.qty} {i.unit}</div>)}</div>
+                        </td>
+                        <td className="px-4 py-3"><ActBtn onClick={()=>setConfirmId({type:"receipt",id:r.id})} label="Del" color="del"/></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ISSUES TAB */}
+      {tab==="issues"&&(
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Issue no, issued to..."/>
+            <AddBtn onClick={()=>{setForm(EMPTY_ISS_FORM());setSel(null);setMode("form");}} label="Issue Material"/>
+          </div>
+          {loading?<Spinner/>:issues.length===0?<EmptyState msg="No issues yet" onCreate={()=>{setForm(EMPTY_ISS_FORM());setSel(null);setMode("form");}}/>:(
+            <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+              <table className="w-full text-sm min-w-[800px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>{["Issue No.","Project","Issued To","Dept","Location","Date","Items","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {issues.filter(i=>!search||`${i.issueNum} ${i.issuedTo}`.toLowerCase().includes(search.toLowerCase())).map(i=>{
+                    const proj=projects.find(p=>p.id===i.pid);
+                    return (
+                      <tr key={i.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-mono text-xs font-bold text-orange-700">{i.issueNum}</td>
+                        <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+                        <td className="px-4 py-3 font-medium text-slate-800">{i.issuedTo}</td>
+                        <td className="px-4 py-3 text-xs"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{i.dept}</span></td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{i.location||"—"}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(i.issueDate)}</td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-0.5">{i.items.map(it=><div key={it.id} className="text-xs text-slate-600"><span className="font-semibold">{it.name}</span>: {it.qty} {it.unit}</div>)}</div>
+                        </td>
+                        <td className="px-4 py-3"><ActBtn onClick={()=>setConfirmId({type:"issue",id:i.id})} label="Del" color="del"/></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTHORITY NOC & PERMITS HOOK
+// ─────────────────────────────────────────────────────────────────────────────
+function useNOCs() {
+  const [nocs, setNocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("authority_nocs")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) { console.error("NOCs:", error.message); setLoading(false); return; }
+    if (data) setNocs(data.map(n => ({
+      id: n.id,
+      nocNum: n.noc_number || "",
+      pid: n.project_id || "",
+      authority: n.authority_name || "",
+      nocType: n.noc_type || "",
+      desc: n.description || "",
+      submissionDate: n.submission_date || "",
+      approvalDate: n.approval_date || "",
+      expiryDate: n.expiry_date || "",
+      status: n.status || "Draft",
+      priority: n.priority || "Medium",
+      responsible: n.responsible_person || "",
+      dept: n.department || "",
+      subRef: n.submission_reference || "",
+      portalId: n.portal_id || "",
+      appType: n.application_type || "Online",
+      approvalRef: n.approval_reference || "",
+      fileUrl: n.attachment_url || "",
+      remarks: n.remarks || "",
+    })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const getNextNum = async () => {
+    const y = new Date().getFullYear();
+    const { data } = await supabase
+      .from("authority_nocs")
+      .select("noc_number")
+      .like("noc_number", `NOC-${y}-%`)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const last = data?.[0]?.noc_number || `NOC-${y}-000`;
+    const n = parseInt(last.split("-")[2] || "0") || 0;
+    return `NOC-${y}-${String(n + 1).padStart(3, "0")}`;
+  };
+
+  const uploadFile = async (file) => {
+    const ext = file.name.split(".").pop();
+    const name = `noc_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from("site-photos").upload(name, file);
+    if (error) { console.error("Upload:", error.message); return null; }
+    const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(name);
+    return publicUrl;
+  };
+
+  const add = async (f) => {
+    const nocNum = await getNextNum();
+    let fileUrl = null;
+    if (f.file) fileUrl = await uploadFile(f.file);
+    const { error } = await supabase.from("authority_nocs").insert([{
+      noc_number: nocNum, project_id: f.pid || null,
+      authority_name: f.authority, noc_type: f.nocType,
+      description: f.desc,
+      submission_date: f.submissionDate || null,
+      approval_date: f.approvalDate || null,
+      expiry_date: f.expiryDate || null,
+      status: f.status || "Draft", priority: f.priority || "Medium",
+      responsible_person: f.responsible, department: f.dept,
+      submission_reference: f.subRef, portal_id: f.portalId,
+      application_type: f.appType, approval_reference: f.approvalRef,
+      attachment_url: fileUrl, remarks: f.remarks,
+    }]);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true, nocNum };
+  };
+
+  const update = async (id, f) => {
+    let fileUrl = f.fileUrl;
+    if (f.file) fileUrl = await uploadFile(f.file);
+    const { error } = await supabase.from("authority_nocs").update({
+      project_id: f.pid || null, authority_name: f.authority,
+      noc_type: f.nocType, description: f.desc,
+      submission_date: f.submissionDate || null,
+      approval_date: f.approvalDate || null,
+      expiry_date: f.expiryDate || null,
+      status: f.status, priority: f.priority,
+      responsible_person: f.responsible, department: f.dept,
+      submission_reference: f.subRef, portal_id: f.portalId,
+      application_type: f.appType, approval_reference: f.approvalRef,
+      attachment_url: fileUrl, remarks: f.remarks,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const remove = async (id) => {
+    const { error } = await supabase.from("authority_nocs").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  return { nocs, loading, add, update, remove, reload: loadData };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOC MODULE CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const NOC_AUTHORITIES = [
+  "DDA","Dubai Municipality (DM)","RTA","DEWA",
+  "Trakhees","Civil Defense","SIRA","Dubai South",
+  "Dubai Police","Etisalat / etisalat","Du Telecom","ADDC",
+  "DLD","RERA","DIFC","Others",
+];
+const NOC_TYPES = [
+  "Building Permit","Excavation Permit","Shoring / Piling Permit",
+  "RTA ROW Permit","Temporary Fencing NOC","Signboard NOC",
+  "DEWA Connection NOC","Demolition Permit","Completion Certificate",
+  "Occupancy Certificate","Fire Safety NOC","Structural NOC",
+  "MEP Permit","Crane / Hoisting Permit","Soil Investigation Permit",
+  "Dewatering Permit","Road Closure Permit","Others",
+];
+const NOC_STATUS = ["Draft","Submitted","Under Review","Approved","Rejected","Expired","Closed"];
+const NOC_PRIORITY = ["Low","Medium","High","Critical"];
+const NOC_APP_TYPE = ["Online","Manual","Through Consultant","Agent"];
+
+const NOC_ST_COLOR = {
+  "Draft":        "bg-slate-100 text-slate-600 border-slate-200",
+  "Submitted":    "bg-blue-100 text-blue-700 border-blue-200",
+  "Under Review": "bg-amber-100 text-amber-700 border-amber-200",
+  "Approved":     "bg-green-100 text-green-700 border-green-200",
+  "Rejected":     "bg-red-100 text-red-700 border-red-200",
+  "Expired":      "bg-red-200 text-red-800 border-red-300",
+  "Closed":       "bg-slate-200 text-slate-500 border-slate-300",
+};
+const NOC_PRI_COLOR = {
+  Low:"bg-slate-100 text-slate-600", Medium:"bg-blue-100 text-blue-700",
+  High:"bg-orange-100 text-orange-700", Critical:"bg-red-100 text-red-700 font-bold",
+};
+const NOC_AUTH_COLOR = {
+  "DDA":"bg-blue-600","Dubai Municipality (DM)":"bg-green-600","RTA":"bg-red-600",
+  "DEWA":"bg-yellow-500","Trakhees":"bg-purple-600","Civil Defense":"bg-red-700",
+  "SIRA":"bg-indigo-600","Dubai South":"bg-teal-600",
+};
+
+const EMPTY_NOC = () => ({
+  pid:"", authority:"DDA", nocType:"Building Permit", desc:"",
+  submissionDate:"", approvalDate:"", expiryDate:"",
+  status:"Draft", priority:"Medium", responsible:"", dept:"Civil",
+  subRef:"", portalId:"", appType:"Online", approvalRef:"",
+  fileUrl:"", file:null, remarks:"",
+});
+
+const isExpiringSoon = (expiryDate, status) => {
+  if (!expiryDate || ["Expired","Closed","Rejected"].includes(status)) return false;
+  const diff = (new Date(expiryDate) - new Date()) / (1000 * 60 * 60 * 24);
+  return diff >= 0 && diff <= 30;
+};
+const isExpired = (expiryDate, status) => {
+  if (!expiryDate || ["Closed","Rejected"].includes(status)) return false;
+  return new Date(expiryDate) < new Date();
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOC MODULE COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToast }) => {
+  const [mode, setMode] = useState("list");
+  const [sel, setSel] = useState(null);
+  const [form, setForm] = useState(EMPTY_NOC());
+  const [search, setSearch] = useState("");
+  const [fProject, setFProject] = useState("All");
+  const [fAuth, setFAuth] = useState("All");
+  const [fStatus, setFStatus] = useState("All");
+  const [fExpiry, setFExpiry] = useState("All");
+  const [saving, setSaving] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+  const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
+
+  const goList = () => { setMode("list"); setSel(null); };
+  const openCreate = () => { setForm(EMPTY_NOC()); setSel(null); setMode("form"); };
+  const openEdit = n => {
+    setSel(n);
+    setForm({ pid:n.pid, authority:n.authority, nocType:n.nocType, desc:n.desc,
+      submissionDate:n.submissionDate, approvalDate:n.approvalDate, expiryDate:n.expiryDate,
+      status:n.status, priority:n.priority, responsible:n.responsible, dept:n.dept,
+      subRef:n.subRef, portalId:n.portalId, appType:n.appType, approvalRef:n.approvalRef,
+      fileUrl:n.fileUrl, file:null, remarks:n.remarks });
+    setMode("form");
+  };
+  const openView = n => { setSel(n); setMode("view"); };
+
+  const handleSave = async () => {
+    if (!form.authority || !form.nocType) { showToast("Authority and NOC Type required","error"); return; }
+    setSaving(true);
+    const res = sel ? await onUpdate(sel.id, form) : await onAdd(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast(sel ? "NOC updated!" : "NOC created: " + res.nocNum); goList();
+  };
+
+  const handleDelete = async id => {
+    const res = await onDelete(id);
+    if (!res.ok) { showToast(res.error,"error"); return; }
+    showToast("NOC deleted!"); setConfirmId(null); if (mode!=="list") goList();
+  };
+
+  // Computed
+  const daysUntilExpiry = (d) => {
+    if (!d) return null;
+    return Math.ceil((new Date(d) - new Date()) / (1000*60*60*24));
+  };
+
+  const filtered = nocs.filter(n => {
+    if (fProject!=="All" && n.pid!==fProject) return false;
+    if (fAuth!=="All" && n.authority!==fAuth) return false;
+    if (fStatus!=="All" && n.status!==fStatus) return false;
+    if (fExpiry==="expiring" && !isExpiringSoon(n.expiryDate,n.status)) return false;
+    if (fExpiry==="expired" && !isExpired(n.expiryDate,n.status)) return false;
+    if (search && !`${n.nocNum} ${n.authority} ${n.nocType} ${n.responsible}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  // Dashboard stats
+  const stats = {
+    total: nocs.length,
+    pending: nocs.filter(n=>["Submitted","Under Review"].includes(n.status)).length,
+    approved: nocs.filter(n=>n.status==="Approved").length,
+    rejected: nocs.filter(n=>n.status==="Rejected").length,
+    expiring: nocs.filter(n=>isExpiringSoon(n.expiryDate,n.status)).length,
+    expired: nocs.filter(n=>isExpired(n.expiryDate,n.status) && n.status!=="Expired").length,
+  };
+
+  // Export
+  const exportNocPDF = () => {
+    const cols = [
+      {header:"NOC No.",key:"nocNum",pdfWidth:22},{header:"Authority",key:"authority",pdfWidth:28},
+      {header:"Type",key:"nocType",pdfWidth:35},{header:"Project",key:"projectNum",pdfWidth:16},
+      {header:"Submitted",key:"submissionDate",pdfWidth:18,type:"date"},
+      {header:"Approved",key:"approvalDate",pdfWidth:18,type:"date"},
+      {header:"Expiry",key:"expiryDate",pdfWidth:18,type:"date"},
+      {header:"Status",key:"status",pdfWidth:18},{header:"Responsible",key:"responsible",pdfWidth:24},
+    ];
+    const data = filtered.map(n=>({...n, projectNum:(projects.find(p=>p.id===n.pid)||{}).number||"—"}));
+    exportToPDF(data, cols, "NOC_Permits_Register", "Authority NOC & Permits Register", "landscape");
+  };
+  const exportNocExcel = () => {
+    const cols = [
+      {header:"NOC Number",key:"nocNum",width:18},{header:"Authority",key:"authority",width:22},
+      {header:"NOC Type",key:"nocType",width:28},{header:"Project",key:"projectNum",width:14},
+      {header:"Description",key:"desc",width:40},{header:"Submission Date",key:"submissionDate",width:16,type:"date"},
+      {header:"Approval Date",key:"approvalDate",width:16,type:"date"},
+      {header:"Expiry Date",key:"expiryDate",width:16,type:"date"},
+      {header:"Status",key:"status",width:16},{header:"Priority",key:"priority",width:12},
+      {header:"Responsible",key:"responsible",width:22},{header:"Dept",key:"dept",width:14},
+      {header:"Sub Reference",key:"subRef",width:20},{header:"Portal ID",key:"portalId",width:18},
+      {header:"App Type",key:"appType",width:14},{header:"Approval Ref",key:"approvalRef",width:20},
+      {header:"Remarks",key:"remarks",width:30},
+    ];
+    const data = filtered.map(n=>({...n, projectNum:(projects.find(p=>p.id===n.pid)||{}).number||"—"}));
+    exportToExcel(data, cols, "NOC_Permits_Register");
+  };
+
+  // ── VIEW ───────────────────────────────────────────────────────────────────
+  if (mode==="view"&&sel) {
+    const proj = projects.find(p=>p.id===sel.pid);
+    const days = daysUntilExpiry(sel.expiryDate);
+    const expired = isExpired(sel.expiryDate, sel.status);
+    const expiring = isExpiringSoon(sel.expiryDate, sel.status);
+    const authColor = NOC_AUTH_COLOR[sel.authority] || "bg-slate-600";
+    return (
+      <div className="p-6 max-w-3xl space-y-4">
+        {confirmId&&<ConfirmDialog message="Delete this NOC?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+        <BackBtn onClick={goList}/>
+
+        {/* Header card */}
+        <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-5 text-white">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-amber-400 font-mono text-xs font-bold">{sel.nocNum}</span>
+                <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${authColor}`}>{sel.authority}</span>
+              </div>
+              <h2 className="text-xl font-bold">{sel.nocType}</h2>
+              {sel.desc&&<p className="text-slate-300 text-sm mt-1 leading-relaxed">{sel.desc}</p>}
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-slate-400">Project:</span>
+                <span className="text-xs font-bold text-white">{proj?.number||"—"}</span>
+                <span className="text-xs text-slate-300">{proj?.name}</span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${NOC_ST_COLOR[sel.status]||NOC_ST_COLOR.Draft}`}>{sel.status}</span>
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${NOC_PRI_COLOR[sel.priority]||""}`}>{sel.priority}</span>
+            </div>
+          </div>
+
+          {/* Expiry alert */}
+          {expired&&<div className="mt-3 bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
+            <span className="text-lg">🚨</span>
+            <span className="text-sm font-bold text-red-300">EXPIRED — {fmtDate(sel.expiryDate)} · Renewal required</span>
+          </div>}
+          {!expired&&expiring&&<div className="mt-3 bg-amber-500/20 border border-amber-400/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
+            <span className="text-lg">⚠️</span>
+            <span className="text-sm font-bold text-amber-300">Expiring in {days} day{days!==1?"s":""} — {fmtDate(sel.expiryDate)}</span>
+          </div>}
+
+          {/* Date summary */}
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            {[{l:"Submitted",v:fmtDate(sel.submissionDate)},{l:"Approved",v:fmtDate(sel.approvalDate)||"Pending"},{l:"Expiry",v:fmtDate(sel.expiryDate)||"N/A"}].map(c=>(
+              <div key={c.l} className="bg-white/10 rounded-xl p-2.5 text-center">
+                <div className="text-xs text-slate-300">{c.l}</div>
+                <div className="text-sm font-bold mt-0.5">{c.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Details grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormCard>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Responsible Person</div>
+            <div className="space-y-2 text-sm">
+              {[["Name",sel.responsible],["Department",sel.dept],["Application Type",sel.appType]].map(([k,v])=>(
+                <div key={k} className="flex justify-between">
+                  <span className="text-slate-400">{k}</span>
+                  <span className="font-semibold text-slate-800">{v||"—"}</span>
+                </div>
+              ))}
+            </div>
+          </FormCard>
+          <FormCard>
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">References</div>
+            <div className="space-y-2 text-sm">
+              {[["Submission Ref",sel.subRef],["Portal ID",sel.portalId],["Approval Ref",sel.approvalRef]].map(([k,v])=>(
+                <div key={k} className="flex justify-between">
+                  <span className="text-slate-400">{k}</span>
+                  <span className="font-semibold text-slate-700 font-mono text-xs">{v||"—"}</span>
+                </div>
+              ))}
+            </div>
+          </FormCard>
+        </div>
+
+        {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><span className="text-xs font-bold text-slate-500 uppercase">Remarks: </span><span className="text-sm text-slate-700">{sel.remarks}</span></div>}
+
+        {/* Attachment */}
+        {sel.fileUrl&&(
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
+            <span className="text-2xl">📎</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-blue-800">Document Attached</div>
+              <div className="text-xs text-blue-600 truncate">{sel.fileUrl}</div>
+            </div>
+            <a href={sel.fileUrl} target="_blank" rel="noreferrer"
+              className="text-xs bg-blue-600 text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-700">
+              Open
+            </a>
+          </div>
+        )}
+
+        {/* Quick status update */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Quick Status Update</div>
+          <div className="flex flex-wrap gap-2">
+            {NOC_STATUS.filter(s=>s!==sel.status).map(s=>(
+              <button key={s} onClick={async()=>{
+                setSaving(true);
+                const res = await onUpdate(sel.id,{...sel,...form,status:s});
+                setSaving(false);
+                if(res.ok){setSel(p=>({...p,status:s}));showToast(`Status → ${s}`);}
+                else showToast(res.error,"error");
+              }}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${NOC_ST_COLOR[s]||"bg-slate-100 text-slate-600 border-slate-200"}`}>
+                → {s}
+              </button>
+            ))}
+          </div>
+        </FormCard>
+
+        <div className="flex flex-wrap gap-3">
+          <Btn onClick={()=>openEdit(sel)} label="Edit NOC"/>
+          <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+        </div>
+      </div>
+    );
+  }
+
+  // ── FORM ───────────────────────────────────────────────────────────────────
+  if (mode==="form") return (
+    <div className="p-6 max-w-3xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?`Edit — ${sel.nocNum}`:"New NOC / Permit"}</h2>
+      <div className="space-y-4">
+        {/* Authority & Type */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Authority & NOC Details</div>
+          <Grid2>
+            <div><Lbl t="Authority" req/>
+              <Sel value={form.authority} onChange={set("authority")}>
+                {NOC_AUTHORITIES.map(a=><option key={a}>{a}</option>)}
+              </Sel>
+            </div>
+            <div><Lbl t="NOC / Permit Type" req/>
+              <Sel value={form.nocType} onChange={set("nocType")}>
+                {NOC_TYPES.map(t=><option key={t}>{t}</option>)}
+              </Sel>
+            </div>
+            <div><Lbl t="Project"/>
+              <Sel value={form.pid} onChange={set("pid")}>
+                <option value="">Select Project...</option>
+                {projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}
+              </Sel>
+            </div>
+            <div><Lbl t="Priority"/>
+              <Sel value={form.priority} onChange={set("priority")}>
+                {NOC_PRIORITY.map(p=><option key={p}>{p}</option>)}
+              </Sel>
+            </div>
+            {sel&&<div><Lbl t="Status"/>
+              <Sel value={form.status} onChange={set("status")}>
+                {NOC_STATUS.map(s=><option key={s}>{s}</option>)}
+              </Sel>
+            </div>}
+            <div><Lbl t="Application Type"/>
+              <Sel value={form.appType} onChange={set("appType")}>
+                {NOC_APP_TYPE.map(t=><option key={t}>{t}</option>)}
+              </Sel>
+            </div>
+          </Grid2>
+          <div><Lbl t="Description"/><Txta value={form.desc} onChange={set("desc")} rows={2} placeholder="Describe the NOC requirement..."/></div>
+        </FormCard>
+
+        {/* Dates */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Important Dates</div>
+          <Grid2>
+            <div><Lbl t="Submission Date"/><Inp type="date" value={form.submissionDate} onChange={set("submissionDate")}/></div>
+            <div><Lbl t="Approval Date"/><Inp type="date" value={form.approvalDate} onChange={set("approvalDate")}/></div>
+            <div><Lbl t="Expiry Date"/><Inp type="date" value={form.expiryDate} onChange={set("expiryDate")}/></div>
+          </Grid2>
+        </FormCard>
+
+        {/* Responsible */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Responsible Person</div>
+          <Grid2>
+            <div><Lbl t="Responsible Person"/><Inp value={form.responsible} onChange={set("responsible")} placeholder="Engineer / PRO name"/></div>
+            <div><Lbl t="Department"/><Inp value={form.dept} onChange={set("dept")} placeholder="Civil / Admin / PRO"/></div>
+          </Grid2>
+        </FormCard>
+
+        {/* References */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Reference Numbers</div>
+          <Grid2>
+            <div><Lbl t="Submission Reference No."/><Inp value={form.subRef} onChange={set("subRef")} placeholder="e.g. DDA-2026-XXXXX"/></div>
+            <div><Lbl t="Authority Portal ID"/><Inp value={form.portalId} onChange={set("portalId")} placeholder="Portal ref no."/></div>
+            <div><Lbl t="Approval Reference No."/><Inp value={form.approvalRef} onChange={set("approvalRef")} placeholder="Approval letter ref"/></div>
+          </Grid2>
+        </FormCard>
+
+        {/* Document Upload */}
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Document Attachment</div>
+          <Inp type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            onChange={e=>setForm(p=>({...p,file:e.target.files[0]}))}/>
+          <p className="text-xs text-slate-400 mt-1">Accepts: PDF, JPG, PNG, DOC, DOCX</p>
+          {form.fileUrl&&!form.file&&<a href={form.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 mt-1 inline-flex items-center gap-1 hover:underline"><Icon name="eye" cls="w-3 h-3"/>Current document attached</a>}
+          {form.file&&<p className="text-xs text-green-600 mt-1">✓ New file: {form.file.name}</p>}
+          <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Additional notes..."/></div>
+        </FormCard>
+
+        <div className="flex gap-3">
+          <Btn saving={saving} onClick={handleSave} label={sel?"Update NOC":"Submit NOC"}/>
+          <Btn onClick={goList} label="Cancel" color="slate"/>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── LIST ───────────────────────────────────────────────────────────────────
+  return (
+    <div className="p-6">
+      {confirmId&&<ConfirmDialog message="Delete this NOC permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+        {[
+          {l:"Total NOCs",    v:stats.total,    c:"from-blue-600 to-blue-500",     icon:"📋"},
+          {l:"Pending",       v:stats.pending,  c:"from-amber-500 to-amber-400",   icon:"⏳"},
+          {l:"Approved",      v:stats.approved, c:"from-green-600 to-green-500",   icon:"✅"},
+          {l:"Rejected",      v:stats.rejected, c:"from-red-600 to-red-500",       icon:"❌"},
+          {l:"Expiring (30d)",v:stats.expiring, c:"from-orange-600 to-orange-500", icon:"⚠️"},
+          {l:"Expired",       v:stats.expired,  c:"from-red-800 to-red-700",       icon:"🚨"},
+        ].map(c=>(
+          <div key={c.l} className={`bg-gradient-to-br ${c.c} rounded-xl p-3.5 text-white shadow-sm`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-3xl font-black">{c.v}</div>
+                <div className="text-xs font-semibold opacity-90 mt-1 leading-tight">{c.l}</div>
+              </div>
+              <span className="text-xl opacity-80">{c.icon}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Expiry Alerts banner */}
+      {(stats.expiring>0||stats.expired>0)&&(
+        <div className={`mb-4 rounded-xl px-4 py-3 flex items-center gap-3 ${stats.expired>0?"bg-red-50 border border-red-200":"bg-amber-50 border border-amber-200"}`}>
+          <span className="text-xl">{stats.expired>0?"🚨":"⚠️"}</span>
+          <div className="text-sm font-semibold text-slate-800">
+            {stats.expired>0&&<span className="text-red-700 mr-3">🔴 {stats.expired} NOC{stats.expired>1?"s":""} EXPIRED</span>}
+            {stats.expiring>0&&<span className="text-amber-700">🟡 {stats.expiring} NOC{stats.expiring>1?"s":""} expiring within 30 days</span>}
+            <span className="text-slate-500 text-xs ml-2">— Renew immediately</span>
+          </div>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="flex flex-wrap gap-2">
+          <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="NOC no, authority, type..."/>
+          <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto">
+            <option value="All">All Projects</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}
+          </Sel>
+          <Sel value={fAuth} onChange={e=>setFAuth(e.target.value)} className="w-auto">
+            <option value="All">All Authorities</option>
+            {NOC_AUTHORITIES.map(a=><option key={a}>{a}</option>)}
+          </Sel>
+          <Sel value={fExpiry} onChange={e=>setFExpiry(e.target.value)} className="w-auto">
+            <option value="All">All Dates</option>
+            <option value="expiring">⚠️ Expiring Soon</option>
+            <option value="expired">🚨 Expired</option>
+          </Sel>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={exportNocExcel} className="text-xs bg-green-50 border border-green-200 text-green-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-green-100">⬇ Excel</button>
+          <button onClick={exportNocPDF} className="text-xs bg-red-50 border border-red-200 text-red-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100">⬇ PDF</button>
+          <AddBtn onClick={openCreate} label="New NOC"/>
+        </div>
+      </div>
+
+      {/* Status filter pills */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {["All",...NOC_STATUS].map(s=>(
+          <button key={s} onClick={()=>setFStatus(s)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>
+            {s} ({s==="All"?nocs.length:nocs.filter(n=>n.status===s).length})
+          </button>
+        ))}
+      </div>
+
+      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No NOCs / permits found" onCreate={openCreate}/>:(
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm min-w-[1000px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["NOC No.","Authority","Type","Project","Status","Priority","Submitted","Expiry","Responsible","Actions"].map(h=>(
+                <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(n => {
+                const proj = projects.find(p=>p.id===n.pid);
+                const expired = isExpired(n.expiryDate, n.status);
+                const expiring = isExpiringSoon(n.expiryDate, n.status);
+                const days = daysUntilExpiry(n.expiryDate);
+                const authColor = NOC_AUTH_COLOR[n.authority] || "bg-slate-500";
+                return (
+                  <tr key={n.id} className={`hover:bg-amber-50/50 transition-colors ${expired?"bg-red-50/40":expiring?"bg-amber-50/40":""}`}>
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{n.nocNum}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${authColor}`}>{n.authority}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-700 max-w-[160px]">
+                      <div className="truncate font-semibold">{n.nocType}</div>
+                    </td>
+                    <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${NOC_ST_COLOR[n.status]||NOC_ST_COLOR.Draft}`}>{n.status}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${NOC_PRI_COLOR[n.priority]||""}`}>{n.priority}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(n.submissionDate)||"—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {n.expiryDate ? (
+                        <div>
+                          <div className={`text-xs font-bold ${expired?"text-red-700":expiring?"text-amber-700":"text-slate-700"}`}>{fmtDate(n.expiryDate)}</div>
+                          {expired&&<div className="text-xs text-red-600 font-bold">EXPIRED</div>}
+                          {!expired&&expiring&&<div className="text-xs text-amber-600 font-semibold">{days}d left</div>}
+                        </div>
+                      ) : <span className="text-slate-300 text-xs">No expiry</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-700">{n.responsible||"—"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1.5 flex-wrap">
+                        <ActBtn onClick={()=>openView(n)} label="View" color="view"/>
+                        <ActBtn onClick={()=>openEdit(n)} label="Edit" color="edit"/>
+                        <ActBtn onClick={()=>setConfirmId(n.id)} label="Del" color="del"/>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 
 export default function App() {
   const { user, loading: authLoading } = useAuth();
@@ -3988,10 +6765,24 @@ export default function App() {
   const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
   const { mrs, loading: mrLoad, add: addMr, update: updMr, remove: delMr, updateStatus: updMrStatus } = useMatReqs();
   const { lpos, loading: lpoLoad, add: addLpo, update: updLpo, remove: delLpo } = useLPOs();
+  const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeStock, addReceipt, removeReceipt, addIssue, removeIssue } = useStore();
+  const { nocs, loading: nocLoad, add: addNoc, update: updNoc, remove: delNoc } = useNOCs();
   const [prefillMr, setPrefillMr] = useState(null);
 
+  const { profile: userProfile } = useUserProfile(user);
+  const { reqs: permReqs, addReq: addPermReq, updateReq: updatePermReq } = usePermRequests();
+  const userCanEdit = canEdit(userProfile);
+  const userIsAdmin = isAdmin(userProfile);
+  const { notifs, unreadCount, markRead, markAllRead, deleteNotif, generateNotifs } = useNotifications();
   const { toast, showToast, hideToast } = useToast();
   const [page, setPage] = useState("dashboard");
+
+  // Auto-generate notifications whenever live data changes
+  useEffect(() => {
+    if (tasks.length || snags.length || mrs.length || lpos.length || nocs.length) {
+      generateNotifs({ tasks, snags, inspections, mrs, lpos, drawings, nocs });
+    }
+  }, [tasks.length, snags.length, inspections.length, mrs.length, lpos.length, drawings.length, nocs.length]);
   const [collapsed, setCollapsed] = useState(false);
 
   if (authLoading) return (
@@ -4005,11 +6796,11 @@ export default function App() {
 
   if (!user) return <Login onLogin={() => {}} />;
 
-  const pp = { projects, showToast };
+  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq };
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} />;
+      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs}/>;
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
@@ -4018,9 +6809,11 @@ export default function App() {
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
-      case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} />;
+      case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} userIsAdmin={userIsAdmin} userProfile={userProfile} permReqs={permReqs} onUpdatePermReq={updatePermReq}/>;
       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);setPage("lpo");}}/>;
       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
+      case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
+      case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
     }
   };
@@ -4038,7 +6831,17 @@ export default function App() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
       <Sidebar active={page} onNav={setPage} collapsed={collapsed} user={user} onSignOut={() => supabase.auth.signOut()} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <Header title={PAGE_TITLES[page] || "AGBC"} onToggle={() => setCollapsed(c => !c)} user={user} />
+        <Header
+          title={PAGE_TITLES[page] || "AGBC"}
+          onToggle={() => setCollapsed(c => !c)}
+          user={user}
+          unreadCount={unreadCount}
+          notifs={notifs}
+          onMarkRead={markRead}
+          onMarkAll={markAllRead}
+          onDelete={deleteNotif}
+          onNavigate={setPage}
+        />
         <main className="flex-1 overflow-y-auto">{renderPage()}</main>
       </div>
     </div>
