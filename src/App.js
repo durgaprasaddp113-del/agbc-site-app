@@ -1330,66 +1330,86 @@ const NAV = [
   { id: "noc", label: "NOC & Permits", icon: "noc" },
 ];
 
-const Sidebar = ({ active, onNav, collapsed, user, onSignOut }) => {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const handleNav = (id) => { onNav(id); setMobileOpen(false); };
-  const SideInner = ({ mini }) => (
-    <>
-      <div className={`${mini?"p-2 justify-center":"p-4"} border-b border-slate-700 flex items-center gap-3 min-h-[57px]`}>
-        <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center shrink-0">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-        </div>
-        {!mini && <div><div className="text-sm font-bold leading-tight">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>}
+const SidebarInner = ({ mini, active, onNav, user, onSignOut }) => (
+  <>
+    <div className={`${mini?"px-2 justify-center":"px-4"} py-3 border-b border-slate-700 flex items-center gap-3 min-h-[57px]`}>
+      <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center shrink-0">
+        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
       </div>
-      <nav className="flex-1 py-2 overflow-y-auto">
-        {NAV.map(n => (
-          <button key={n.id} onClick={() => handleNav(n.id)}
-            className={`w-full flex items-center gap-3 ${mini?"px-0 justify-center":"px-4"} py-2.5 text-sm transition-colors ${active === n.id ? "bg-amber-500 text-white font-semibold" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
-            <Icon name={n.icon} cls="w-5 h-5 shrink-0" />
-            {!mini && <span className="truncate">{n.label}</span>}
+      {!mini && <div><div className="text-sm font-bold leading-tight">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>}
+    </div>
+    <nav className="flex-1 py-2 overflow-y-auto">
+      {NAV.map(n => (
+        <button key={n.id} onClick={() => onNav(n.id)}
+          className={`w-full flex items-center gap-3 ${mini?"px-0 justify-center":"px-4"} py-2.5 text-sm transition-colors ${active === n.id ? "bg-amber-500 text-white font-semibold" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
+          <Icon name={n.icon} cls="w-5 h-5 shrink-0" />
+          {!mini && <span className="truncate">{n.label}</span>}
+        </button>
+      ))}
+    </nav>
+    <div className={`${mini?"p-2":"p-4"} border-t border-slate-700`}>
+      {!mini ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{getInit(user?.email)}</div>
+            <div className="min-w-0"><div className="text-xs font-semibold truncate">{user?.email}</div><div className="text-xs text-slate-400">Al Ghaith</div></div>
+          </div>
+          <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500 px-3 py-1.5 rounded-lg transition-colors">
+            <Icon name="logout" cls="w-3.5 h-3.5" />Sign Out
           </button>
-        ))}
-      </nav>
-      <div className={`${mini?"p-2":"p-4"} border-t border-slate-700`}>
-        {!mini ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{getInit(user?.email)}</div>
-              <div className="min-w-0"><div className="text-xs font-semibold truncate">{user?.email}</div><div className="text-xs text-slate-400">Al Ghaith Building</div></div>
+        </div>
+      ) : (
+        <button onClick={onSignOut} className="w-full flex justify-center text-slate-400 hover:text-red-400 p-1"><Icon name="logout" cls="w-4 h-4" /></button>
+      )}
+    </div>
+  </>
+);
+
+const Sidebar = ({ active, onNav, collapsed, mobileOpen, onMobileClose, user, onSignOut }) => (
+  <>
+    {/* Mobile full-screen overlay */}
+    {mobileOpen && (
+      <div className="fixed inset-0 z-50 md:hidden">
+        <div className="absolute inset-0 bg-black/60" onClick={onMobileClose}/>
+        <aside className="absolute left-0 top-0 bottom-0 w-72 bg-slate-900 text-white flex flex-col shadow-2xl z-10">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"/></svg>
+              </div>
+              <div><div className="text-sm font-bold">AGBC</div><div className="text-xs text-slate-400">Site Management</div></div>
             </div>
-            <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500 px-3 py-1.5 rounded-lg transition-colors">
+            <button onClick={onMobileClose} className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <nav className="flex-1 py-2 overflow-y-auto">
+            {NAV.map(n => (
+              <button key={n.id} onClick={() => { onNav(n.id); onMobileClose(); }}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${active === n.id ? "bg-amber-500 text-white font-semibold" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
+                <Icon name={n.icon} cls="w-5 h-5 shrink-0" />
+                <span>{n.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="p-4 border-t border-slate-700">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-xs font-bold shrink-0">{getInit(user?.email)}</div>
+              <div className="min-w-0"><div className="text-xs font-semibold text-white truncate">{user?.email}</div><div className="text-xs text-slate-400">Al Ghaith Building</div></div>
+            </div>
+            <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500 px-3 py-2 rounded-lg transition-colors">
               <Icon name="logout" cls="w-3.5 h-3.5" />Sign Out
             </button>
           </div>
-        ) : (
-          <button onClick={onSignOut} className="w-full flex justify-center text-slate-400 hover:text-red-400 p-1"><Icon name="logout" cls="w-4 h-4" /></button>
-        )}
+        </aside>
       </div>
-    </>
-  );
-  return (
-    <>
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 flex md:hidden">
-          <div className="fixed inset-0 bg-black/60" onClick={()=>setMobileOpen(false)}/>
-          <aside className="relative z-50 w-64 bg-slate-900 text-white flex flex-col h-full shadow-2xl">
-            <button onClick={()=>setMobileOpen(false)} className="absolute top-3 right-3 text-slate-400 hover:text-white z-10">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-            <SideInner mini={false}/>
-          </aside>
-        </div>
-      )}
-      {/* Mobile trigger button (bottom of header — injected via CSS) */}
-      <aside className={`${collapsed ? "w-16" : "w-60"} bg-slate-900 text-white flex-col transition-all duration-200 shrink-0 hidden md:flex`}>
-        <SideInner mini={collapsed}/>
-      </aside>
-      {/* Expose open fn via custom event so Header can call it */}
-      <span id="__sidebar_open__" style={{display:"none"}} onClick={()=>setMobileOpen(true)}/>
-    </>
-  );
-};
+    )}
+    {/* Desktop sidebar */}
+    <aside className={`${collapsed ? "w-16" : "w-60"} bg-slate-900 text-white flex-col transition-all duration-200 shrink-0 hidden md:flex`}>
+      <SidebarInner mini={collapsed} active={active} onNav={onNav} user={user} onSignOut={onSignOut}/>
+    </aside>
+  </>
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICATIONS HOOK
@@ -1613,17 +1633,17 @@ const NotificationBell = ({ unreadCount, notifs, onMarkRead, onMarkAll, onDelete
 // ─────────────────────────────────────────────────────────────────────────────
 // HEADER
 // ─────────────────────────────────────────────────────────────────────────────
-const Header = ({ title, onToggle, user, unreadCount, notifs, onMarkRead, onMarkAll, onDelete, onNavigate }) => (
+const Header = ({ title, onToggle, onMobileOpen, user, unreadCount, notifs, onMarkRead, onMarkAll, onDelete, onNavigate }) => (
   <header className="h-14 bg-white border-b border-slate-200 flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 shadow-sm">
     {/* Desktop collapse toggle */}
-    <button onClick={onToggle} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 hidden md:block">
+    <button onClick={onToggle} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 hidden md:flex items-center">
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
-    {/* Mobile sidebar toggle */}
-    <button onClick={()=>document.getElementById("__sidebar_open__")?.click()} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 md:hidden">
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+    {/* Mobile hamburger */}
+    <button onClick={onMobileOpen} className="text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 md:hidden flex items-center justify-center">
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
     </button>
-    <span className="font-semibold text-slate-800 text-sm sm:text-base truncate">{title}</span>
+    <span className="font-semibold text-slate-800 text-sm sm:text-base truncate flex-1">{title}</span>
     <div className="ml-auto flex items-center gap-2">
       <NotificationBell
         unreadCount={unreadCount || 0}
@@ -6893,6 +6913,7 @@ export default function App() {
     }
   }, [tasks.length, snags.length, inspections.length, mrs.length, lpos.length, drawings.length, nocs.length]); // eslint-disable-line
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   if (authLoading) return (
     <div className="flex h-screen items-center justify-center bg-slate-50">
@@ -6950,11 +6971,12 @@ export default function App() {
         }
       `}</style>
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
-      <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} user={user} onSignOut={() => supabase.auth.signOut()} />
+      <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} user={user} onSignOut={() => supabase.auth.signOut()} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header
           title={PAGE_TITLES[page] || "AGBC"}
           onToggle={() => setCollapsed(c => !c)}
+          onMobileOpen={() => setMobileOpen(true)}
           user={user}
           unreadCount={unreadCount}
           notifs={notifs}
