@@ -3077,7 +3077,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
       )}
     </div>
   );
