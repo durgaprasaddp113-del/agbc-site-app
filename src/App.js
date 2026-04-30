@@ -180,6 +180,48 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
   } catch(e) { console.error("PDF export error:", e); alert("PDF export failed: " + e.message); }
 };
 
+const exportLpoPDF = (lpo, projects) => {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { alert("PDF library not loaded."); return; }
+  const proj = projects?.find(p=>p.id===lpo.pid);
+  const doc = new jsPDF({ orientation:"portrait", format:"a4" });
+  const aw = 190; const lm = 10;
+  // Logo
+  try { doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64,"JPEG",lm,8,aw,20); } catch(e) {}
+  let y = 33;
+  doc.setFontSize(14); doc.setFont(undefined,"bold");
+  doc.text("LOCAL PURCHASE ORDER", 105, y, {align:"center"}); y += 8;
+  doc.setFontSize(10); doc.setFont(undefined,"normal");
+  doc.setFillColor(245,245,245); doc.rect(lm,y,aw,18,"F");
+  doc.setFont(undefined,"bold"); doc.text(`LPO No: ${lpo.lpoNum||""}`, lm+2, y+5);
+  doc.text(`Date: ${lpo.date||""}`, lm+2, y+11);
+  doc.text(`Status: ${lpo.status||""}`, 130, y+5);
+  doc.text(`Project: ${proj?.number||lpo.pid||""}`, 130, y+11); y += 22;
+  // Supplier
+  doc.setFillColor(37,99,235); doc.rect(lm,y,aw,6,"F");
+  doc.setTextColor(255,255,255); doc.setFont(undefined,"bold");
+  doc.text("SUPPLIER DETAILS",lm+2,y+4); y+=8;
+  doc.setTextColor(0,0,0); doc.setFont(undefined,"normal");
+  [[`Company: ${lpo.supplierName||"-"}`, `Contact: ${lpo.supplierContact||"-"}`],
+   [`Email: ${lpo.supplierEmail||"-"}`, `TRN: ${lpo.supplierTrn||"-"}`],
+   [`Address: ${lpo.supplierAddress||"-"}`, `Payment: ${lpo.paymentTerms==="Custom..."?lpo.customPaymentTerms:lpo.paymentTerms||"-"}`]
+  ].forEach(row=>{doc.text(row[0],lm+2,y+4);doc.text(row[1],lm+95,y+4);y+=7;});
+  y+=3;
+  // Items table
+  const heads = [["#","Description","Unit","Qty","Rate (AED)","Amount (AED)"]];
+  const rows = (lpo.items||[]).map((it,i)=>[i+1,it.desc||"",it.unit||"",Number(it.qty||0).toLocaleString(),Number(it.rate||0).toLocaleString(),(Number(it.qty||0)*Number(it.rate||0)).toLocaleString()]);
+  doc.autoTable({head:heads,body:rows,startY:y,margin:{left:lm,right:lm},styles:{fontSize:8},headStyles:{fillColor:[37,99,235]},
+    foot:lpo.vatEnabled?[["","","","","Sub Total:",Number(lpo.totalAmount||0).toLocaleString()],["","","","","VAT (5%):",(Number(lpo.totalAmount||0)*0.05).toLocaleString()],["","","","","Grand Total:",(Number(lpo.totalAmount||0)*1.05).toLocaleString()]]
+         :[["","","","","Total Amount:",Number(lpo.totalAmount||0).toLocaleString()]],
+    footStyles:{fontStyle:"bold",fillColor:[240,240,240]}
+  });
+  y = doc.lastAutoTable.finalY + 8;
+  if(lpo.remarks){doc.setFontSize(9);doc.setFont(undefined,"bold");doc.text("Remarks:",lm,y);doc.setFont(undefined,"normal");doc.text(lpo.remarks,lm+20,y);y+=8;}
+  doc.setFontSize(8);doc.setTextColor(100,100,100);
+  doc.text("Al Ghaith Building Construction Co. LLC",105,y+10,{align:"center"});
+  doc.save(`LPO_${lpo.lpoNum||"export"}.pdf`);
+};
+
 const exportDailyReportPDF = (report, projectName) => {
   try {
     const { jsPDF } = window.jspdf;
@@ -1790,6 +1832,57 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
             </div>
           </div>
 
+          {/* Work Progress Charts */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+              <span className="font-bold text-slate-800 text-sm">📈 Work Progress Overview</span>
+            </div>
+            <div className="p-4 space-y-3">
+              {[
+                {label:"Tasks Completed",done:tasks.filter(t=>t.status==="Completed").length,total:tasks.length,color:"bg-blue-500",onClick:()=>nav("tasks",{status:"Completed"})},
+                {label:"Snags Closed",done:snags.filter(s=>s.status==="Closed").length,total:snags.length,color:"bg-orange-500",onClick:()=>nav("snags",{status:"Closed"})},
+                {label:"MR Fulfilled",done:mrs.filter(m=>["Approved","Issued"].includes(m.status)).length,total:mrs.length,color:"bg-indigo-500",onClick:()=>nav("mr",{})},
+                {label:"LPO Completed",done:lpos.filter(l=>["Fully Delivered","Completed"].includes(l.status)).length,total:lpos.length,color:"bg-teal-500",onClick:()=>nav("lpo",{})},
+                {label:"Snag Closure Rate",done:snags.filter(s=>s.status==="Closed").length,total:Math.max(1,snags.length),color:"bg-green-500",onClick:()=>nav("snags",{})},
+              ].map(({label,done,total,color,onClick})=>{
+                const pct=total>0?Math.round((done/total)*100):0;
+                return (
+                  <div key={label} onClick={onClick} className="cursor-pointer hover:bg-slate-50 rounded-lg p-1 transition-colors">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="font-semibold text-slate-700">{label}</span>
+                      <span className="text-slate-500 font-bold">{pct}%</span>
+                    </div>
+                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-3 ${color} rounded-full transition-all duration-500`} style={{width:`${pct}%`}}/>
+                    </div>
+                    <div className="text-xs text-slate-400 mt-0.5">{done} of {total}</div>
+                  </div>
+                );
+              })}
+              <div className="pt-2 border-t border-slate-100">
+                <div className="text-xs font-bold text-slate-600 mb-2">👷 Manpower Trend (Last 7 Days)</div>
+                <div className="flex items-end gap-1 h-16">
+                  {Array.from({length:7},(_,i)=>{
+                    const d=new Date(); d.setDate(d.getDate()-6+i);
+                    const ds=d.toISOString().split("T")[0];
+                    const mp=reports.filter(r=>r.date===ds).reduce((s,r)=>s+(Number(r.manpower)||0),0);
+                    const allMp=reports.map(r=>Number(r.manpower)||0);
+                    const maxMp=Math.max(1,...allMp);
+                    const h=mp>0?Math.max(6,Math.round((mp/maxMp)*52)):4;
+                    const isToday=ds===todayStr;
+                    return (
+                      <div key={ds} className="flex-1 flex flex-col items-center gap-0.5">
+                        <span className="text-xs text-slate-600 font-semibold">{mp>0?mp:""}</span>
+                        <div className={`w-full rounded-t-sm ${isToday?"bg-amber-500":mp>0?"bg-amber-300":"bg-slate-200"}`} style={{height:`${h}px`}}/>
+                        <span className="text-xs text-slate-400">{d.getDate()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Today's Activity */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -1934,7 +2027,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
 // ─────────────────────────────────────────────────────────────────────────────
 const PROJ_STATUS = ["Active", "Tender", "On Hold", "Completed", "Cancelled"];
 const PROG_STATUS = ["Not Started", "In Progress", "On Hold", "Completed"];
-const ACTIVITIES = ["Excavation","Shoring","Piling","Concrete","Steel Reinforcement","Block Work","Plaster","MEP First Fix","MEP Second Fix","Waterproofing","Tiling","Painting","Doors & Windows","External Works","Testing & Commissioning"];
+const ACTIVITIES = ["Excavation","Shoring","Piling","Concrete","Steel Reinforcement","Block Work","Plaster","MEP First Fix","MEP Second Fix","Waterproofing","Tiling","Painting","Doors & Windows","Lift Installation","Garbage Chute Installation","External Works","Landscaping","Testing & Commissioning","Other (Custom)"];
 const EMPTY_PROJ = { number:"",name:"",plot:"",location:"",plotArea:"",bua:"",duration:"",consultant:"",consultantContact:"",status:"Active",mapUrl:"" };
 const EMPTY_PG = { pid:"",activity:"",plannedStart:"",plannedEnd:"",actualStart:"",actualEnd:"",pct:0,status:"Not Started",remarks:"" };
 
@@ -2120,6 +2213,26 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
             <div>
               <h3 className="font-bold text-slate-800">Construction Progress Activities</h3>
               <p className="text-xs text-slate-400 mt-0.5">{projPgItems.length} activities · Overall: {overallPct}%</p>
+              {projPgItems.length > 0 && (()=>{
+                const done=projPgItems.filter(p=>p.status==="Completed").length;
+                const inprog=projPgItems.filter(p=>p.status==="In Progress").length;
+                const pend=projPgItems.filter(p=>["Planned","Not Started"].includes(p.status)).length;
+                const delayed=projPgItems.filter(p=>p.status==="Delayed").length;
+                const total=projPgItems.length;
+                return (
+                  <div className="mt-3 space-y-1.5">
+                    {[{label:"Completed",v:done,color:"bg-green-500"},{label:"In Progress",v:inprog,color:"bg-blue-500"},{label:"Pending",v:pend,color:"bg-amber-400"},{label:"Delayed",v:delayed,color:"bg-red-500"}].map(({label,v,color})=>(
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 w-20 shrink-0">{label}</span>
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-2 ${color} rounded-full`} style={{width:`${total>0?(v/total*100):0}%`}}/>
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 w-6 text-right">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-2">
               <Sel value={pgFilter} onChange={e=>setPgFilter(e.target.value)} className="w-auto text-xs">
@@ -2138,7 +2251,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div><Lbl t="Activity Name" req/>
-                    <Sel value={pgForm.activity} onChange={pg=>setPgForm(p=>({...p,activity:pg.target.value}))}>
+                    <Sel value={pgForm.activity.startsWith("Other:")||(!ACTIVITIES.includes(pgForm.activity)&&pgForm.activity)?"Other (Custom)":pgForm.activity} onChange={pg=>{const v=pg.target.value;if(v==="Other (Custom)"){setPgForm(p=>({...p,activity:"Other: "}))}else{setPgForm(p=>({...p,activity:v}))}}}>
                       <option value="">Select Activity...</option>{ACTIVITIES.map(a=><option key={a}>{a}</option>)}
                     </Sel>
                   </div>
@@ -4619,9 +4732,11 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
 // USERS MODULE
 // ─────────────────────────────────────────────────────────────────────────────
 const USER_ROLES = [
-  "Admin","Project Manager","QS Engineer","Site Engineer",
-  "MEP Engineer","Document Controller","Safety Officer",
-  "Foreman","Store Keeper","Procurement Officer","QAQC Engineer",
+  "Admin","Managing Director","Project Manager","Quantity Surveyor",
+  "Engineer","MEP Coordinator","Foreman","Safety Officer",
+  "Document Controller","Store Keeper","Procurement Officer",
+  "Accountant","Site Supervisor","Client Representative",
+  "Consultant Representative","Other",
 ];
 const USER_STATUSES = ["Active","Pending Approval","Rejected","Inactive"];
 const USER_STATUS = ["Active", "Inactive"];
@@ -4955,7 +5070,11 @@ function useLPOs() {
       supplierEmail: l.supplier_email || "", supplierAddress: l.supplier_address || "",
       supplierTrn: l.supplier_trn || "", mrId: l.mr_id || "", mrNum: l.mr_number || "",
       date: l.date || "", deliveryDate: l.delivery_date || "",
-      paymentTerms: l.payment_terms || "30 Days", status: l.status || "Draft",
+      paymentTerms: l.payment_terms || "30 Days",
+      customPaymentTerms: l.custom_payment_terms || "",
+      vatEnabled: l.vat_enabled || false,
+      approvalStatus: l.approval_status || "",
+      status: l.status || "Draft",
       deliveryStatus: l.delivery_status || "Not Delivered",
       deliveryNotes: l.delivery_notes || "", deliveryAttachUrl: l.delivery_attachment_url || "",
       totalAmount: l.total_amount || 0, remarks: l.remarks || "",
@@ -4989,7 +5108,10 @@ function useLPOs() {
       supplier_trn: f.supplierTrn, mr_id: f.mrId || null,
       mr_number: f.mrNum || null,
       date: f.date || null, delivery_date: f.deliveryDate || null,
-      payment_terms: f.paymentTerms, status: "Draft",
+      payment_terms: f.paymentTerms==="Custom..." ? f.customPaymentTerms : f.paymentTerms,
+      custom_payment_terms: f.customPaymentTerms,
+      vat_enabled: f.vatEnabled, approval_status: f.approvalStatus||"",
+      status: "Draft",
       delivery_status: "Not Delivered", total_amount: totalAmount,
       remarks: f.remarks,
     }]).select().single();
@@ -5083,12 +5205,13 @@ const EMPTY_MR = () => ({ pid:"", requestedBy:"", dept:"Civil", date: new Date()
 // ─────────────────────────────────────────────────────────────────────────────
 // MATERIAL REQUEST MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo, navFilter = {} }) => {
+const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo, navFilter = {}, lpos = [] }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_MR());
   const [search, setSearch] = useState("");
   const [fStatus, setFStatus] = useState(navFilter.status || "All");
+  const [fLpoStatus, setFLpoStatus] = useState("All");
   const [fProject, setFProject] = useState(navFilter.projectId || "All");
   useEffect(() => {
     setFStatus(navFilter.status || "All");
@@ -5136,6 +5259,8 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
     if (fStatus!=="All" && m.status!==fStatus) return false;
     if (fProject!=="All" && m.pid!==fProject) return false;
     if (search && !`${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase().includes(search.toLowerCase())) return false;
+        if (fLpoStatus==="LPO Raised" && !lpos.some(l=>l.mrId===m.id)) return false;
+    if (fLpoStatus==="Pending LPO" && lpos.some(l=>l.mrId===m.id)) return false;
     return true;
   });
 
@@ -5263,6 +5388,14 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           fileName="Material_Requests" pdfTitle="Material Requests Register"/>}
         btn={<AddBtn onClick={openCreate} label="New MR"/>}/>
       <div className="flex flex-wrap gap-1.5 mb-3">
+        <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-1 overflow-x-auto pb-1">
+          {["All","LPO Raised","Pending LPO"].map(f=>(
+            <button key={f} onClick={()=>setFLpoStatus(f)}
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${fLpoStatus===f?"bg-indigo-500 text-white border-indigo-500":"bg-white text-slate-600 border-slate-200"}`}>
+              {f} ({f==="All"?mrs.length:f==="LPO Raised"?mrs.filter(m=>lpos.some(l=>l.mrId===m.id)).length:mrs.filter(m=>!lpos.some(l=>l.mrId===m.id)).length})
+            </button>
+          ))}
+        </div>
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
@@ -5305,15 +5438,16 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
 // ─────────────────────────────────────────────────────────────────────────────
 // LPO MODULE CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const LPO_STATUS = ["Draft","Issued","Partially Delivered","Fully Delivered","Completed","Cancelled"];
-const LPO_PAYMENT = ["Advance","7 Days","15 Days","30 Days","45 Days","60 Days","On Delivery"];
+const LPO_STATUS = ["Draft","Pending Approval","Approved","Sent to Supplier","Partially Delivered","Fully Delivered","Completed","Rejected","Cancelled"];
+const LPO_PAYMENT = ["Advance","7 Days","15 Days","30 Days","45 Days","60 Days","90 Days","On Delivery","Cash","Custom..."];
 const LPO_DEL_STATUS = ["Not Delivered","Partially Delivered","Fully Delivered"];
 const EMPTY_LPO_ITEM = () => ({ id:Date.now()+Math.random(), desc:"", unit:"Nos", qty:"", rate:"", amount:0, deliveredQty:"0", itemDeliveryStatus:"Not Delivered" });
 const EMPTY_LPO = (mrObj) => ({
   pid: mrObj?.pid||"", mrId: mrObj?.id||"", mrNum: mrObj?.mrNum||"",
   supplierName:"", supplierContact:"", supplierEmail:"", supplierAddress:"", supplierTrn:"",
   date: new Date().toISOString().split("T")[0], deliveryDate:"",
-  paymentTerms:"30 Days", status:"Draft", deliveryStatus:"Not Delivered",
+  paymentTerms:"30 Days", customPaymentTerms:"", vatEnabled:false,
+  status:"Draft", approvalStatus:"", deliveryStatus:"Not Delivered",
   deliveryNotes:"", remarks:"",
   items: mrObj?.items?.length
     ? mrObj.items.map(i=>({id:Date.now()+Math.random(),desc:i.desc,unit:i.unit,qty:String(i.qty),rate:"",amount:0,deliveredQty:"0",itemDeliveryStatus:"Not Delivered"}))
@@ -5439,7 +5573,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
       <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <span className="font-semibold text-slate-700 text-sm">Items & Delivery Tracking</span>
-          <span className="text-xs text-slate-500">Total: <strong className="text-slate-800">AED {Number(sel.totalAmount).toLocaleString()}</strong></span>
+          <span className="text-xs text-slate-500">Total: <strong className="text-slate-800">AED {Number(sel.vatEnabled ? (sel.totalAmount*1.05) : sel.totalAmount).toLocaleString()}</strong>{sel.vatEnabled&&<span className="text-xs text-amber-600 ml-1">(incl. VAT)</span>}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[800px]">
@@ -5463,14 +5597,36 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
               })}
             </tbody>
             <tfoot className="bg-amber-50 border-t-2 border-amber-200">
-              <tr><td colSpan={5} className="px-3 py-3 font-bold text-slate-700 text-right">Total Amount:</td><td className="px-3 py-3 font-bold text-slate-900">AED {Number(sel.totalAmount).toLocaleString()}</td><td colSpan={3}/></tr>
+              {sel.vatEnabled&&<>
+                <tr><td colSpan={5} className="px-3 py-2 text-slate-600 text-right">Sub Total:</td><td className="px-3 py-2 text-slate-800">AED {Number(sel.totalAmount).toLocaleString()}</td><td colSpan={3}/></tr>
+                <tr><td colSpan={5} className="px-3 py-2 text-slate-600 text-right">VAT (5%):</td><td className="px-3 py-2 text-slate-800">AED {(Number(sel.totalAmount)*0.05).toLocaleString()}</td><td colSpan={3}/></tr>
+                <tr><td colSpan={5} className="px-3 py-3 font-bold text-slate-700 text-right border-t border-slate-200">Grand Total:</td><td className="px-3 py-3 font-bold text-slate-900 border-t border-slate-200">AED {(Number(sel.totalAmount)*1.05).toLocaleString()}</td><td colSpan={3}/></tr>
+              </>}
+              {!sel.vatEnabled&&<tr><td colSpan={5} className="px-3 py-3 font-bold text-slate-700 text-right">Total Amount:</td><td className="px-3 py-3 font-bold text-slate-900">AED {Number(sel.totalAmount).toLocaleString()}</td><td colSpan={3}/></tr>}
             </tfoot>
           </table>
         </div>
       </div>
       {sel.deliveryNotes&&<div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm"><span className="font-semibold text-blue-700">Delivery Notes: </span>{sel.deliveryNotes}</div>}
       {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm"><span className="font-semibold">Remarks: </span>{sel.remarks}</div>}
-      <div className="flex gap-3"><Btn onClick={()=>openEdit(sel)} label="Edit LPO"/><Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/></div>
+      {/* LPO Approval Workflow */}
+      {["Draft","Pending Approval","Approved"].includes(sel.status)&&(
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+          <div className="text-xs font-bold text-amber-800 mb-2">🔐 Approval Workflow — Status: {sel.status}</div>
+          <div className="flex flex-wrap gap-2">
+            {sel.status==="Draft"&&<button onClick={async()=>{await onUpdate({...sel,status:"Pending Approval"});showToast("Submitted for approval");}} className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg">📤 Submit for Approval</button>}
+            {sel.status==="Pending Approval"&&<><button onClick={async()=>{await onUpdate({...sel,status:"Approved"});showToast("LPO Approved!");}} className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg">✅ Approve</button><button onClick={async()=>{await onUpdate({...sel,status:"Rejected"});showToast("LPO Rejected");}} className="text-xs bg-red-500 hover:bg-red-600 text-white font-bold px-3 py-1.5 rounded-lg">✗ Reject</button></>}
+            {sel.status==="Approved"&&<button onClick={async()=>{await onUpdate({...sel,status:"Sent to Supplier"});showToast("Marked as Sent to Supplier");}} className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-bold px-3 py-1.5 rounded-lg">📧 Mark Sent to Supplier</button>}
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={()=>exportLpoPDF(sel,projects)} className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100">📄 Export PDF</button>
+        {sel.supplierEmail&&<a href={`mailto:${sel.supplierEmail}?subject=LPO ${sel.lpoNum}&body=Dear ${sel.supplierName},%0A%0APlease find attached LPO ${sel.lpoNum}.%0A%0ATotal: AED ${Number(sel.vatEnabled?(sel.totalAmount*1.05):sel.totalAmount).toLocaleString()}%0APayment Terms: ${sel.paymentTerms==="Custom..."?sel.customPaymentTerms:sel.paymentTerms}`} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100">📧 Email Supplier</a>}
+        <button onClick={()=>{const t=`AED ${Number(sel.vatEnabled?(sel.totalAmount*1.05):sel.totalAmount).toLocaleString()}`;const msg=encodeURIComponent(`*LPO: ${sel.lpoNum}*\nSupplier: ${sel.supplierName}\nTotal: ${t}\nDate: ${sel.date}\nPayment: ${sel.paymentTerms==="Custom..."?sel.customPaymentTerms:sel.paymentTerms}`);window.open(`https://wa.me/?text=${msg}`);}} className="flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-xs font-bold hover:bg-green-100">💬 WhatsApp</button>
+        <Btn onClick={()=>openEdit(sel)} label="Edit LPO"/>
+        <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+      </div>
     </div>
   );
 
@@ -5488,7 +5644,25 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
             <div><Lbl t="Linked MR"/><Inp value={form.mrNum} readOnly placeholder="Auto-filled from MR" className="bg-slate-50 text-slate-500"/></div>
             <div><Lbl t="LPO Date"/><Inp type="date" value={form.date} onChange={set("date")}/></div>
             <div><Lbl t="Delivery Date"/><Inp type="date" value={form.deliveryDate} onChange={set("deliveryDate")}/></div>
-            <div><Lbl t="Payment Terms"/><Sel value={form.paymentTerms} onChange={set("paymentTerms")}>{LPO_PAYMENT.map(p=><option key={p}>{p}</option>)}</Sel></div>
+            <div>
+              <Lbl t="Payment Terms"/>
+              <Sel value={form.paymentTerms} onChange={set("paymentTerms")}>
+                {LPO_PAYMENT.map(p=><option key={p}>{p}</option>)}
+              </Sel>
+              {form.paymentTerms==="Custom..."&&(
+                <Inp value={form.customPaymentTerms} onChange={set("customPaymentTerms")} placeholder="Enter payment terms..." className="mt-1"/>
+              )}
+            </div>
+            <div>
+              <Lbl t="VAT (5%)"/>
+              <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                <div onClick={()=>setForm(p=>({...p,vatEnabled:!p.vatEnabled}))}
+                  className={`w-10 h-5 rounded-full transition-colors ${form.vatEnabled?"bg-amber-500":"bg-slate-300"} relative`}>
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.vatEnabled?"translate-x-5":""}`}/>
+                </div>
+                <span className="text-sm text-slate-600">{form.vatEnabled?"VAT Included (5%)":"No VAT"}</span>
+              </label>
+            </div>
             {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{LPO_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
           </Grid2>
         </FormCard>
