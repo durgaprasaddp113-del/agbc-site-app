@@ -1838,7 +1838,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
         {/* Right: Alerts + Recent */}
         <div className="space-y-5">
           {/* Alerts */}
-          <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-visible">
             <div className="px-5 py-3.5 border-b border-red-100 bg-red-50 flex items-center gap-2">
               <span className="text-red-500 text-lg">🚨</span>
               <span className="font-bold text-slate-800 text-sm">Alerts & Actions Required</span>
@@ -2115,7 +2115,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
         </div>
 
         {/* Progress Activities Section */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50">
             <div>
               <h3 className="font-bold text-slate-800">Construction Progress Activities</h3>
@@ -2253,7 +2253,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
         btn={<AddBtn onClick={openCreate} label="New Project"/>}/>
       <div className="mb-4"><SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search projects..."/></div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No projects found" onCreate={openCreate}/>:(
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>{["Project No.","Name","Location","Consultant","Duration","Progress","Status","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
@@ -2413,7 +2413,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No tasks found" onCreate={openCreate} /> : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>{["Task", "Project", "Assignee", "Priority", "Due Date", "Status", "Actions"].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
@@ -2859,7 +2859,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
           { title:"⛑️ Safety Observations", rows:sel.safety||[], heads:["Observation","Severity","Action","Responsible","Status"],
             cols:["obs","severity","action","responsible","status"] },
         ].filter(s=>s.rows.length>0).map(sec=>(
-          <div key={sec.title} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div key={sec.title} className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
             <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 font-semibold text-slate-700 text-sm">{sec.title}</div>
             <div className="overflow-x-auto"><table className="w-full text-sm">
               <thead className="bg-slate-50"><tr>{sec.heads.map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
@@ -2912,7 +2912,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
           rows={form.manpower||[]} renderRow={r=>(
@@ -2931,7 +2931,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* EQUIPMENT section */}
-      {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="🚜" title="Equipment Summary" count={(form.equipment||[]).filter(r=>r.name).length} onAdd={addRow("equipment")}/>
         <DynTable heads={["Equipment Name","Qty","Status","Operator","Remarks",""]}
           rows={form.equipment||[]} renderRow={r=>(
@@ -2947,7 +2947,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* ACTIVITIES section */}
-      {activeSection==="activities"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {activeSection==="activities"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="🔨" title="Work Activities" count={(form.activities||[]).filter(r=>r.activity).length} onAdd={addRow("activities")}/>
         <DynTable heads={["Location/Floor","Activity Description","Trade","Progress%","Remarks",""]}
           rows={form.activities||[]} renderRow={r=>(
@@ -2963,7 +2963,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MATERIALS section */}
-      {activeSection==="materials"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {activeSection==="materials"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="📦" title="Materials Received" count={(form.materials||[]).filter(r=>r.material).length} onAdd={addRow("materials")}/>
         <DynTable heads={["Material Name","Qty","Unit","Supplier","DN No.","Remarks",""]}
           rows={form.materials||[]} renderRow={r=>(
@@ -2980,7 +2980,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* INSPECTIONS section */}
-      {activeSection==="inspections"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {activeSection==="inspections"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="🔍" title="Inspections" count={(form.inspections||[]).filter(r=>r.location||r.type).length} onAdd={addRow("inspections")}/>
         <DynTable heads={["Type","Location","Consultant/Client","Status","Remarks",""]}
           rows={form.inspections||[]} renderRow={r=>(
@@ -2996,7 +2996,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* SAFETY section */}
-      {activeSection==="safety"&&<div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {activeSection==="safety"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="⛑️" title="Safety Observations" count={(form.safety||[]).filter(r=>r.obs).length} onAdd={addRow("safety")}/>
         <DynTable heads={["Observation","Severity","Action Taken","Responsible","Status",""]}
           rows={form.safety||[]} renderRow={r=>(
@@ -3202,7 +3202,7 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All", ...IR_STATUS].map(s => <button key={s} onClick={() => setFStatus(s)} className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${fStatus === s ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s === "All" ? inspections.length : inspections.filter(i => i.status === s).length})</button>)}</div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No inspections found" onCreate={openCreate} /> : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>{["IR Number", "Type", "Description", "Project", "Submitted", "Status", "Actions"].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
@@ -3870,7 +3870,7 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
         <div className="flex gap-1">{["All", ...DISC].map(d => <button key={d} onClick={() => setFDisc(d)} className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${fDisc === d ? "bg-amber-500 text-white border-amber-500" : "bg-white border-slate-200 text-slate-600 hover:border-amber-300"}`}>{d}</button>)}</div>
       </div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No drawings found" onCreate={openCreate} /> : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>{["Drawing No.", "Title", "Discipline", "Rev", "Project", "Date", "File", "Actions"].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide">{h}</th>)}</tr>
@@ -4031,7 +4031,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => setMode("upload")} /> : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow group">
+            <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
               <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
                 <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
@@ -4318,7 +4318,7 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
         )}
         {/* TASKS TAB */}
         {activeTab === "tasks" && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
               <span className="text-sm font-bold text-slate-700">Assigned Tasks ({stats.tasks.total})</span>
               {stats.tasks.overdue > 0 && <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">{stats.tasks.overdue} overdue</span>}
@@ -4348,7 +4348,7 @@ const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, t
         )}
         {/* SNAGS TAB */}
         {activeTab === "snags" && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
               <span className="text-sm font-bold text-slate-700">Assigned Snags ({stats.snags.total})</span>
               {stats.snags.open > 0 && <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">{stats.snags.open} open</span>}
@@ -5173,7 +5173,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
         </div>}
       </div>
       {/* Items */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 font-semibold text-slate-700 text-sm">Items ({sel.items.length})</div>
         <table className="w-full text-sm">
           <thead className="bg-slate-50"><tr>{["#","Description","Unit","Qty","Specification","Brand","Remarks"].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr></thead>
@@ -5223,7 +5223,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Additional notes..."/></div>
         </FormCard>
         {/* Items */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
             <span className="font-semibold text-slate-700 text-sm">Material Items</span>
             <button onClick={addItem} className="text-xs font-bold text-amber-600 hover:text-amber-700 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
@@ -5436,7 +5436,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
         </div>
       </FormCard>
       {/* Items with delivery tracking */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <span className="font-semibold text-slate-700 text-sm">Items & Delivery Tracking</span>
           <span className="text-xs text-slate-500">Total: <strong className="text-slate-800">AED {Number(sel.totalAmount).toLocaleString()}</strong></span>
@@ -5504,7 +5504,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
           <div><Lbl t="TRN Number"/><Inp value={form.supplierTrn} onChange={set("supplierTrn")} placeholder="e.g. 100XXXXXXXXX00003"/></div>
         </FormCard>
         {/* Items */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
             <span className="font-semibold text-slate-700 text-sm">Items & Pricing</span>
             <div className="flex items-center gap-3">
@@ -5960,7 +5960,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
           <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
         </FormCard>
         {/* Items */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
             <span className="font-semibold text-slate-700 text-sm">Items Received</span>
             <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
@@ -6009,7 +6009,7 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
           </Grid2>
           <div><Lbl t="Purpose"/><Txta value={form.purpose} onChange={set("purpose")} rows={2} placeholder="Purpose of issue..."/></div>
         </FormCard>
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
             <span className="font-semibold text-slate-700 text-sm">Items to Issue</span>
             <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
@@ -6987,18 +6987,28 @@ export default function App() {
           .flex.gap-1\.5 { flex-wrap: wrap; }
           /* Notification dropdown full width */
           .w-96 { width: calc(100vw - 1rem) !important; right: 0.5rem !important; left: auto !important; }
+          /* ALL module pages can scroll horizontally for tables */
+          main { overflow-x: hidden !important; }
+          main > div { overflow-x: hidden !important; }
+          /* Each overflow-x-auto container scrolls independently */
+          .overflow-x-auto { overflow-x: auto !important; max-width: 100% !important; }
+          .overflow-visible { overflow: visible !important; }
         }
         /* Touch improvements */
         button { touch-action: manipulation; cursor: pointer; }
         input, select, textarea { touch-action: manipulation; font-size: 16px !important; }
         /* Prevent iOS text size adjust */
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-        /* Make overflow-x-auto work on iOS */
-        .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+        /* Make overflow-x-auto work on iOS Safari */
+        .overflow-x-auto { -webkit-overflow-scrolling: touch; overflow-x: auto !important; }
+        /* Ensure module pages can scroll horizontally */
+        main > div { max-width: 100%; }
+        /* Tables always scrollable */
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
       `}</style>
       {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
       <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} user={user} onSignOut={() => supabase.auth.signOut()} />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-y-hidden">
         <Header
           title={PAGE_TITLES[page] || "AGBC"}
           onToggle={() => setCollapsed(c => !c)}
@@ -7011,7 +7021,7 @@ export default function App() {
           onDelete={deleteNotif}
           onNavigate={navigate}
         />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-safe">{renderPage()}</main>
+        <main className="flex-1 overflow-y-auto pb-safe">{renderPage()}</main>
       </div>
     </div>
   );
