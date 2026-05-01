@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { uploadToR2, validateImageFile, fileSizeLabel } from "./r2Storage";
 import { supabase } from "./supabase";
 import Login from "./Login";
 
@@ -576,16 +577,24 @@ function useUserProfile(authUser) {
         full_name: data.full_name || authUser.email,
         role: data.role || "Site Engineer",
         status: data.status || "Active",
+        company_name: data.company_name || "",
+        designation: data.designation || "",
+        department: data.department || "",
+        mobile: data.mobile || data.phone || "",
         project_ids: Array.isArray(data.project_ids) ? data.project_ids : [],
       });
     } else {
-      // Fallback: create minimal profile from auth data
+      // Fallback: create minimal profile from auth data (existing users)
       setProfile({
         id: authUser.id,
         email: authUser.email,
         full_name: authUser.user_metadata?.full_name || authUser.email,
-        role: "Admin", // default for existing users
+        role: "Admin",
         status: "Active",
+        company_name: "",
+        designation: "",
+        department: "",
+        mobile: "",
         project_ids: [],
       });
     }
@@ -1111,17 +1120,25 @@ function usePhotos() {
   }, []);
   useEffect(() => { loadData(); }, [loadData]);
 
-  const add = async (f) => {
-    const ext = f.file.name.split(".").pop();
-    const name = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("site-photos").upload(name, f.file);
-    if (upErr) return { ok: false, error: upErr.message };
-    const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(name);
+  const add = async (f, onProgress = null) => {
+    // ── Validate file ──────────────────────────────────────────────────────
+    const validation = validateImageFile(f.file, 15); // max 15MB
+    if (!validation.ok) return { ok: false, error: validation.error };
+
+    // ── Upload to Cloudflare R2 ────────────────────────────────────────────
+    const r2Result = await uploadToR2(f.file, "progress-photos", onProgress);
+    if (!r2Result.ok) return { ok: false, error: r2Result.error };
+
+    // ── Save URL to Supabase DB (schema unchanged) ─────────────────────────
     const { error } = await supabase.from("project_photos").insert([{
-      project_id: f.pid, file_url: publicUrl, caption: f.caption, area: f.area,
+      project_id: f.pid,
+      file_url:   r2Result.url,   // ← R2 CDN URL stored here
+      caption:    f.caption,
+      area:       f.area,
     }]);
     if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true };
+    await loadData();
+    return { ok: true, url: r2Result.url };
   };
   const update = async (id, f) => {
     const { error } = await supabase.from("project_photos").update({
@@ -2424,6 +2441,8 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
   }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showRejectBox, setShowRejectBox] = useState(false);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const openCreate = () => { setForm(EMPTY_TASK); setSel(null); setMode("form"); };
@@ -4030,13 +4049,17 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   const openEdit = p => { setSel(p); setEditForm({ pid: p.project_id, caption: p.caption || "", area: p.area || "" }); setMode("edit"); };
   const goList = () => { setMode("list"); setSel(null); };
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   const handleUpload = async () => {
     if (!uploadForm.file || !uploadForm.pid) { showToast("Please select a project and photo", "error"); return; }
+    setUploadProgress(0);
     setSaving(true);
-    const res = await onAdd(uploadForm);
+    const res = await onAdd(uploadForm, (pct) => setUploadProgress(pct));
     setSaving(false);
+    setUploadProgress(0);
     if (!res.ok) { showToast(res.error || "Upload failed", "error"); return; }
-    showToast("Photo uploaded successfully!"); setMode("list"); setUploadForm(EMPTY_PHOTO_UPLOAD);
+    showToast("Photo uploaded to R2 successfully!"); setMode("list"); setUploadForm(EMPTY_PHOTO_UPLOAD);
   };
 
   const handleUpdate = async () => {
@@ -4079,10 +4102,48 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
         <div><Lbl t="Area / Location" /><Inp value={uploadForm.area} onChange={e => setUploadForm(p => ({ ...p, area: e.target.value }))} placeholder="e.g. Ground Floor Block A" /></div>
         <div>
           <Lbl t="Photo" req />
-          <Inp type="file" accept="image/*" onChange={e => setUploadForm(p => ({ ...p, file: e.target.files[0] }))} />
-          {uploadForm.file && <p className="text-xs text-green-600 mt-1">✓ Selected: {uploadForm.file.name}</p>}
+          <input type="file" accept="image/*"
+            onChange={e => {
+              const file = e.target.files[0];
+              if (!file) return;
+              const v = validateImageFile(file, 15);
+              if (!v.ok) { showToast(v.error, "error"); e.target.value = ""; return; }
+              setUploadForm(p => ({ ...p, file }));
+            }}
+            className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100"
+          />
+          {uploadForm.file && (
+            <div className="mt-2 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+              <span className="text-green-600 text-sm">📷</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-green-700 truncate">{uploadForm.file.name}</p>
+                <p className="text-xs text-green-600">{fileSizeLabel(uploadForm.file.size)}</p>
+              </div>
+            </div>
+          )}
+          {saving && uploadProgress > 0 && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-slate-500 mb-1">
+                <span>Uploading to R2...</span>
+                <span className="font-bold">{uploadProgress}%</span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-amber-500 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}/>
+              </div>
+            </div>
+          )}
+          {saving && uploadProgress === 0 && (
+            <div className="mt-2 text-xs text-slate-400 flex items-center gap-1.5">
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              Preparing upload...
+            </div>
+          )}
         </div>
-        <FormActions saving={saving} onSave={handleUpload} onCancel={goList} label="Upload Photo" />
+        <FormActions saving={saving} onSave={handleUpload} onCancel={goList} label={saving?"Uploading...":"Upload to R2"}/>
       </FormCard>
     </div>
   );
@@ -4738,14 +4799,16 @@ const USER_ROLES = [
   "Accountant","Site Supervisor","Client Representative",
   "Consultant Representative","Other",
 ];
-const USER_STATUSES = ["Active","Pending Approval","Rejected","Inactive"];
-const USER_STATUS = ["Active", "Inactive"];
-const EMPTY_USER = { email: "", full_name: "", role: "", phone: "", project_ids: [], status: "Active", notes: "" };
+const USER_STATUSES = ["Active","Approved","Pending Approval","Rejected","Suspended","Inactive"];
+const USER_STATUS = ["Active","Approved","Pending Approval","Rejected","Suspended","Inactive"];
+const EMPTY_USER = { email:"", full_name:"", role:"", phone:"", mobile:"", company_name:"", designation:"", department:"", project_ids:[], status:"Active", is_active:true, notes:"", approved_by:"", approved_at:"", rejected_reason:"" };
 const PENDING_BADGE = {
   "Pending Approval": "bg-amber-100 text-amber-700 border-amber-300 font-bold",
-  "Rejected": "bg-red-100 text-red-700 border-red-200",
-  "Inactive": "bg-slate-100 text-slate-500 border-slate-200",
-  "Active": "bg-green-100 text-green-700 border-green-200",
+  "Approved":   "bg-green-100 text-green-700 border-green-200 font-bold",
+  "Active":     "bg-green-100 text-green-700 border-green-200",
+  "Rejected":   "bg-red-100 text-red-700 border-red-200",
+  "Suspended":  "bg-orange-100 text-orange-700 border-orange-200 font-bold",
+  "Inactive":   "bg-slate-100 text-slate-500 border-slate-200",
 };
 
 const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, projects, showToast, userIsAdmin, userProfile, permReqs = [], onUpdatePermReq }) => {
@@ -4761,7 +4824,7 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
   const togglePid = pid => setForm(p => ({ ...p, project_ids: p.project_ids.includes(pid) ? p.project_ids.filter(x => x !== pid) : [...p.project_ids, pid] }));
 
   const openCreate = () => { setForm(EMPTY_USER); setSel(null); setMode("form"); };
-  const openEdit = u => { setSel(u); setForm({ email: u.email, full_name: u.full_name, role: u.role, phone: u.phone || "", project_ids: u.project_ids || [], status: u.status, notes: u.notes || "" }); setMode("form"); };
+  const openEdit = u => { setSel(u); setForm({ email:u.email, full_name:u.full_name, role:u.role, phone:u.phone||"", mobile:u.mobile||"", company_name:u.company_name||"", designation:u.designation||"", department:u.department||"", project_ids:u.project_ids||[], status:u.status, is_active:u.is_active!==false, notes:u.notes||"", approved_by:u.approved_by||"", approved_at:u.approved_at||"", rejected_reason:u.rejected_reason||"" }); setMode("form"); };
   const openView = u => { setSel(u); setMode("view"); };
   const goList = () => { setMode("list"); setSel(null); };
 
@@ -4782,7 +4845,7 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
   const filtered = (users || []).filter(u => {
     if (fRole !== "All" && u.role !== fRole) return false;
     if (fStatus !== "All" && u.status !== fStatus) return false;
-    if (search && !`${u.full_name} ${u.email} ${u.role}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !`${u.full_name} ${u.email} ${u.role} ${u.company_name||""} ${u.designation||""}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -4798,6 +4861,29 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
     { header: "Projects", key: "projectNums", width: 30 },
     { header: "Status", key: "status", width: 12 },
   ];
+
+  // ── Approval handlers ─────────────────────────────────────────────────────
+  const approveUser = async (u, newStatus, reason="") => {
+    const now = new Date().toISOString().split("T")[0];
+    const update = {
+      status: newStatus,
+      is_active: newStatus === "Active" || newStatus === "Approved",
+      approved_by: newStatus === "Approved" || newStatus === "Active" ? "Admin" : u.approved_by,
+      approved_at: newStatus === "Approved" || newStatus === "Active" ? now : u.approved_at,
+      rejected_reason: reason || u.rejected_reason,
+    };
+    await onUpdateUser(u.id, { ...u, ...update });
+    await supabase.from("notifications").insert([{
+      reference_id: u.id, module_name: "users",
+      title: `Account ${newStatus}`,
+      message: `${u.full_name || u.email}'s account has been ${newStatus.toLowerCase()}.${reason ? " Reason: " + reason : ""}`,
+      type: "user_status_change", is_read: false,
+    }]);
+    showToast(`User ${newStatus} successfully!`);
+    setSel({ ...u, ...update });
+  };
+  const [rejectReason, setRejectReason] = useState("");
+  const [showRejectBox, setShowRejectBox] = useState(false);
 
   if (mode === "view" && sel) return (
     <div className="p-6 max-w-2xl">
@@ -4816,27 +4902,126 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
           </div>
         </div>
         <div className="p-5 space-y-4">
-          <Grid2>
-            <div><div className="text-xs text-slate-400">Phone</div><div className="font-semibold text-slate-800 mt-0.5">{sel.phone || "—"}</div></div>
-            <div><div className="text-xs text-slate-400">Role</div><div className="font-semibold text-slate-800 mt-0.5">{sel.role || "—"}</div></div>
-          </Grid2>
+          {/* Core Details */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              {label:"Phone / Mobile",  v:sel.phone||sel.mobile||"—"},
+              {label:"Role",            v:sel.role||"—"},
+              {label:"Company",         v:sel.company_name||"—"},
+              {label:"Designation",     v:sel.designation||"—"},
+              {label:"Department",      v:sel.department||"—"},
+              {label:"Account Status",  v:sel.status||"—"},
+            ].map(({label,v})=>(
+              <div key={label} className="bg-slate-50 rounded-lg p-2.5">
+                <div className="text-xs text-slate-400 mb-0.5">{label}</div>
+                <div className="font-semibold text-slate-800 text-sm">{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Approval Info */}
+          {(sel.approved_by||sel.approved_at||sel.rejected_reason)&&(
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1">
+              <div className="text-xs font-bold text-blue-700">Approval Record</div>
+              {sel.approved_by&&<div className="text-xs text-blue-600">Approved By: <strong>{sel.approved_by}</strong></div>}
+              {sel.approved_at&&<div className="text-xs text-blue-600">Approved On: <strong>{sel.approved_at}</strong></div>}
+              {sel.rejected_reason&&<div className="text-xs text-red-600">Rejection Reason: <strong>{sel.rejected_reason}</strong></div>}
+            </div>
+          )}
+
+          {/* Admin Approval Workflow */}
+          {userIsAdmin&&(
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="text-xs font-black text-amber-800 uppercase tracking-wide mb-3">🔐 Admin Approval Actions</div>
+              <div className="flex flex-wrap gap-2">
+                {(sel.status==="Pending Approval"||sel.status==="Rejected"||sel.status==="Inactive")&&(
+                  <button onClick={()=>approveUser(sel,"Active")}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg">
+                    ✅ Approve & Activate
+                  </button>
+                )}
+                {sel.status==="Active"&&(
+                  <button onClick={()=>approveUser(sel,"Suspended")}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg">
+                    🔒 Suspend
+                  </button>
+                )}
+                {sel.status==="Suspended"&&(
+                  <button onClick={()=>approveUser(sel,"Active")}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg">
+                    🔓 Reactivate
+                  </button>
+                )}
+                {sel.status!=="Rejected"&&(
+                  <button onClick={()=>setShowRejectBox(v=>!v)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg">
+                    ✗ Reject
+                  </button>
+                )}
+                {sel.status!=="Active"&&sel.status!=="Pending Approval"&&(
+                  <button onClick={()=>approveUser(sel,"Inactive")}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-400 hover:bg-slate-500 text-white text-xs font-bold rounded-lg">
+                    ⏸ Set Inactive
+                  </button>
+                )}
+              </div>
+              {showRejectBox&&(
+                <div className="mt-3 space-y-2">
+                  <input value={rejectReason} onChange={e=>setRejectReason(e.target.value)}
+                    placeholder="Rejection reason (optional)..."
+                    className="w-full border border-red-200 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none focus:border-red-400 focus:ring-1 focus:ring-red-100"/>
+                  <div className="flex gap-2">
+                    <button onClick={()=>{approveUser(sel,"Rejected",rejectReason);setShowRejectBox(false);setRejectReason("");}}
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg">Confirm Reject</button>
+                    <button onClick={()=>{setShowRejectBox(false);setRejectReason("");}}
+                      className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Role Assignment (Admin only) */}
+          {userIsAdmin&&(
+            <div className="bg-white border border-slate-200 rounded-xl p-4">
+              <div className="text-xs font-black text-slate-500 uppercase tracking-wide mb-3">🎭 Role & Access Assignment</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Assign Role</label>
+                  <select value={sel.role||""} onChange={async e=>{const r=e.target.value;await onUpdateUser(sel.id,{...sel,role:r});setSel(s=>({...s,role:r}));showToast("Role updated");}}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-amber-400">
+                    <option value="">Select Role...</option>
+                    {USER_ROLES.map(r=><option key={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Department</label>
+                  <input value={sel.department||""} onChange={e=>setSel(s=>({...s,department:e.target.value}))}
+                    onBlur={async()=>{await onUpdateUser(sel.id,{...sel});showToast("Department saved");}}
+                    placeholder="e.g. Civil" className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 outline-none focus:border-amber-400"/>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Assigned Projects */}
           <div>
-            <div className="text-xs text-slate-400 mb-2">Assigned Projects</div>
-            {(sel.project_ids || []).length > 0 ? (
+            <div className="text-xs text-slate-400 mb-2 font-bold">Assigned Projects</div>
+            {(sel.project_ids||[]).length>0?(
               <div className="space-y-1.5">
-                {(sel.project_ids || []).map(pid => { const p = (projects||[]).find(pr => pr.id === pid); return p ? (
+                {(sel.project_ids||[]).map(pid=>{const p=(projects||[]).find(pr=>pr.id===pid);return p?(
                   <div key={pid} className="flex items-center gap-3 bg-slate-50 rounded-lg p-2.5 border border-slate-100">
                     <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center text-xs font-bold text-amber-700">{p.number?.replace("J","")}</div>
                     <div><div className="text-sm font-bold text-slate-800">{p.number}</div><div className="text-xs text-slate-500 truncate">{p.name}</div></div>
                   </div>
-                ) : null; })}
+                ):null;})}
               </div>
-            ) : <div className="text-sm text-slate-400 italic">No projects assigned</div>}
+            ):<div className="text-sm text-slate-400 italic">No projects assigned</div>}
           </div>
-          {sel.notes && <div><div className="text-xs text-slate-400 mb-1">Notes</div><p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg">{sel.notes}</p></div>}
-          <div className="flex gap-3 pt-2 border-t border-slate-100">
-            <Btn onClick={() => openEdit(sel)} label="Edit User" />
-            <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+          {sel.notes&&<div><div className="text-xs text-slate-400 mb-1">Notes</div><p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-lg">{sel.notes}</p></div>}
+          <div className="flex gap-3 pt-2 border-t border-slate-100 flex-wrap">
+            <Btn onClick={()=>openEdit(sel)} label="Edit User"/>
+            <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
           </div>
         </div>
       </div>
@@ -4849,14 +5034,26 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
       <h2 className="text-xl font-bold text-slate-800 mb-4">{sel ? "Edit User" : "Add User"}</h2>
       <div className="space-y-4">
         <FormCard>
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Account Information</div>
-          <div><Lbl t="Full Name" /><Inp value={form.full_name} onChange={set("full_name")} placeholder="e.g. Eng. Ahmed Al Rashidi" /></div>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Personal Information</div>
+          <div><Lbl t="Full Name" req /><Inp value={form.full_name} onChange={set("full_name")} placeholder="e.g. Eng. Ahmed Al Rashidi" /></div>
           <div><Lbl t="Email Address" req /><Inp type="email" value={form.email} onChange={set("email")} placeholder="engineer@agbc.ae" /></div>
           <Grid2>
-            <div><Lbl t="Role" /><Sel value={form.role} onChange={set("role")}><option value="">Select Role...</option>{USER_ROLES.map(r => <option key={r}>{r}</option>)}</Sel></div>
             <div><Lbl t="Phone" /><Inp value={form.phone} onChange={set("phone")} placeholder="+971-50-..." /></div>
+            <div><Lbl t="Mobile" /><Inp value={form.mobile} onChange={set("mobile")} placeholder="+971-50-..." /></div>
           </Grid2>
-          {sel && <div><Lbl t="Status" /><Sel value={form.status} onChange={set("status")}>{USER_STATUS.map(s => <option key={s}>{s}</option>)}</Sel></div>}
+        </FormCard>
+        <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Company & Role</div>
+          <div><Lbl t="Company Name" /><Inp value={form.company_name} onChange={set("company_name")} placeholder="Al Ghaith Building Construction Co. LLC" /></div>
+          <Grid2>
+            <div><Lbl t="Job Title / Designation" /><Inp value={form.designation} onChange={set("designation")} placeholder="Site Engineer" /></div>
+            <div><Lbl t="Department" /><Inp value={form.department} onChange={set("department")} placeholder="Civil" /></div>
+          </Grid2>
+          <Grid2>
+            <div><Lbl t="Role" /><Sel value={form.role} onChange={set("role")}><option value="">Select Role...</option>{USER_ROLES.map(r => <option key={r}>{r}</option>)}</Sel></div>
+            {sel && <div><Lbl t="Status" /><Sel value={form.status} onChange={set("status")}>{USER_STATUS.map(s => <option key={s}>{s}</option>)}</Sel></div>}
+          </Grid2>
+          {form.status==="Rejected"&&<div><Lbl t="Rejection Reason"/><Inp value={form.rejected_reason} onChange={set("rejected_reason")} placeholder="Reason for rejection..."/></div>}
           <div><Lbl t="Notes" /><Txta value={form.notes} onChange={set("notes")} rows={2} placeholder="Any notes about this user..." /></div>
         </FormCard>
         <FormCard>
@@ -4905,16 +5102,20 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {userIsAdmin&&<PermRequestsPanel reqs={permReqs} onUpdate={onUpdatePermReq} showToast={showToast} isAdminUser={userIsAdmin}/>}
         {userIsAdmin&&users.filter(u=>u.status==="Pending Approval").length>0&&(
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3 w-full">
             <span className="text-xl">⏳</span>
             <div className="flex-1 text-sm font-semibold text-amber-800">
               {users.filter(u=>u.status==="Pending Approval").length} user{users.filter(u=>u.status==="Pending Approval").length>1?"s":""} awaiting approval
             </div>
+            <button onClick={()=>setFStatus("Pending Approval")}
+              className="text-xs font-bold text-amber-700 border border-amber-400 px-2 py-1 rounded-lg hover:bg-amber-100">
+              Review →
+            </button>
           </div>
         )}
         <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, email, role..." />
-        <Sel value={fRole} onChange={e => setFRole(e.target.value)} className="w-auto"><option value="All">All Roles</option>{USER_ROLES.map(r => <option key={r}>{r}</option>)}</Sel>
-        <Sel value={fStatus} onChange={e => setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{USER_STATUS.map(s => <option key={s}>{s}</option>)}</Sel>
+        <Sel value={fRole} onChange={e=>setFRole(e.target.value)} className="w-auto"><option value="All">All Roles</option>{USER_ROLES.map(r=><option key={r}>{r}</option>)}</Sel>
+        <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{USER_STATUS.map(s=><option key={s}>{s}</option>)}</Sel>
       </div>
       {usersLoading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No users found" onCreate={openCreate} /> : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -4930,17 +5131,29 @@ const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, pro
                   </div>
                   <Badge text={u.status} cls="ml-auto shrink-0" />
                 </div>
-                <div className="mb-3"><span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded-full">{u.role || "No role"}</span></div>
+                <div className="mb-2 flex flex-wrap gap-1">
+                  <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 font-semibold px-2 py-0.5 rounded-full">{u.role || "No role"}</span>
+                  {u.company_name&&<span className="text-xs bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full truncate max-w-[140px]">{u.company_name}</span>}
+                </div>
+                {u.designation&&<div className="text-xs text-slate-400 mb-2 truncate">{u.designation}{u.department?" · "+u.department:""}</div>}
                 {assignedProjs.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-3">
                     {assignedProjs.slice(0,3).map(p => <span key={p.id} className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium">{p.number}</span>)}
                     {assignedProjs.length > 3 && <span className="text-xs text-slate-400">+{assignedProjs.length-3}</span>}
                   </div>
                 )}
-                <div className="flex gap-1.5 pt-2 border-t border-slate-100">
-                  <ActBtn onClick={() => openView(u)} label="View" color="view" />
-                  <ActBtn onClick={() => openEdit(u)} label="Edit" color="edit" />
-                  <ActBtn onClick={() => setConfirmId(u.id)} label="Del" color="del" />
+                <div className="flex gap-1.5 pt-2 border-t border-slate-100 flex-wrap">
+                  <ActBtn onClick={()=>openView(u)} label="View" color="view"/>
+                  <ActBtn onClick={()=>openEdit(u)} label="Edit" color="edit"/>
+                  {userIsAdmin&&u.status==="Pending Approval"&&(
+                    <button onClick={async()=>{const now=new Date().toISOString().split("T")[0];await onUpdateUser(u.id,{...u,status:"Active",is_active:true,approved_by:"Admin",approved_at:now});showToast(`${u.full_name||u.email} approved!`);}}
+                      className="text-xs bg-green-500 hover:bg-green-600 text-white font-bold px-2 py-0.5 rounded-lg">✓ Approve</button>
+                  )}
+                  {userIsAdmin&&u.status==="Active"&&(
+                    <button onClick={async()=>{await onUpdateUser(u.id,{...u,status:"Suspended",is_active:false});showToast("User suspended");}}
+                      className="text-xs bg-orange-400 hover:bg-orange-500 text-white font-bold px-2 py-0.5 rounded-lg">🔒 Suspend</button>
+                  )}
+                  <ActBtn onClick={()=>setConfirmId(u.id)} label="Del" color="del"/>
                 </div>
               </div>
             );

@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#1e293b" />
     <meta name="description" content="AGBC Site Management System" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
@@ -21,6 +21,11 @@
       onload="console.log('jsPDF loaded');"
       onerror="console.warn('jsPDF failed to load');">
     </script>
+
+    <!-- PDF.js for drawing viewer (render PDF pages as canvas) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+      onload="pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; window._PDFJS=pdfjsLib; console.log('PDF.js loaded');"
+      onerror="console.warn('PDF.js failed to load');"></script>
 
     <!-- jsPDF AutoTable plugin -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"
