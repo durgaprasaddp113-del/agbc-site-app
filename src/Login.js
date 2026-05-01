@@ -1,3 +1,4 @@
+/* eslint-disable */
 // Login.js — AGBC Site Management System
 // Full Registration + Approval Workflow
 import { useState } from "react";

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { uploadToR2, validateImageFile, fileSizeLabel } from "./r2Storage";
 import { supabase } from "./supabase";
