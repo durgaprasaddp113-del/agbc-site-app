@@ -2745,7 +2745,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
   useEffect(() => {
     setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId, navFilter.status]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -2895,7 +2895,7 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast,
   useEffect(() => {
     setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -3170,7 +3170,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     setFProject(navFilter.projectId || "All");
     setFStatus(navFilter.status || "All");
     setFDate(navFilter.date || "");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [activeSection, setActiveSection] = useState("header");
@@ -3535,7 +3535,7 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_IR);
   const [fStatus, setFStatus] = useState(navFilter.status || "All");
-  useEffect(() => { setFStatus(navFilter.status || "All"); }, [navFilter]);
+  useEffect(() => { setFStatus(navFilter.status || "All"); }, [navFilter.projectId]);
   const [fProject, setFProject] = useState("All");
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
@@ -5736,7 +5736,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
   useEffect(() => {
     setFStatus(navFilter.status || "All");
     setFProject(String(navFilter.projectId||"").toLowerCase() || "all");
-  }, [navFilter]);
+  }, [navFilter.projectId, navFilter.status]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -5996,7 +5996,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
       setFProject(navFilter.projectId || "All");
       setFDelivery(navFilter.delivery || "All");
     }
-  }, [navFilter, prefillMr]);
+  }, [navFilter.projectId, prefillMr]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -6770,7 +6770,7 @@ const MaterialStore = ({
     if (navFilter.status === "Low Stock") { setFLowOnly(true); setFStatus("Low Stock"); }
     else if (navFilter.status) setFStatus(navFilter.status);
     if (navFilter.projectId) setFProject(navFilter.projectId);
-  }, [navFilter]);
+  }, [navFilter.projectId]);
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
@@ -11035,7 +11035,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
     setFProject(navFilter.projectId || "All");
     setFStatus(navFilter.status || "All");
     setFExpiry(navFilter.expiry || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -12057,10 +12057,10 @@ export default function App() {
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} userIsAdmin={userIsAdmin} userProfile={userProfile} permReqs={permReqs} onUpdatePermReq={updatePermReq}/>;
-      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}}/>;
-      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
+      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}} navFilter={navFilter}/>;
+      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)} navFilter={navFilter}/>;
       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onApproveReceipt={approveReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
-      case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
+      case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast} navFilter={navFilter}/>;
       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
     }
