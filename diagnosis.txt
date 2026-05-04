@@ -1,0 +1,77 @@
+TOTAL LINES: 8341
+
+[const ManpowerMaster] found 1 times:
+  line 7772: const ManpowerMaster = ({ subcontractors, projects, showToast }) => {
+
+[useManpowerMaster] found 3 times:
+  line 7692: // ── useManpowerMaster Hook ───────────────────────────────────────────────────
+  line 7693: function useManpowerMaster() {
+  line 7773: const { masters, loading, addMaster, updateMaster, removeMaster } = useManpowerM
+
+[case "manpower-master"] found 1 times:
+  line 8261: case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={p
+
+[Module coming soon] found 1 times:
+  line 8262: default: return <div className="p-12 text-center text-slate-400 text-lg font-sem
+
+[const MaterialStore] found 1 times:
+  line 6411: const MaterialStore = ({
+
+[approveReceipt] found 4 times:
+  line 6208: const approveReceipt = async (receiptId) => {
+  line 6401: addReceipt, approveReceipt, removeReceipt,
+  line 8208: const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeS
+
+[updateReceipt] found 0 times:
+
+[onApproveReceipt] found 3 times:
+  line 6414: onAddReceipt, onApproveReceipt, onRemoveReceipt,
+  line 6541: const res = await onApproveReceipt(receiptId);
+  line 8259: case "store": return <MaterialStore stock={stock} receipts={receipts} issues={is
+
+[function useStore] found 1 times:
+  line 6000: function useStore() {
+
+[LPOModule] found 2 times:
+  line 5674: const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
+  line 8258: case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpd
+
+[RENDERPAGE SWITCH]
+8245:   const renderPage = () => {
+8246:     switch (page) {
+8247:       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections}
+8248:       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} prog
+8249:       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete=
+8250:       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete=
+8251:       case "reports":        return <DailyReports {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR
+8252:       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdat
+8253:       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} 
+8254:       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDe
+8255:       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDele
+8256:       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDe
+8257:       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} on
+8258:       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} pro
+8259:       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock=
+8260:       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} p
+8261:       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
+8262:       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
+8263:     }
+8264:   };
+8265: 
+8266:   return (
+
+[CASE STORE]
+8258:       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} sho
+8259:       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={upda
+8260:       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={
+8261:       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
+
+[MATERIALSTORE PROPS]
+6411: const MaterialStore = ({
+6412:   stock, receipts, issues, loading,
+6413:   onAddStock, onUpdateStock, onRemoveStock,
+6414:   onAddReceipt, onApproveReceipt, onRemoveReceipt,
+6415:   onAddIssue, onRemoveIssue,
+6416:   projects, lpos, showToast, navFilter = {},
+6417: }) => {
+6418:   const [tab,      setTab]      = useState("stock");

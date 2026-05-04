@@ -1,0 +1,123 @@
+EMPTY_STOCK_FORM defined at line 6422:   const [form,     setForm]     = useState(EMPTY_STOCK_FORM());
+
+LPO FORM MODE at line 5848
+5848:   if (mode==="form") return (
+5849:     <div className="p-6 max-w-3xl">
+5850:       <BackBtn onClick={goList}/>
+5851:       <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?`Edit — ${sel.lpoNum}`:prefillMr?`Convert MR ${prefillMr.mrNum} →
+5852:       <div className="space-y-4">
+5853:         {/* LPO Details */}
+5854:         <FormCard>
+5855:           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">LPO Details</div>
+5856:           <Grid2>
+5857:             <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{pro
+5858:             <div><Lbl t="Linked MR"/><Inp value={form.mrNum} readOnly placeholder="Auto-filled from MR" className="bg-slate-50 tex
+5859:             <div><Lbl t="LPO Date"/><Inp type="date" value={form.date} onChange={set("date")}/></div>
+5860:             <div><Lbl t="Delivery Date"/><Inp type="date" value={form.deliveryDate} onChange={set("deliveryDate")}/></div>
+5861:             <div>
+5862:               <Lbl t="Payment Terms"/>
+5863:               <Sel value={form.paymentTerms} onChange={set("paymentTerms")}>
+5864:                 {LPO_PAYMENT.map(p=><option key={p}>{p}</option>)}
+5865:               </Sel>
+5866:               {form.paymentTerms==="Custom..."&&(
+5867:                 <Inp value={form.customPaymentTerms} onChange={set("customPaymentTerms")} placeholder="Enter payment terms..." cla
+5868:               )}
+5869:             </div>
+5870:             <div>
+5871:               <Lbl t="VAT (5%)"/>
+5872:               <label className="flex items-center gap-2 mt-1 cursor-pointer">
+5873:                 <div onClick={()=>setForm(p=>({...p,vatEnabled:!p.vatEnabled}))}
+5874:                   className={`w-10 h-5 rounded-full transition-colors ${form.vatEnabled?"bg-amber-500":"bg-slate-300"} relative`}>
+5875:                   <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.vatE
+5876:                 </div>
+5877:                 <span className="text-sm text-slate-600">{form.vatEnabled?"VAT Included (5%)":"No VAT"}</span>
+5878:               </label>
+5879:             </div>
+5880:             {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{LPO_STATUS.map(s=><option key={s}>{s}</
+5881:           </Grid2>
+5882:         </FormCard>
+5883:         {/* Supplier Details */}
+5884:         <FormCard>
+5885:           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Supplier Details</div>
+5886:           <div><Lbl t="Supplier Company Name" req/><Inp value={form.supplierName} onChange={set("supplierName")} placeholder="e.g.
+5887:           <Grid2>
+5888:             <div><Lbl t="Contact Person"/><Inp value={form.supplierContact} onChange={set("supplierContact")} placeholder="Contact
+5889:             <div><Lbl t="Phone / Email"/><Inp value={form.supplierEmail} onChange={set("supplierEmail")} placeholder="phone or ema
+5890:           </Grid2>
+5891:           <div><Lbl t="Address"/><Inp value={form.supplierAddress} onChange={set("supplierAddress")} placeholder="Supplier address
+5892:           <div><Lbl t="TRN Number"/><Inp value={form.supplierTrn} onChange={set("supplierTrn")} placeholder="e.g. 100XXXXXXXXX0000
+5893:         </FormCard>
+5894:         {/* Items */}
+5895:         <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
+5896:           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
+5897:             <span className="font-semibold text-slate-700 text-sm">Items & Pricing</span>
+5898:             <div className="flex items-center gap-3">
+5899:               <span className="text-sm font-bold text-slate-700">Total: AED {totalAmt.toLocaleString()}</span>
+5900:               <button onClick={addItem} className="text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-300 px-2
+5901:             </div>
+5902:           </div>
+5903:           <div className="overflow-x-auto">
+5904:             <table className="w-full text-sm min-w-[800px]">
+5905:               <thead className="bg-slate-50"><tr>{["#","Description*","Unit","Qty*","Rate (AED)*","Amount","Delivered","",""].map(
+5906:               <tbody>
+5907:                 {form.items.map((it,idx)=>(
+5908:                   <tr key={it.id} className="border-t border-slate-100">
+5909:                     <td className="px-2 py-1 text-slate-400 text-xs w-8">{idx+1}</td>
+5910:                     <td className="px-1 py-1"><Inp value={it.desc} onChange={e=>setItemF(it.id,"desc",e.target.value)} placeholder
+5911:                     <td className="px-1 py-1 w-20"><Sel value={it.unit} onChange={e=>setItemF(it.id,"unit",e.target.value)}>{UNITS
+5912:                     <td className="px-1 py-1 w-18"><Inp type="number" value={it.qty} onChange={e=>setItemF(it.id,"qty",e.target.va
+5913:                     <td className="px-1 py-1 w-24"><Inp type="number" value={it.rate} onChange={e=>setItemF(it.id,"rate",e.target.
+5914:                     <td className="px-2 py-1 text-sm font-bold text-slate-700 whitespace-nowrap">AED {((Number(it.qty)||0)*(Number
+5915:                     <td className="px-1 py-1 w-20"><Inp type="number" value={it.deliveredQty} onChange={e=>setItemF(it.id,"deliver
+5916:                     <td className="px-1 py-1 text-xs"><span className={it.itemDeliveryStatus==="Fully Delivered"?"text-green-600 f
+5917:                     <td className="px-1 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={form.items.length===1} classNa
+5918:                   </tr>
+5919:                 ))}
+5920:               </tbody>
+5921:             </table>
+5922:           </div>
+5923:         </div>
+5924:         {/* Delivery + Remarks */}
+5925:         <FormCard>
+5926:           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Delivery & Remarks</div>
+5927:           {sel&&<div className="mb-3"><Lbl t="Delivery Status"/><Sel value={form.deliveryStatus} onChange={set("deliveryStatus")}>
+5928:           <div><Lbl t="Delivery Notes"/><Txta value={form.deliveryNotes} onChange={set("deliveryNotes")} rows={2} placeholder="Del
+5929:           <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Additional remarks..."
+5930:         </FormCard>
+5931:         <div className="flex gap-3"><Btn saving={saving} onClick={handleSave} label={sel?"Update LPO":prefillMr?"Create LPO from M
+5932:       </div>
+5933:     </div>
+5934:   );
+5935: 
+5936:   // ── LIST ────────────────────────────────────────────────────────────────────
+5937:   return (
+5938:     <div className="p-6">
+5939:       {confirmId&&<ConfirmDialog message="Delete this LPO permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setC
+5940:       <PageTitle title="Local Purchase Orders" count={filtered.length}
+5941:         exportBtn={<ExportButtons data={filtered.map(l=>({...l,projectNum:(projects.find(p=>p.id===l.pid)||{}).number||"—",totalFm
+5942:           excelCols={[{header:"LPO No.",key:"lpoNum",width:12},{header:"Project",key:"projectNum",width:14},{header:"Supplier",key
+5943:           fileName="Local_Purchase_Orders" pdfTitle="Local Purchase Orders"/>}
+5944:         btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
+5945:       <div className="flex flex-wrap gap-1.5 mb-3">
+5946:         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
+5947:         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</optio
+5948:       </div>
+5949:       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All",...LPO_STATUS].map(s=><button key={
+5950:       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
+5951:         <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+5952:           <table className="w-full text-sm min-w-[900px]">
+5953:             <thead className="bg-slate-50 border-b border-slate-200">
+5954:               <tr>{["LPO No.","Project","Supplier","MR No.","Date","Del. Date","Status","Delivery","Total","Actions"].map(h=><th k
+5955:             </thead>
+5956:             <tbody className="divide-y divide-slate-100">
+5957:               {filtered.map(l=>{
+5958:                 const proj = projects.find(p=>p.id===l.pid);
+5959:                 return (
+5960:                   <tr key={l.id} className="hover:bg-blue-50 transition-colors">
+5961:                     <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{l.lpoNum}</td>
+5962:                     <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+5963:                     <td className="px-4 py-3"><div className="font-medium text-slate-800 max-w-[140px] truncate">{l.supplierName}<
+5964:                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{l.mrNum||"—"}</td>
+5965:                     <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(l.date)}</td>
+5966:                     <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(l.deliveryDate)||"—"}</td>
+5967:                     <td className="px-4 py-3"><Badge text={l.status}/></td>

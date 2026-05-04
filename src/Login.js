@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://awzxxzaspmwqgrywplnu.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3enh4emFzcG13cWdyeXdwbG51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTM5NjQ3MDEsImV4cCI6MjAyOTU0MDcwMX0.Ql3IBVB7HuV1MBkG2Ys5yX0ZMoMlXJCB4MBiELyFTng";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3enh4emFzcG13cWdyeXdwbG51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MjI0NjgsImV4cCI6MjA5MjQ5ODQ2OH0._1uvuSwKvWCKUxilJuC-AiO9U2-rKz6yB6-MPrzwYxg";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const USER_ROLES = [
