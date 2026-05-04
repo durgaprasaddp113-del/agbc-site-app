@@ -5996,187 +5996,398 @@ const PAGE_TITLES = {
 // ─────────────────────────────────────────────────────────────────────────────
 // MATERIAL STORE HOOKS
 // ─────────────────────────────────────────────────────────────────────────────
+
 function useStore() {
-  const [stock, setStock] = useState([]);
+  const [stock, setStock]       = useState([]);
   const [receipts, setReceipts] = useState([]);
-  const [issues, setIssues] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [issues, setIssues]     = useState([]);
+  const [loading, setLoading]   = useState(true);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     const [sRes, rRes, iRes] = await Promise.all([
       supabase.from("material_stock").select("*").order("material_name"),
-      supabase.from("material_receipts").select("*, material_receipt_items(*)").order("created_at", { ascending: false }),
-      supabase.from("material_issues").select("*, material_issue_items(*)").order("created_at", { ascending: false }),
+      supabase.from("material_receipts")
+        .select("*, material_receipt_items(*)")
+        .order("created_at", { ascending: false }),
+      supabase.from("material_issues")
+        .select("*, material_issue_items(*)")
+        .order("created_at", { ascending: false }),
     ]);
+
     if (sRes.data) setStock(sRes.data.map(s => ({
-      id: s.id, code: s.material_code || "", name: s.material_name || "",
-      category: s.category || "", unit: s.unit || "Nos",
-      pid: s.project_id || "", location: s.store_location || "",
-      opening: Number(s.opening_stock) || 0, received: Number(s.received_quantity) || 0,
-      issued: Number(s.issued_quantity) || 0,
-      balance: Number(s.balance_stock) || 0,
-      minLevel: Number(s.minimum_stock_level) || 0,
-      supplier: s.supplier_name || "", rate: Number(s.last_purchase_rate) || 0,
-      status: s.status || "Available", remarks: s.remarks || "",
+      id:         s.id,
+      code:       s.material_code      || "",
+      name:       s.material_name      || "",
+      category:   s.category           || "",
+      unit:       s.unit               || "Nos",
+      pid:        s.project_id         || "",
+      location:   s.store_location     || "",
+      opening:    Number(s.opening_stock)           || 0,
+      received:   Number(s.received_quantity)        || 0,
+      issued:     Number(s.issued_quantity)          || 0,
+      balance:    Number(s.balance_stock)            || 0,
+      minLevel:   Number(s.minimum_stock_level)      || 0,
+      supplier:   s.supplier_name      || "",
+      rate:       Number(s.last_purchase_rate)       || 0,
+      status:     s.status             || "Available",
+      remarks:    s.remarks            || "",
     })));
+
     if (rRes.data) setReceipts(rRes.data.map(r => ({
-      id: r.id, grnNum: r.grn_number || "", pid: r.project_id || "",
-      lpoId: r.lpo_id || "", supplier: r.supplier_name || "",
-      deliveryNote: r.delivery_note_number || "", receivedDate: r.received_date || "",
-      receivedBy: r.received_by || "", remarks: r.remarks || "",
-      attachUrl: r.attachment_url || "",
+      id:           r.id,
+      grnNum:       r.grn_number           || "",
+      grnStatus:    r.grn_status           || "Draft",
+      pid:          r.project_id           || "",
+      lpoId:        r.lpo_id               || "",
+      lpoReference: r.lpo_reference        || "",
+      supplier:     r.supplier_name        || "",
+      deliveryNote: r.delivery_note_number || "",
+      receivedDate: r.received_date        || "",
+      receivedBy:   r.received_by          || "",
+      remarks:      r.remarks              || "",
       items: (r.material_receipt_items || []).map(i => ({
-        id: i.id, stockId: i.material_stock_id || "", name: i.material_name || "",
-        unit: i.unit || "", qty: Number(i.quantity_received) || 0, remarks: i.remarks || "",
+        id:        i.id,
+        stockId:   i.material_stock_id || "",
+        lpoItemId: i.lpo_item_id       || "",
+        name:      i.material_name     || "",
+        unit:      i.unit              || "",
+        orderedQty:   Number(i.ordered_quantity)   || 0,
+        prevRecQty:   Number(i.prev_received_qty)  || 0,
+        pendingQty:   Number(i.pending_quantity)   || 0,
+        qty:          Number(i.quantity_received)  || 0,
+        rate:         Number(i.unit_rate)          || 0,
+        remarks:      i.remarks        || "",
       })),
     })));
+
     if (iRes.data) setIssues(iRes.data.map(i => ({
-      id: i.id, issueNum: i.issue_number || "", pid: i.project_id || "",
-      issuedTo: i.issued_to || "", dept: i.department_trade || "",
-      location: i.location_area || "", issueDate: i.issue_date || "",
-      issuedBy: i.issued_by || "", purpose: i.purpose || "", remarks: i.remarks || "",
+      id:        i.id,
+      issueNum:  i.issue_number          || "",
+      pid:       i.project_id            || "",
+      issuedTo:  i.issued_to             || "",
+      dept:      i.department_trade      || "",
+      location:  i.location_area         || "",
+      issueDate: i.issue_date            || "",
+      issuedBy:  i.issued_by             || "",
+      purpose:   i.purpose               || "",
+      remarks:   i.remarks               || "",
       items: (i.material_issue_items || []).map(it => ({
-        id: it.id, stockId: it.material_stock_id || "", name: it.material_name || "",
-        unit: it.unit || "", qty: Number(it.quantity_issued) || 0, remarks: it.remarks || "",
+        id:      it.id,
+        stockId: it.material_stock_id || "",
+        name:    it.material_name     || "",
+        unit:    it.unit              || "",
+        qty:     Number(it.quantity_issued) || 0,
+        remarks: it.remarks           || "",
       })),
     })));
+
     setLoading(false);
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Auto-status helper
   const computeStatus = (balance, minLevel) => {
-    if (balance <= 0) return "Out of Stock";
-    if (balance <= minLevel) return "Low Stock";
+    if (balance <= 0)         return "Out of Stock";
+    if (balance <= minLevel)  return "Low Stock";
     return "Available";
   };
 
-  // ── STOCK CRUD ──
+  // ── STOCK CRUD ──────────────────────────────────────────────────────────────
   const addStock = async (f) => {
     const balance = (Number(f.opening)||0) + (Number(f.received)||0) - (Number(f.issued)||0);
-    const status = computeStatus(balance, Number(f.minLevel)||0);
     const { error } = await supabase.from("material_stock").insert([{
-      material_code: f.code, material_name: f.name, category: f.category,
-      unit: f.unit, project_id: f.pid || null, store_location: f.location,
-      opening_stock: Number(f.opening)||0, received_quantity: Number(f.received)||0,
-      issued_quantity: Number(f.issued)||0, balance_stock: balance,
-      minimum_stock_level: Number(f.minLevel)||0, supplier_name: f.supplier,
-      last_purchase_rate: Number(f.rate)||0, status, remarks: f.remarks,
+      material_code:         f.code,
+      material_name:         f.name,
+      category:              f.category,
+      unit:                  f.unit,
+      project_id:            f.pid || null,
+      store_location:        f.location,
+      opening_stock:         Number(f.opening)  || 0,
+      received_quantity:     Number(f.received) || 0,
+      issued_quantity:       Number(f.issued)   || 0,
+      balance_stock:         balance,
+      minimum_stock_level:   Number(f.minLevel) || 0,
+      supplier_name:         f.supplier,
+      last_purchase_rate:    Number(f.rate)     || 0,
+      status:                computeStatus(balance, Number(f.minLevel)||0),
+      remarks:               f.remarks,
     }]);
     if (error) return { ok: false, error: error.message };
     await loadAll(); return { ok: true };
   };
+
   const updateStock = async (id, f) => {
     const balance = (Number(f.opening)||0) + (Number(f.received)||0) - (Number(f.issued)||0);
-    const status = computeStatus(balance, Number(f.minLevel)||0);
     const { error } = await supabase.from("material_stock").update({
-      material_code: f.code, material_name: f.name, category: f.category,
-      unit: f.unit, project_id: f.pid || null, store_location: f.location,
-      opening_stock: Number(f.opening)||0, received_quantity: Number(f.received)||0,
-      issued_quantity: Number(f.issued)||0, balance_stock: balance,
-      minimum_stock_level: Number(f.minLevel)||0, supplier_name: f.supplier,
-      last_purchase_rate: Number(f.rate)||0, status: f.status || status, remarks: f.remarks,
+      material_code:         f.code,
+      material_name:         f.name,
+      category:              f.category,
+      unit:                  f.unit,
+      project_id:            f.pid || null,
+      store_location:        f.location,
+      opening_stock:         Number(f.opening)  || 0,
+      received_quantity:     Number(f.received) || 0,
+      issued_quantity:       Number(f.issued)   || 0,
+      balance_stock:         balance,
+      minimum_stock_level:   Number(f.minLevel) || 0,
+      supplier_name:         f.supplier,
+      last_purchase_rate:    Number(f.rate)     || 0,
+      status:                f.status || computeStatus(balance, Number(f.minLevel)||0),
+      remarks:               f.remarks,
     }).eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadAll(); return { ok: true };
   };
+
   const removeStock = async (id) => {
     const { error } = await supabase.from("material_stock").delete().eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadAll(); return { ok: true };
   };
 
-  // ── RECEIPTS ──
+  // ── GRN: CREATE (Draft — does NOT update stock) ─────────────────────────────
   const getNextGRN = async () => {
-    const { data } = await supabase.from("material_receipts").select("grn_number").order("created_at", { ascending: false }).limit(1);
+    const { data } = await supabase
+      .from("material_receipts")
+      .select("grn_number")
+      .order("created_at", { ascending: false })
+      .limit(1);
     const last = data?.[0]?.grn_number || "GRN-000";
     const n = parseInt(last.replace("GRN-", "")) || 0;
     return `GRN-${String(n + 1).padStart(3, "0")}`;
   };
+
   const addReceipt = async (f) => {
     const grnNum = await getNextGRN();
-    const { data: rData, error } = await supabase.from("material_receipts").insert([{
-      grn_number: grnNum, project_id: f.pid || null, lpo_id: f.lpoId || null,
-      supplier_name: f.supplier, delivery_note_number: f.deliveryNote,
-      received_date: f.receivedDate || null, received_by: f.receivedBy, remarks: f.remarks,
-    }]).select().single();
+
+    // Save GRN header as Draft
+    const { data: rData, error } = await supabase
+      .from("material_receipts")
+      .insert([{
+        grn_number:            grnNum,
+        grn_status:            "Draft",
+        project_id:            f.pid  || null,
+        lpo_id:                f.lpoId || null,
+        lpo_reference:         f.lpoReference || null,
+        supplier_name:         f.supplier,
+        delivery_note_number:  f.deliveryNote,
+        received_date:         f.receivedDate || null,
+        received_by:           f.receivedBy,
+        remarks:               f.remarks,
+      }])
+      .select()
+      .single();
+
     if (error) return { ok: false, error: error.message };
-    // Insert receipt items and update stock
-    for (const it of (f.items || []).filter(i => i.stockId && i.qty > 0)) {
-      await supabase.from("material_receipt_items").insert([{
-        receipt_id: rData.id, material_stock_id: it.stockId,
-        material_name: it.name, unit: it.unit,
-        quantity_received: Number(it.qty), remarks: it.remarks,
-      }]);
-      // Increase stock
-      const { data: st } = await supabase.from("material_stock").select("received_quantity,balance_stock,minimum_stock_level").eq("id", it.stockId).single();
-      if (st) {
-        const newRec = (st.received_quantity || 0) + Number(it.qty);
-        const newBal = (st.balance_stock || 0) + Number(it.qty);
-        await supabase.from("material_stock").update({
-          received_quantity: newRec, balance_stock: newBal,
-          status: newBal <= 0 ? "Out of Stock" : newBal <= (st.minimum_stock_level || 0) ? "Low Stock" : "Available",
-        }).eq("id", it.stockId);
+
+    // Save GRN items — stock NOT updated yet
+    const validItems = (f.items || []).filter(i => i.qty > 0);
+    if (validItems.length > 0) {
+      const itemRows = validItems.map(i => ({
+        receipt_id:           rData.id,
+        lpo_item_id:          i.lpoItemId  || null,
+        material_stock_id:    i.stockId    || null,
+        material_name:        i.name,
+        unit:                 i.unit,
+        ordered_quantity:     Number(i.orderedQty)  || 0,
+        prev_received_qty:    Number(i.prevRecQty)  || 0,
+        pending_quantity:     Number(i.pendingQty)  || 0,
+        quantity_received:    Number(i.qty),
+        unit_rate:            Number(i.rate)        || 0,
+        remarks:              i.remarks || "",
+      }));
+      await supabase.from("material_receipt_items").insert(itemRows);
+    }
+
+    await loadAll();
+    return { ok: true, grnNum };
+  };
+
+  // ── GRN: APPROVE (updates stock + LPO received qty) ────────────────────────
+  const approveReceipt = async (receiptId) => {
+    // Get GRN with items
+    const { data: grn, error: grnErr } = await supabase
+      .from("material_receipts")
+      .select("*, material_receipt_items(*)")
+      .eq("id", receiptId)
+      .single();
+
+    if (grnErr || !grn) return { ok: false, error: "GRN not found" };
+    if (grn.grn_status === "Approved") return { ok: false, error: "Already approved" };
+
+    // Update each item: stock + LPO item received qty
+    for (const item of (grn.material_receipt_items || [])) {
+      const qty = Number(item.quantity_received) || 0;
+      if (qty <= 0) continue;
+
+      // 1. Update stock balance
+      if (item.material_stock_id) {
+        const { data: st } = await supabase
+          .from("material_stock")
+          .select("received_quantity, balance_stock, minimum_stock_level, last_purchase_rate")
+          .eq("id", item.material_stock_id)
+          .single();
+
+        if (st) {
+          const newRec = (st.received_quantity || 0) + qty;
+          const newBal = (st.balance_stock    || 0) + qty;
+          await supabase.from("material_stock").update({
+            received_quantity:  newRec,
+            balance_stock:      newBal,
+            last_purchase_rate: item.unit_rate || st.last_purchase_rate || 0,
+            status: newBal <= 0
+              ? "Out of Stock"
+              : newBal <= (st.minimum_stock_level || 0)
+                ? "Low Stock"
+                : "Available",
+          }).eq("id", item.material_stock_id);
+        }
+      }
+
+      // 2. Update LPO item received quantity
+      if (item.lpo_item_id) {
+        const { data: li } = await supabase
+          .from("lpo_items")
+          .select("quantity, received_quantity")
+          .eq("id", item.lpo_item_id)
+          .single();
+
+        if (li) {
+          const newRecv = (li.received_quantity || 0) + qty;
+          const newDel  = newRecv >= li.quantity
+            ? "Fully Delivered"
+            : "Partially Delivered";
+          await supabase.from("lpo_items").update({
+            received_quantity:  newRecv,
+            delivery_status:    newDel,
+          }).eq("id", item.lpo_item_id);
+        }
       }
     }
-    // Update LPO delivery if linked
-    if (f.lpoId) {
-      const { data: lpo } = await supabase.from("lpo").select("status").eq("id", f.lpoId).single();
-      if (lpo) await supabase.from("lpo").update({ delivery_status: "Partially Delivered", status: "Partially Delivered" }).eq("id", f.lpoId);
+
+    // 3. Auto-update LPO header delivery status
+    if (grn.lpo_id) {
+      const { data: lpoItems } = await supabase
+        .from("lpo_items")
+        .select("quantity, received_quantity")
+        .eq("lpo_id", grn.lpo_id);
+
+      if (lpoItems) {
+        const allFull = lpoItems.every(i => (i.received_quantity||0) >= i.quantity);
+        const anyRecv = lpoItems.some(i => (i.received_quantity||0) > 0);
+        const lpoDelStatus = allFull
+          ? "Fully Delivered"
+          : anyRecv
+            ? "Partially Delivered"
+            : "Not Delivered";
+
+        await supabase.from("lpo").update({
+          delivery_status: lpoDelStatus,
+          status: allFull ? "Fully Delivered" : "Partially Delivered",
+        }).eq("id", grn.lpo_id);
+      }
     }
-    await loadAll(); return { ok: true, grnNum };
+
+    // 4. Mark GRN as Approved
+    await supabase.from("material_receipts")
+      .update({ grn_status: "Approved" })
+      .eq("id", receiptId);
+
+    await loadAll();
+    return { ok: true };
   };
+
   const removeReceipt = async (id) => {
+    // Only allow deleting Draft GRNs
     await supabase.from("material_receipt_items").delete().eq("receipt_id", id);
     const { error } = await supabase.from("material_receipts").delete().eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadAll(); return { ok: true };
   };
 
-  // ── ISSUES ──
+  // ── ISSUES ──────────────────────────────────────────────────────────────────
   const getNextIssueNum = async () => {
-    const { data } = await supabase.from("material_issues").select("issue_number").order("created_at", { ascending: false }).limit(1);
+    const { data } = await supabase
+      .from("material_issues")
+      .select("issue_number")
+      .order("created_at", { ascending: false })
+      .limit(1);
     const last = data?.[0]?.issue_number || "ISS-000";
     const n = parseInt(last.replace("ISS-", "")) || 0;
     return `ISS-${String(n + 1).padStart(3, "0")}`;
   };
+
   const addIssue = async (f) => {
     // Validate stock availability
     for (const it of (f.items || []).filter(i => i.stockId && i.qty > 0)) {
-      const { data: st } = await supabase.from("material_stock").select("balance_stock,material_name").eq("id", it.stockId).single();
+      const { data: st } = await supabase
+        .from("material_stock")
+        .select("balance_stock, material_name")
+        .eq("id", it.stockId)
+        .single();
       if (!st || (st.balance_stock || 0) < Number(it.qty)) {
-        return { ok: false, error: `Insufficient stock for "${st?.material_name || it.name}". Available: ${st?.balance_stock || 0}` };
+        return {
+          ok: false,
+          error: `Insufficient stock for "${st?.material_name || it.name}". Available: ${st?.balance_stock || 0}`,
+        };
       }
     }
+
     const issueNum = await getNextIssueNum();
-    const { data: iData, error } = await supabase.from("material_issues").insert([{
-      issue_number: issueNum, project_id: f.pid || null,
-      issued_to: f.issuedTo, department_trade: f.dept,
-      location_area: f.location, issue_date: f.issueDate || null,
-      issued_by: f.issuedBy, purpose: f.purpose, remarks: f.remarks,
-    }]).select().single();
+    const { data: iData, error } = await supabase
+      .from("material_issues")
+      .insert([{
+        issue_number:       issueNum,
+        project_id:         f.pid       || null,
+        issued_to:          f.issuedTo,
+        department_trade:   f.dept,
+        location_area:      f.location,
+        issue_date:         f.issueDate || null,
+        issued_by:          f.issuedBy,
+        purpose:            f.purpose,
+        remarks:            f.remarks,
+      }])
+      .select()
+      .single();
+
     if (error) return { ok: false, error: error.message };
+
     for (const it of (f.items || []).filter(i => i.stockId && i.qty > 0)) {
       await supabase.from("material_issue_items").insert([{
-        issue_id: iData.id, material_stock_id: it.stockId,
-        material_name: it.name, unit: it.unit,
-        quantity_issued: Number(it.qty), remarks: it.remarks,
+        issue_id:             iData.id,
+        material_stock_id:    it.stockId,
+        material_name:        it.name,
+        unit:                 it.unit,
+        quantity_issued:      Number(it.qty),
+        remarks:              it.remarks || "",
       }]);
-      // Decrease stock
-      const { data: st } = await supabase.from("material_stock").select("issued_quantity,balance_stock,minimum_stock_level").eq("id", it.stockId).single();
+
+      const { data: st } = await supabase
+        .from("material_stock")
+        .select("issued_quantity, balance_stock, minimum_stock_level")
+        .eq("id", it.stockId)
+        .single();
+
       if (st) {
         const newIss = (st.issued_quantity || 0) + Number(it.qty);
-        const newBal = (st.balance_stock || 0) - Number(it.qty);
+        const newBal = (st.balance_stock   || 0) - Number(it.qty);
         await supabase.from("material_stock").update({
-          issued_quantity: newIss, balance_stock: Math.max(0, newBal),
-          status: newBal <= 0 ? "Out of Stock" : newBal <= (st.minimum_stock_level || 0) ? "Low Stock" : "Available",
+          issued_quantity: newIss,
+          balance_stock:   Math.max(0, newBal),
+          status: newBal <= 0
+            ? "Out of Stock"
+            : newBal <= (st.minimum_stock_level || 0)
+              ? "Low Stock"
+              : "Available",
         }).eq("id", it.stockId);
       }
     }
-    await loadAll(); return { ok: true, issueNum };
+
+    await loadAll();
+    return { ok: true, issueNum };
   };
+
   const removeIssue = async (id) => {
     await supabase.from("material_issue_items").delete().eq("issue_id", id);
     const { error } = await supabase.from("material_issues").delete().eq("id", id);
@@ -6184,306 +6395,451 @@ function useStore() {
     await loadAll(); return { ok: true };
   };
 
-  return { stock, receipts, issues, loading,
+  return {
+    stock, receipts, issues, loading,
     addStock, updateStock, removeStock,
-    addReceipt, removeReceipt,
-    addIssue, removeIssue, reload: loadAll };
+    addReceipt, approveReceipt, removeReceipt,
+    addIssue, removeIssue,
+    reload: loadAll,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MATERIAL STORE MODULE
+// UPDATED MaterialStore COMPONENT
+// Replace the existing MaterialStore component in App.js
 // ─────────────────────────────────────────────────────────────────────────────
-const STOCK_STATUS = ["Available","Low Stock","Out of Stock","Inactive"];
-const STOCK_CATS = ["Cement & Concrete","Steel & Rebar","Block & Brick","Sand & Aggregate","Tiles & Marble","Waterproofing","Electrical","Plumbing","Paint","Timber & Formwork","Safety","Tools","Other"];
-const DEPT_LIST = ["Civil","MEP","Architecture","QAQC","Safety","Store","Finishing"];
-
-const ST_BADGE = {
-  "Available":"bg-green-100 text-green-700 border-green-200",
-  "Low Stock":"bg-amber-100 text-amber-700 border-amber-200",
-  "Out of Stock":"bg-red-100 text-red-700 border-red-200",
-  "Inactive":"bg-slate-100 text-slate-500 border-slate-200",
-};
-
-const EMPTY_STOCK_ITEM = () => ({ id: Date.now()+Math.random(), stockId:"", name:"", unit:"Nos", qty:"", remarks:"" });
-const EMPTY_STOCK_FORM = () => ({ code:"", name:"", category:"Cement & Concrete", unit:"Nos", pid:"", location:"", opening:"0", received:"0", issued:"0", minLevel:"0", supplier:"", rate:"", status:"Available", remarks:"" });
-const EMPTY_REC_FORM = (lpos=[]) => ({ pid:"", lpoId:"", supplier:"", deliveryNote:"", receivedDate: new Date().toISOString().split("T")[0], receivedBy:"", remarks:"", items:[EMPTY_STOCK_ITEM()] });
-const EMPTY_ISS_FORM = () => ({ pid:"", issuedTo:"", dept:"Civil", location:"", issueDate: new Date().toISOString().split("T")[0], issuedBy:"", purpose:"", remarks:"", items:[EMPTY_STOCK_ITEM()] });
-
-const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateStock, onRemoveStock, onAddReceipt, onRemoveReceipt, onAddIssue, onRemoveIssue, projects, lpos, showToast, navFilter = {} }) => {
-  const [tab, setTab] = useState("stock"); // stock | receipts | issues
-  const [mode, setMode] = useState("list"); // list | form | view
-  const [subMode, setSubMode] = useState(""); // "receive" | "issue" for quick actions
-  const [sel, setSel] = useState(null);
-  const [form, setForm] = useState(EMPTY_STOCK_FORM());
-  const [search, setSearch] = useState("");
+const MaterialStore = ({
+  stock, receipts, issues, loading,
+  onAddStock, onUpdateStock, onRemoveStock,
+  onAddReceipt, onApproveReceipt, onRemoveReceipt,
+  onAddIssue, onRemoveIssue,
+  projects, lpos, showToast, navFilter = {},
+}) => {
+  const [tab,      setTab]      = useState("stock");
+  const [mode,     setMode]     = useState("list");
+  const [subMode,  setSubMode]  = useState("");
+  const [sel,      setSel]      = useState(null);
+  const [form,     setForm]     = useState(EMPTY_STOCK_FORM());
+  const [search,   setSearch]   = useState("");
   const [fProject, setFProject] = useState("All");
-  const [fCat, setFCat] = useState("All");
-  const [fLowOnly, setFLowOnly] = useState(navFilter.status === "Low Stock");
-  const [fStatus, setFStatus] = useState(navFilter.status === "Low Stock" ? "Low Stock" : "All");
-  const [saving, setSaving] = useState(false);
+  const [fCat,     setFCat]     = useState("All");
+  const [fStatus,  setFStatus]  = useState("All");
+  const [fLowOnly, setFLowOnly] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+
+  // LPO auto-populate state
+  const [selLpoId, setSelLpoId] = useState("");
+  const [lpoItems, setLpoItems] = useState([]);
+  const [loadingLpo, setLoadingLpo] = useState(false);
+
   useEffect(() => {
     if (navFilter.status === "Low Stock") { setFLowOnly(true); setFStatus("Low Stock"); }
     else if (navFilter.status) setFStatus(navFilter.status);
     if (navFilter.projectId) setFProject(navFilter.projectId);
   }, [navFilter]);
-  const [confirmId, setConfirmId] = useState(null);
-  const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
 
-  // Receipt/Issue item helpers
-  const addItem = () => setForm(p => ({...p, items:[...(p.items||[]), EMPTY_STOCK_ITEM()]}));
-  const removeItem = id => setForm(p => ({...p, items: p.items.filter(i => i.id!==id)}));
-  const setItem = (id,k,v) => setForm(p => ({...p, items: p.items.map(i => i.id===id ? {...i,[k]:v} : i)}));
-  const setItemStock = (id, stockId) => {
-    const st = stock.find(s => s.id===stockId);
-    setForm(p => ({...p, items: p.items.map(i => i.id===id ? {...i, stockId, name:st?.name||"", unit:st?.unit||"Nos"} : i)}));
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  // ── Load LPO items when LPO selected in GRN form ──────────────────────────
+  const loadLpoItems = async (lpoId) => {
+    if (!lpoId) { setLpoItems([]); return; }
+    setLoadingLpo(true);
+    const { data, error } = await supabase
+      .from("lpo_items")
+      .select("*")
+      .eq("lpo_id", lpoId);
+    if (!error && data) {
+      // Only show items with pending quantity > 0
+      const pending = data.filter(i => {
+        const pend = (Number(i.quantity) || 0) - (Number(i.received_quantity) || 0);
+        return pend > 0;
+      });
+      setLpoItems(pending.map(i => ({
+        lpoItemId:   i.id,
+        name:        i.item_description || "",
+        unit:        i.unit             || "Nos",
+        orderedQty:  Number(i.quantity)           || 0,
+        prevRecQty:  Number(i.received_quantity)  || 0,
+        pendingQty:  (Number(i.quantity) || 0) - (Number(i.received_quantity) || 0),
+        rate:        Number(i.rate)     || 0,
+        qty:         0,        // user fills this
+        stockId:     "",       // user links to stock item
+        remarks:     "",
+      })));
+    }
+    setLoadingLpo(false);
   };
 
-  const goList = () => { setMode("list"); setSel(null); setSubMode(""); };
+  // ── GRN Form item helpers ────────────────────────────────────────────────
+  const setGrnItem = (idx, k, v) => setLpoItems(p => p.map((i, n) => n===idx ? {...i,[k]:v} : i));
+  const setGrnStockLink = (idx, stockId) => {
+    const st = stock.find(s => s.id === stockId);
+    setGrnItem(idx, "stockId", stockId);
+    if (st && !lpoItems[idx].name) setGrnItem(idx, "name", st.name);
+  };
 
-  // ── COMPUTED ──
+  // ── Computed ─────────────────────────────────────────────────────────────
+  const approvedLpos = lpos.filter(l =>
+    ["Approved","Sent to Supplier","Partially Delivered"].includes(l.status)
+  );
+
   const filteredStock = stock.filter(s => {
-    if (fProject!=="All" && s.pid!==fProject) return false;
-    if (fCat!=="All" && s.category!==fCat) return false;
-    if (fStatus!=="All" && s.status!==fStatus) return false;
-    if (fLowOnly && s.status!=="Low Stock") return false;
+    if (fProject !== "All" && s.pid !== fProject) return false;
+    if (fCat     !== "All" && s.category !== fCat) return false;
+    if (fStatus  !== "All" && s.status   !== fStatus) return false;
+    if (fLowOnly && s.status !== "Low Stock") return false;
     if (search && !`${s.code} ${s.name} ${s.supplier}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const thisMonth = new Date(); thisMonth.setDate(1); thisMonth.setHours(0,0,0,0);
-  const recThisMonth = receipts.reduce((sum,r) => {
-    if (!r.receivedDate || new Date(r.receivedDate) < thisMonth) return sum;
-    return sum + r.items.reduce((s,i)=>s+i.qty,0);
-  }, 0);
-  const issThisMonth = issues.reduce((sum,i) => {
-    if (!i.issueDate || new Date(i.issueDate) < thisMonth) return sum;
-    return sum + i.items.reduce((s,it)=>s+it.qty,0);
-  }, 0);
+  const goList = () => { setMode("list"); setSel(null); setSubMode(""); setSelLpoId(""); setLpoItems([]); };
 
-  // ── SAVE HANDLERS ──
+  // ── Save Handlers ─────────────────────────────────────────────────────────
   const handleSaveStock = async () => {
-    if (!form.name.trim()) { showToast("Material name required","error"); return; }
+    if (!form.name.trim()) { showToast("Material name required", "error"); return; }
     setSaving(true);
     const res = sel ? await onUpdateStock(sel.id, form) : await onAddStock(form);
     setSaving(false);
-    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
+    if (!res.ok) { showToast(res.error || "Failed", "error"); return; }
     showToast(sel ? "Stock updated!" : "Stock item created!"); goList();
   };
-  const handleSaveReceipt = async () => {
-    if (!form.supplier.trim()) { showToast("Supplier required","error"); return; }
-    if (!(form.items||[]).some(i=>i.stockId&&i.qty>0)) { showToast("Add at least one item","error"); return; }
+
+  const handleSaveGRN = async () => {
+    const lpo = lpos.find(l => l.id === selLpoId);
+    if (!selLpoId) { showToast("Select an approved LPO", "error"); return; }
+    if (!lpoItems.some(i => i.qty > 0)) { showToast("Enter received quantity for at least one item", "error"); return; }
+
+    // Validate received qty <= pending qty
+    for (const it of lpoItems) {
+      if (Number(it.qty) > Number(it.pendingQty)) {
+        showToast(`"${it.name}": Received qty (${it.qty}) cannot exceed pending qty (${it.pendingQty})`, "error");
+        return;
+      }
+    }
+
     setSaving(true);
-    const res = await onAddReceipt(form);
+    const res = await onAddReceipt({
+      pid:          lpo?.pid  || "",
+      lpoId:        selLpoId,
+      lpoReference: lpo?.lpoNum || "",
+      supplier:     form.supplier || lpo?.supplierName || "",
+      deliveryNote: form.deliveryNote || "",
+      receivedDate: form.receivedDate || new Date().toISOString().split("T")[0],
+      receivedBy:   form.receivedBy   || "",
+      remarks:      form.remarks      || "",
+      items:        lpoItems.filter(i => i.qty > 0),
+    });
     setSaving(false);
-    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
-    showToast("Receipt saved: "+res.grnNum); goList();
+    if (!res.ok) { showToast(res.error || "Failed", "error"); return; }
+    showToast(`GRN ${res.grnNum} created as Draft — approve to update stock!`);
+    goList();
   };
+
+  const handleApproveGRN = async (receiptId) => {
+    setSaving(true);
+    const res = await onApproveReceipt(receiptId);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error || "Approval failed", "error"); return; }
+    showToast("GRN Approved ✅ — Stock updated!");
+  };
+
   const handleSaveIssue = async () => {
-    if (!form.issuedTo.trim()) { showToast("Issued to required","error"); return; }
-    if (!(form.items||[]).some(i=>i.stockId&&i.qty>0)) { showToast("Add at least one item","error"); return; }
+    if (!form.issuedTo?.trim()) { showToast("Issued to required", "error"); return; }
+    const items = (form.items || []).filter(i => i.stockId && i.qty > 0);
+    if (!items.length) { showToast("Add at least one item", "error"); return; }
     setSaving(true);
-    const res = await onAddIssue(form);
+    const res = await onAddIssue({ ...form, items });
     setSaving(false);
-    if (!res.ok) { showToast(res.error||"Failed","error"); return; }
-    showToast("Issue saved: "+res.issueNum); goList();
+    if (!res.ok) { showToast(res.error || "Failed", "error"); return; }
+    showToast("Materials issued: " + res.issueNum); goList();
   };
+
   const handleDelete = async (type, id) => {
     let res;
-    if (type==="stock") res = await onRemoveStock(id);
-    else if (type==="receipt") res = await onRemoveReceipt(id);
-    else res = await onRemoveIssue(id);
-    if (!res.ok) { showToast(res.error,"error"); return; }
+    if (type === "stock")   res = await onRemoveStock(id);
+    else if (type === "receipt") res = await onRemoveReceipt(id);
+    else                    res = await onRemoveIssue(id);
+    if (!res.ok) { showToast(res.error, "error"); return; }
     showToast("Deleted!"); setConfirmId(null);
   };
 
-  // ── EXPORT ──
-  const exportStockExcel = () => {
-    const cols = [
-      {header:"Code",key:"code",width:14},{header:"Name",key:"name",width:32},{header:"Category",key:"category",width:20},
-      {header:"Unit",key:"unit",width:10},{header:"Location",key:"location",width:18},
-      {header:"Opening",key:"opening",width:12},{header:"Received",key:"received",width:12},
-      {header:"Issued",key:"issued",width:12},{header:"Balance",key:"balance",width:12},
-      {header:"Min Level",key:"minLevel",width:12},{header:"Supplier",key:"supplier",width:24},
-      {header:"Rate (AED)",key:"rate",width:14},{header:"Status",key:"status",width:14},{header:"Remarks",key:"remarks",width:24},
-    ];
-    const exportData = filteredStock.map(s=>({...s, projectNum:(projects.find(p=>p.id===s.pid)||{}).number||"—"}));
-    exportToExcel(exportData, cols, "Stock_Balance_Report");
-  };
-  const exportStockPDF = () => {
-    const cols = [
-      {header:"Code",key:"code",pdfWidth:18},{header:"Name",key:"name",pdfWidth:42},
-      {header:"Cat.",key:"category",pdfWidth:22},{header:"Unit",key:"unit",pdfWidth:10},
-      {header:"Opening",key:"opening",pdfWidth:14},{header:"Received",key:"received",pdfWidth:14},
-      {header:"Issued",key:"issued",pdfWidth:14},{header:"Balance",key:"balance",pdfWidth:14},
-      {header:"Min",key:"minLevel",pdfWidth:10},{header:"Status",key:"status",pdfWidth:18},
-    ];
-    exportToPDF(filteredStock, cols, "Stock_Balance_Report", "Stock Balance Report", "landscape");
+  // Issue form item helpers
+  const addIssueItem  = () => setForm(p => ({ ...p, items: [...(p.items||[]), EMPTY_STOCK_ITEM()] }));
+  const removeIssueItem = id => setForm(p => ({ ...p, items: p.items.filter(i => i.id !== id) }));
+  const setIssueItem  = (id, k, v) => setForm(p => ({ ...p, items: p.items.map(i => i.id===id ? {...i,[k]:v} : i) }));
+  const setIssueStock = (id, stockId) => {
+    const st = stock.find(s => s.id === stockId);
+    setForm(p => ({ ...p, items: p.items.map(i => i.id===id ? {...i, stockId, name: st?.name||"", unit: st?.unit||"Nos"} : i) }));
   };
 
-  // ── TABS BAR ──
+  // ── Dashboard stats ───────────────────────────────────────────────────────
+  const now = new Date(); now.setDate(1); now.setHours(0,0,0,0);
+  const recThisMonth = receipts
+    .filter(r => r.grnStatus === "Approved" && r.receivedDate && new Date(r.receivedDate) >= now)
+    .reduce((s, r) => s + r.items.reduce((a, i) => a + i.qty, 0), 0);
+  const issThisMonth = issues
+    .filter(i => i.issueDate && new Date(i.issueDate) >= now)
+    .reduce((s, i) => s + i.items.reduce((a, it) => a + it.qty, 0), 0);
+  const pendingGRNs = receipts.filter(r => r.grnStatus === "Draft").length;
+
   const TABS = [
-    {id:"stock", label:"📦 Stock Register", count:stock.length},
-    {id:"receipts", label:"📥 Material Receipts", count:receipts.length},
-    {id:"issues", label:"📤 Material Issues", count:issues.length},
+    { id:"stock",    label:"📦 Stock Register",      count: stock.length    },
+    { id:"receipts", label:"📥 Material Receipts (GRN)", count: receipts.length },
+    { id:"issues",   label:"📤 Material Issues",     count: issues.length   },
   ];
 
-  // ── RECEIPT FORM ──
-  if ((tab==="receipts"||subMode==="receive") && mode==="form") return (
-    <div className="p-6 max-w-3xl">
+  // ── GRN FORM ──────────────────────────────────────────────────────────────
+  if ((tab === "receipts" || subMode === "receive") && mode === "form") return (
+    <div className="p-6 max-w-4xl">
       <BackBtn onClick={goList}/>
-      <h2 className="text-xl font-bold text-slate-800 mb-4">
-        {subMode==="receive"&&sel ? `Receive Material → ${sel.name}` : "New Material Receipt (GRN)"}
-      </h2>
-      <div className="space-y-4">
+      <h2 className="text-xl font-bold text-slate-800 mb-4">New Material Receipt (GRN)</h2>
+
+      {/* Step 1 — Select Approved LPO */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+        <div className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">
+          Step 1 — Select Approved LPO
+        </div>
+        <Sel value={selLpoId} onChange={e => {
+          setSelLpoId(e.target.value);
+          const lpo = lpos.find(l => l.id === e.target.value);
+          if (lpo) setForm(p => ({ ...p, supplier: lpo.supplierName }));
+          loadLpoItems(e.target.value);
+        }}>
+          <option value="">Select Approved LPO...</option>
+          {approvedLpos.map(l => (
+            <option key={l.id} value={l.id}>
+              {l.lpoNum} — {l.supplierName} ({projects.find(p=>p.id===l.pid)?.number||"—"})
+            </option>
+          ))}
+        </Sel>
+        {approvedLpos.length === 0 && (
+          <p className="text-xs text-amber-700 mt-2">⚠️ No approved LPOs found. Approve an LPO first.</p>
+        )}
+      </div>
+
+      {/* LPO Summary */}
+      {selLpoId && (() => {
+        const lpo = lpos.find(l => l.id === selLpoId);
+        const proj = projects.find(p => p.id === lpo?.pid);
+        return (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><div className="text-xs text-slate-400">LPO No.</div><div className="font-bold text-green-700">{lpo?.lpoNum}</div></div>
+            <div><div className="text-xs text-slate-400">Supplier</div><div className="font-semibold text-slate-800">{lpo?.supplierName}</div></div>
+            <div><div className="text-xs text-slate-400">Project</div><div className="font-semibold text-slate-800">{proj?.number} — {proj?.name}</div></div>
+            <div><div className="text-xs text-slate-400">LPO Status</div><Badge text={lpo?.status}/></div>
+          </div>
+        );
+      })()}
+
+      {/* Step 2 — LPO Items with received qty */}
+      {selLpoId && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-visible mb-4">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+            <span className="font-semibold text-slate-700 text-sm">Step 2 — Enter Received Quantities</span>
+            {loadingLpo && <span className="text-xs text-amber-600 animate-pulse">Loading items...</span>}
+            {!loadingLpo && lpoItems.length === 0 && (
+              <span className="text-xs text-red-600">⚠️ All items fully received or no pending items</span>
+            )}
+          </div>
+          {lpoItems.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[900px]">
+                <thead className="bg-slate-50">
+                  <tr>
+                    {["#","Item Description","Unit","Ordered","Prev Received","Pending","Received Now*","Rate (AED)","Link to Stock","Remarks"].map(h => (
+                      <th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lpoItems.map((it, idx) => (
+                    <tr key={idx} className="border-t border-slate-100">
+                      <td className="px-3 py-2 text-xs text-slate-400">{idx+1}</td>
+                      <td className="px-3 py-2 font-medium text-slate-800">{it.name}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">{it.unit}</td>
+                      <td className="px-3 py-2 text-xs text-center font-bold">{it.orderedQty}</td>
+                      <td className="px-3 py-2 text-xs text-center text-amber-600 font-semibold">{it.prevRecQty}</td>
+                      <td className="px-3 py-2 text-xs text-center text-blue-700 font-bold">{it.pendingQty}</td>
+                      <td className="px-2 py-1 w-24">
+                        <Inp
+                          type="number"
+                          value={it.qty || ""}
+                          onChange={e => {
+                            const v = Math.min(Number(e.target.value), it.pendingQty);
+                            setGrnItem(idx, "qty", v);
+                          }}
+                          placeholder="0"
+                          className={it.qty > it.pendingQty ? "border-red-400" : ""}
+                        />
+                        {it.qty > it.pendingQty && (
+                          <div className="text-red-500 text-xs mt-0.5">Exceeds pending!</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-600">AED {it.rate}</td>
+                      <td className="px-2 py-1 min-w-[160px]">
+                        <Sel
+                          value={it.stockId}
+                          onChange={e => setGrnStockLink(idx, e.target.value)}
+                          className="text-xs"
+                        >
+                          <option value="">Link to stock item...</option>
+                          {stock.map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.code ? `[${s.code}] ` : ""}{s.name} ({s.balance} {s.unit})
+                            </option>
+                          ))}
+                        </Sel>
+                        <div className="text-xs text-slate-400 mt-0.5">Optional — creates new if empty</div>
+                      </td>
+                      <td className="px-2 py-1">
+                        <Inp
+                          value={it.remarks}
+                          onChange={e => setGrnItem(idx, "remarks", e.target.value)}
+                          placeholder="Notes"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 3 — GRN Details */}
+      {selLpoId && (
         <FormCard>
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Receipt Details</div>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+            Step 3 — Delivery Details
+          </div>
           <Grid2>
-            <div><Lbl t="Project"/><Sel value={form.pid} onChange={set("pid")}><option value="">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
-            <div><Lbl t="Linked LPO"/><Sel value={form.lpoId} onChange={e=>{ const l=lpos.find(x=>x.id===e.target.value); setForm(p=>({...p,lpoId:e.target.value,supplier:l?.supplierName||p.supplier})); }}><option value="">None</option>{lpos.map(l=><option key={l.id} value={l.id}>{l.lpoNum} — {l.supplierName}</option>)}</Sel></div>
-            <div><Lbl t="Supplier Name" req/><Inp value={form.supplier} onChange={set("supplier")} placeholder="Supplier"/></div>
+            <div><Lbl t="Supplier Name"/><Inp value={form.supplier} onChange={set("supplier")} placeholder="Auto-filled from LPO"/></div>
             <div><Lbl t="Delivery Note No."/><Inp value={form.deliveryNote} onChange={set("deliveryNote")} placeholder="DN-XXXX"/></div>
             <div><Lbl t="Received Date"/><Inp type="date" value={form.receivedDate} onChange={set("receivedDate")}/></div>
-            <div><Lbl t="Received By"/><Inp value={form.receivedBy} onChange={set("receivedBy")} placeholder="Name"/></div>
+            <div><Lbl t="Received By"/><Inp value={form.receivedBy} onChange={set("receivedBy")} placeholder="Store keeper"/></div>
           </Grid2>
           <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 font-semibold mt-2">
+            ⚠️ GRN will be saved as <strong>Draft</strong>. Stock updates ONLY after you click <strong>Approve GRN</strong>.
+          </div>
         </FormCard>
-        {/* Items */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
-          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
-            <span className="font-semibold text-slate-700 text-sm">Items Received</span>
-            <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
-          </div>
-          <div className="overflow-x-auto w-full">
-          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
-            <thead className="bg-slate-50"><tr>{["#","Material*","Unit","Qty Received*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
-            <tbody>{(form.items||[]).map((it,idx)=>(
-              <tr key={it.id} className="border-t border-slate-100">
-                <td className="px-3 py-1 text-xs text-slate-400 w-8">{idx+1}</td>
-                <td className="px-2 py-1">
-                  <Sel value={it.stockId} onChange={e=>setItemStock(it.id,e.target.value)}>
-                    <option value="">Select material...</option>
-                    {stock.map(s=><option key={s.id} value={s.id}>{s.code ? `[${s.code}] ` : ""}{s.name} ({s.unit})</option>)}
-                  </Sel>
-                </td>
-                <td className="px-2 py-1 w-16"><span className="text-xs text-slate-500 font-semibold">{it.unit||"—"}</span></td>
-                <td className="px-2 py-1 w-24"><Inp type="number" value={it.qty} onChange={e=>setItem(it.id,"qty",e.target.value)} placeholder="0"/></td>
-                <td className="px-2 py-1"><Inp value={it.remarks} onChange={e=>setItem(it.id,"remarks",e.target.value)} placeholder="Notes"/></td>
-                <td className="px-2 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={(form.items||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
-              </tr>
-            ))}</tbody>
-          </table></div>
-          </div>
-        </div>
-        <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveReceipt} label="Save GRN"/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+      )}
+
+      <div className="flex gap-3 mt-4">
+        <Btn saving={saving} onClick={handleSaveGRN} label="Save GRN (Draft)"/>
+        <Btn onClick={goList} label="Cancel" color="slate"/>
       </div>
     </div>
   );
 
-  // ── ISSUE FORM ──
-  if ((tab==="issues"||subMode==="issue") && mode==="form") return (
+  // ── ISSUE FORM ─────────────────────────────────────────────────────────────
+  if ((tab === "issues" || subMode === "issue") && mode === "form") return (
     <div className="p-6 max-w-3xl">
       <BackBtn onClick={goList}/>
       <h2 className="text-xl font-bold text-slate-800 mb-4">New Material Issue</h2>
       <div className="space-y-4">
         <FormCard>
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Issue Details</div>
           <Grid2>
-            <div><Lbl t="Project"/><Sel value={form.pid} onChange={set("pid")}><option value="">All</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
-            <div><Lbl t="Issue Date"/><Inp type="date" value={form.issueDate} onChange={set("issueDate")}/></div>
-            <div><Lbl t="Issued To" req/><Inp value={form.issuedTo} onChange={set("issuedTo")} placeholder="Name / Subcontractor"/></div>
-            <div><Lbl t="Department / Trade"/><Sel value={form.dept} onChange={set("dept")}>{DEPT_LIST.map(d=><option key={d}>{d}</option>)}</Sel></div>
-            <div><Lbl t="Location / Area"/><Inp value={form.location} onChange={set("location")} placeholder="Floor 3, Column Grid A"/></div>
-            <div><Lbl t="Issued By"/><Inp value={form.issuedBy} onChange={set("issuedBy")} placeholder="Store keeper"/></div>
+            <div><Lbl t="Project"/><Sel value={form.pid||""} onChange={set("pid")}><option value="">All</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Issue Date"/><Inp type="date" value={form.issueDate||""} onChange={set("issueDate")}/></div>
+            <div><Lbl t="Issued To" req/><Inp value={form.issuedTo||""} onChange={set("issuedTo")} placeholder="Name / Subcontractor"/></div>
+            <div><Lbl t="Department / Trade"/><Sel value={form.dept||"Civil"} onChange={set("dept")}>{DEPT_LIST.map(d=><option key={d}>{d}</option>)}</Sel></div>
+            <div><Lbl t="Location / Area"/><Inp value={form.location||""} onChange={set("location")} placeholder="Floor 3, Grid A"/></div>
+            <div><Lbl t="Issued By"/><Inp value={form.issuedBy||""} onChange={set("issuedBy")} placeholder="Store keeper"/></div>
           </Grid2>
-          <div><Lbl t="Purpose"/><Txta value={form.purpose} onChange={set("purpose")} rows={2} placeholder="Purpose of issue..."/></div>
+          <div><Lbl t="Purpose"/><Txta value={form.purpose||""} onChange={set("purpose")} rows={2} placeholder="Purpose of issue..."/></div>
         </FormCard>
         <div className="bg-white rounded-xl border border-slate-200 overflow-visible">
           <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
             <span className="font-semibold text-slate-700 text-sm">Items to Issue</span>
-            <button onClick={addItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
+            <button onClick={addIssueItem} className="text-xs font-bold text-amber-600 border border-amber-300 px-2.5 py-1 rounded-lg">+ Add Item</button>
           </div>
-          <div className="overflow-x-auto w-full">
-          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
-            <thead className="bg-slate-50"><tr>{["#","Material*","Available","Qty Issue*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
-            <tbody>{(form.items||[]).map((it,idx)=>{
-              const st = stock.find(s=>s.id===it.stockId);
-              const overLimit = it.qty && st && Number(it.qty) > st.balance;
-              return (
-                <tr key={it.id} className="border-t border-slate-100">
-                  <td className="px-3 py-1 text-xs text-slate-400 w-8">{idx+1}</td>
-                  <td className="px-2 py-1">
-                    <Sel value={it.stockId} onChange={e=>setItemStock(it.id,e.target.value)}>
-                      <option value="">Select material...</option>
-                      {stock.filter(s=>s.balance>0).map(s=><option key={s.id} value={s.id}>{s.code?`[${s.code}] `:""}{s.name}</option>)}
-                    </Sel>
-                  </td>
-                  <td className="px-2 py-1 w-20">
-                    {st&&<span className={`text-xs font-bold ${st.balance<=0?"text-red-600":st.balance<=st.minLevel?"text-amber-600":"text-green-600"}`}>{st.balance} {st.unit}</span>}
-                  </td>
-                  <td className="px-2 py-1 w-24">
-                    <Inp type="number" value={it.qty} onChange={e=>setItem(it.id,"qty",e.target.value)} placeholder="0" className={overLimit?"border-red-400":""} />
-                    {overLimit&&<div className="text-red-500 text-xs mt-0.5">Exceeds stock!</div>}
-                  </td>
-                  <td className="px-2 py-1"><Inp value={it.remarks} onChange={e=>setItem(it.id,"remarks",e.target.value)} placeholder="Notes"/></td>
-                  <td className="px-2 py-1 w-8"><button onClick={()=>removeItem(it.id)} disabled={(form.items||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
-                </tr>
-              );
-            })}</tbody>
-          </table></div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
+              <thead className="bg-slate-50"><tr>{["#","Material*","Available","Qty Issue*","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+              <tbody>
+                {(form.items||[]).map((it,idx)=>{
+                  const st = stock.find(s=>s.id===it.stockId);
+                  const over = it.qty && st && Number(it.qty)>st.balance;
+                  return (
+                    <tr key={it.id} className="border-t border-slate-100">
+                      <td className="px-3 py-1 text-xs text-slate-400 w-8">{idx+1}</td>
+                      <td className="px-2 py-1">
+                        <Sel value={it.stockId} onChange={e=>setIssueStock(it.id,e.target.value)}>
+                          <option value="">Select material...</option>
+                          {stock.filter(s=>s.balance>0).map(s=><option key={s.id} value={s.id}>{s.code?`[${s.code}] `:""}{s.name} (bal: {s.balance} {s.unit})</option>)}
+                        </Sel>
+                      </td>
+                      <td className="px-2 py-1 w-20">
+                        {st&&<span className={`text-xs font-bold ${st.balance<=0?"text-red-600":st.balance<=st.minLevel?"text-amber-600":"text-green-600"}`}>{st.balance} {st.unit}</span>}
+                      </td>
+                      <td className="px-2 py-1 w-24">
+                        <Inp type="number" value={it.qty} onChange={e=>setIssueItem(it.id,"qty",e.target.value)} placeholder="0" className={over?"border-red-400":""}/>
+                        {over&&<div className="text-red-500 text-xs mt-0.5">Exceeds stock!</div>}
+                      </td>
+                      <td className="px-2 py-1"><Inp value={it.remarks} onChange={e=>setIssueItem(it.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+                      <td className="px-2 py-1 w-8"><button onClick={()=>removeIssueItem(it.id)} disabled={(form.items||[]).length===1} className="text-red-400 hover:text-red-600 text-lg disabled:opacity-30">×</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-        <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveIssue} label="Issue Materials"/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+        <div className="flex gap-3">
+          <Btn saving={saving} onClick={handleSaveIssue} label="Issue Materials"/>
+          <Btn onClick={goList} label="Cancel" color="slate"/>
+        </div>
       </div>
     </div>
   );
 
-  // ── STOCK FORM ──
-  if (tab==="stock" && mode==="form") return (
+  // ── STOCK FORM ─────────────────────────────────────────────────────────────
+  if (tab === "stock" && mode === "form") return (
     <div className="p-6 max-w-2xl">
       <BackBtn onClick={goList}/>
       <h2 className="text-xl font-bold text-slate-800 mb-4">{sel?"Edit Stock Item":"New Stock Item"}</h2>
       <div className="space-y-4">
         <FormCard>
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Material Details</div>
           <Grid2>
-            <div><Lbl t="Material Code"/><Inp value={form.code} onChange={set("code")} placeholder="e.g. CEM-001"/></div>
-            <div><Lbl t="Material Name" req/><Inp value={form.name} onChange={set("name")} placeholder="OPC Cement 50kg"/></div>
-            <div><Lbl t="Category"/><Sel value={form.category} onChange={set("category")}>{STOCK_CATS.map(c=><option key={c}>{c}</option>)}</Sel></div>
-            <div><Lbl t="Unit"/><Sel value={form.unit} onChange={set("unit")}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel></div>
-            <div><Lbl t="Project"/><Sel value={form.pid} onChange={set("pid")}><option value="">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
-            <div><Lbl t="Store Location"/><Inp value={form.location} onChange={set("location")} placeholder="Site Store A"/></div>
+            <div><Lbl t="Material Code"/><Inp value={form.code||""} onChange={set("code")} placeholder="e.g. CEM-001"/></div>
+            <div><Lbl t="Material Name" req/><Inp value={form.name||""} onChange={set("name")} placeholder="OPC Cement 50kg"/></div>
+            <div><Lbl t="Category"/><Sel value={form.category||"Cement & Concrete"} onChange={set("category")}>{STOCK_CATS.map(c=><option key={c}>{c}</option>)}</Sel></div>
+            <div><Lbl t="Unit"/><Sel value={form.unit||"Nos"} onChange={set("unit")}>{UNITS.map(u=><option key={u}>{u}</option>)}</Sel></div>
+            <div><Lbl t="Project"/><Sel value={form.pid||""} onChange={set("pid")}><option value="">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+            <div><Lbl t="Store Location"/><Inp value={form.location||""} onChange={set("location")} placeholder="Site Store A"/></div>
+            <div><Lbl t="Opening Stock"/><Inp type="number" value={form.opening||"0"} onChange={set("opening")} placeholder="0"/></div>
+            <div><Lbl t="Minimum Stock Level"/><Inp type="number" value={form.minLevel||"0"} onChange={set("minLevel")} placeholder="0"/></div>
+            <div><Lbl t="Supplier"/><Inp value={form.supplier||""} onChange={set("supplier")} placeholder="Supplier name"/></div>
+            <div><Lbl t="Last Purchase Rate (AED)"/><Inp type="number" value={form.rate||""} onChange={set("rate")} placeholder="0.00"/></div>
           </Grid2>
+          {sel&&<div><Lbl t="Status"/><Sel value={form.status||"Available"} onChange={set("status")}>{STOCK_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
+          <div><Lbl t="Remarks"/><Txta value={form.remarks||""} onChange={set("remarks")} rows={2}/></div>
         </FormCard>
-        <FormCard>
-          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Stock Quantities</div>
-          <Grid2>
-            <div><Lbl t="Opening Stock"/><Inp type="number" value={form.opening} onChange={set("opening")} placeholder="0"/></div>
-            <div><Lbl t="Minimum Stock Level"/><Inp type="number" value={form.minLevel} onChange={set("minLevel")} placeholder="0"/></div>
-            <div><Lbl t="Supplier"/><Inp value={form.supplier} onChange={set("supplier")} placeholder="Supplier name"/></div>
-            <div><Lbl t="Last Purchase Rate (AED)"/><Inp type="number" value={form.rate} onChange={set("rate")} placeholder="0.00"/></div>
-          </Grid2>
-          {sel&&<div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}>{STOCK_STATUS.map(s=><option key={s}>{s}</option>)}</Sel></div>}
-          <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
-        </FormCard>
-        <div className="flex gap-3"><Btn saving={saving} onClick={handleSaveStock} label={sel?"Update":"Add to Stock"}/><Btn onClick={goList} label="Cancel" color="slate"/></div>
+        <div className="flex gap-3">
+          <Btn saving={saving} onClick={handleSaveStock} label={sel?"Update":"Add to Stock"}/>
+          <Btn onClick={goList} label="Cancel" color="slate"/>
+        </div>
       </div>
     </div>
   );
 
-  // ── MAIN LIST VIEW ──
+  // ── MAIN LIST ──────────────────────────────────────────────────────────────
   return (
     <div className="p-6">
-      {confirmId&&<ConfirmDialog message="Delete permanently?" onConfirm={()=>handleDelete(confirmId.type,confirmId.id)} onCancel={()=>setConfirmId(null)}/>}
+      {confirmId&&<ConfirmDialog message="Delete permanently? (Only Draft GRNs can be deleted)" onConfirm={()=>handleDelete(confirmId.type,confirmId.id)} onCancel={()=>setConfirmId(null)}/>}
 
-      {/* Dashboard Cards */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3 mb-4">
         {[
-          {l:"Total Materials",v:stock.length,c:"bg-blue-500"},
-          {l:"Low Stock",v:stock.filter(s=>s.status==="Low Stock").length,c:"bg-amber-500"},
-          {l:"Out of Stock",v:stock.filter(s=>s.status==="Out of Stock").length,c:"bg-red-500"},
-          {l:"Receipts (Month)",v:recThisMonth,c:"bg-green-500"},
-          {l:"Issues (Month)",v:issThisMonth,c:"bg-indigo-500"},
-          {l:"Pending LPOs",v:lpos.filter(l=>!["Fully Delivered","Completed","Cancelled"].includes(l.status)).length,c:"bg-orange-500"},
+          {l:"Total Materials",    v:stock.length,                                            c:"bg-blue-500"},
+          {l:"Low Stock",         v:stock.filter(s=>s.status==="Low Stock").length,           c:"bg-amber-500"},
+          {l:"Out of Stock",      v:stock.filter(s=>s.status==="Out of Stock").length,        c:"bg-red-500"},
+          {l:"Pending GRN Approval", v:pendingGRNs,                                          c:"bg-orange-500"},
+          {l:"Received (Month)",  v:recThisMonth,                                            c:"bg-green-500"},
+          {l:"Issued (Month)",    v:issThisMonth,                                            c:"bg-indigo-500"},
         ].map(c=>(
           <div key={c.l} className={`${c.c} rounded-xl p-3 text-white`}>
             <div className="text-2xl font-bold">{c.v}</div>
@@ -6492,8 +6848,19 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
         ))}
       </div>
 
+      {/* Pending GRN Alert */}
+      {pendingGRNs > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 cursor-pointer" onClick={()=>{setTab("receipts");}}>
+          <span className="text-xl">⏳</span>
+          <div className="text-sm font-semibold text-orange-800">
+            {pendingGRNs} GRN{pendingGRNs>1?"s":""} awaiting approval — stock will update after approval
+          </div>
+          <span className="ml-auto text-orange-600 text-xs font-bold">Review →</span>
+        </div>
+      )}
+
       {/* Tab Bar */}
-      <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-xl w-fit flex-wrap">
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>{setTab(t.id);setMode("list");setSel(null);}}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${tab===t.id?"bg-white text-slate-800 shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
@@ -6502,58 +6869,55 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
         ))}
       </div>
 
-      {/* STOCK TAB */}
-      {tab==="stock"&&(
+      {/* ── STOCK TAB ── */}
+      {tab === "stock" && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <div className="flex flex-wrap gap-2">
               <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Code, name, supplier..."/>
               <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
-              <Sel value={fCat} onChange={e=>setFCat(e.target.value)} className="w-auto"><option value="All">All Categories</option>{STOCK_CATS.map(c=><option key={c}>{c}</option>)}</Sel>
-              <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto"><option value="All">All Status</option>{STOCK_STATUS.map(s=><option key={s}>{s}</option>)}</Sel>
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 cursor-pointer"><input type="checkbox" checked={fLowOnly} onChange={e=>setFLowOnly(e.target.checked)} className="rounded"/>Low Stock Only</label>
+              <Sel value={fCat}     onChange={e=>setFCat(e.target.value)}     className="w-auto"><option value="All">All Categories</option>{STOCK_CATS.map(c=><option key={c}>{c}</option>)}</Sel>
+              <Sel value={fStatus}  onChange={e=>setFStatus(e.target.value)}  className="w-auto"><option value="All">All Status</option>{STOCK_STATUS.map(s=><option key={s}>{s}</option>)}</Sel>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 cursor-pointer">
+                <input type="checkbox" checked={fLowOnly} onChange={e=>setFLowOnly(e.target.checked)} className="rounded"/>
+                Low Stock Only
+              </label>
             </div>
-            <div className="flex gap-2">
-              <button onClick={exportStockExcel} className="text-xs bg-green-50 border border-green-200 text-green-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-green-100">⬇ Excel</button>
-              <button onClick={exportStockPDF} className="text-xs bg-red-50 border border-red-200 text-red-700 font-semibold px-3 py-1.5 rounded-lg hover:bg-red-100">⬇ PDF</button>
-              <AddBtn onClick={()=>{setForm(EMPTY_STOCK_FORM());setSel(null);setMode("form");}} label="Add Material"/>
-            </div>
+            <AddBtn onClick={()=>{setForm(EMPTY_STOCK_FORM());setSel(null);setMode("form");}} label="Add Material"/>
           </div>
+
           {loading?<Spinner/>:filteredStock.length===0?<EmptyState msg="No stock items found" onCreate={()=>{setForm(EMPTY_STOCK_FORM());setSel(null);setMode("form");}}/>:(
             <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
               <table className="w-full text-sm min-w-[1000px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>{["Code","Name","Category","Unit","Project","Opening","Received","Issued","Balance","Min Level","Status","Actions"].map(h=><th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{h}</th>)}</tr>
+                  <tr>{["Code","Name","Category","Unit","Opening","Received","Issued","Balance","Min","Rate (AED)","Status","Actions"].map(h=>(
+                    <th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                  ))}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredStock.map(s=>{
-                    const proj = projects.find(p=>p.id===s.pid);
-                    return (
-                      <tr key={s.id} className={`hover:bg-slate-50 transition-colors ${s.status==="Out of Stock"?"bg-red-50/30":s.status==="Low Stock"?"bg-amber-50/30":""}`}>
-                        <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{s.code||"—"}</td>
-                        <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[160px] truncate">{s.name}</td>
-                        <td className="px-3 py-2.5 text-xs text-slate-600">{s.category}</td>
-                        <td className="px-3 py-2.5 text-xs text-slate-600">{s.unit}</td>
-                        <td className="px-3 py-2.5 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
-                        <td className="px-3 py-2.5 text-xs text-center">{s.opening}</td>
-                        <td className="px-3 py-2.5 text-xs text-center text-green-700 font-semibold">{s.received}</td>
-                        <td className="px-3 py-2.5 text-xs text-center text-red-600 font-semibold">{s.issued}</td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className={`text-sm font-bold ${s.balance<=0?"text-red-700":s.balance<=s.minLevel?"text-amber-600":"text-slate-800"}`}>{s.balance}</span>
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-center text-slate-500">{s.minLevel}</td>
-                        <td className="px-3 py-2.5"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${ST_BADGE[s.status]||ST_BADGE.Inactive}`}>{s.status}</span></td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex gap-1 flex-wrap">
-                            <ActBtn onClick={()=>{setSel(s);setForm({code:s.code,name:s.name,category:s.category,unit:s.unit,pid:s.pid,location:s.location,opening:String(s.opening),received:String(s.received),issued:String(s.issued),minLevel:String(s.minLevel),supplier:s.supplier,rate:String(s.rate),status:s.status,remarks:s.remarks});setMode("form");}} label="Edit" color="edit"/>
-                            <button onClick={()=>{setSel(s);setSubMode("receive");setForm({...EMPTY_REC_FORM(),items:[{...EMPTY_STOCK_ITEM(),stockId:s.id,name:s.name,unit:s.unit}]});setTab("receipts");setMode("form");}} className="text-xs bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-lg font-semibold hover:bg-green-200">+Recv</button>
-                            <button onClick={()=>{setSel(s);setSubMode("issue");setForm({...EMPTY_ISS_FORM(),items:[{...EMPTY_STOCK_ITEM(),stockId:s.id,name:s.name,unit:s.unit}]});setTab("issues");setMode("form");}} className="text-xs bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-lg font-semibold hover:bg-orange-200">Issue</button>
-                            <ActBtn onClick={()=>setConfirmId({type:"stock",id:s.id})} label="Del" color="del"/>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredStock.map(s=>(
+                    <tr key={s.id} className={`hover:bg-slate-50 ${s.status==="Out of Stock"?"bg-red-50/30":s.status==="Low Stock"?"bg-amber-50/30":""}`}>
+                      <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{s.code||"—"}</td>
+                      <td className="px-3 py-2.5 font-semibold text-slate-800 max-w-[160px] truncate">{s.name}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-600">{s.category}</td>
+                      <td className="px-3 py-2.5 text-xs">{s.unit}</td>
+                      <td className="px-3 py-2.5 text-xs text-center">{s.opening}</td>
+                      <td className="px-3 py-2.5 text-xs text-center text-green-700 font-semibold">{s.received}</td>
+                      <td className="px-3 py-2.5 text-xs text-center text-red-600 font-semibold">{s.issued}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <span className={`text-sm font-bold ${s.balance<=0?"text-red-700":s.balance<=s.minLevel?"text-amber-600":"text-slate-800"}`}>{s.balance}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-center text-slate-500">{s.minLevel}</td>
+                      <td className="px-3 py-2.5 text-xs text-slate-600">AED {s.rate||0}</td>
+                      <td className="px-3 py-2.5"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${ST_BADGE[s.status]||ST_BADGE.Inactive}`}>{s.status}</span></td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex gap-1 flex-wrap">
+                          <ActBtn onClick={()=>{setSel(s);setForm({code:s.code,name:s.name,category:s.category,unit:s.unit,pid:s.pid,location:s.location,opening:String(s.opening),received:String(s.received),issued:String(s.issued),minLevel:String(s.minLevel),supplier:s.supplier,rate:String(s.rate),status:s.status,remarks:s.remarks});setMode("form");}} label="Edit" color="edit"/>
+                          <ActBtn onClick={()=>setConfirmId({type:"stock",id:s.id})} label="Del" color="del"/>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -6561,75 +6925,129 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
         </>
       )}
 
-      {/* RECEIPTS TAB */}
-      {tab==="receipts"&&(
+      {/* ── RECEIPTS TAB ── */}
+      {tab === "receipts" && (
         <>
-          <div className="flex items-center justify-between mb-3">
-            <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="GRN, supplier..."/>
-            <AddBtn onClick={()=>{setForm(EMPTY_REC_FORM());setSel(null);setMode("form");}} label="New Receipt (GRN)"/>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="GRN, LPO, supplier..."/>
+            <AddBtn onClick={()=>{setForm({supplier:"",deliveryNote:"",receivedDate:new Date().toISOString().split("T")[0],receivedBy:"",remarks:""});setSel(null);setSelLpoId("");setLpoItems([]);setMode("form");}} label="New GRN"/>
           </div>
-          {loading?<Spinner/>:receipts.length===0?<EmptyState msg="No receipts yet" onCreate={()=>{setForm(EMPTY_REC_FORM());setSel(null);setMode("form");}}/>:(
-            <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
-              <table className="w-full text-sm min-w-[800px]">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>{["GRN No.","Project","Supplier","DN No.","Received Date","By","Items","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {receipts.filter(r=>!search||`${r.grnNum} ${r.supplier}`.toLowerCase().includes(search.toLowerCase())).map(r=>{
-                    const proj=projects.find(p=>p.id===r.pid);
-                    return (
-                      <tr key={r.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-mono text-xs font-bold text-green-700">{r.grnNum}</td>
-                        <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
-                        <td className="px-4 py-3 font-medium text-slate-800 max-w-[140px] truncate">{r.supplier}</td>
-                        <td className="px-4 py-3 text-xs text-slate-600">{r.deliveryNote||"—"}</td>
-                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(r.receivedDate)}</td>
-                        <td className="px-4 py-3 text-xs text-slate-600">{r.receivedBy||"—"}</td>
-                        <td className="px-4 py-3">
-                          <div className="space-y-0.5">{r.items.map(i=><div key={i.id} className="text-xs text-slate-600"><span className="font-semibold">{i.name}</span>: {i.qty} {i.unit}</div>)}</div>
-                        </td>
-                        <td className="px-4 py-3"><ActBtn onClick={()=>setConfirmId({type:"receipt",id:r.id})} label="Del" color="del"/></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+
+          {/* Workflow info banner */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-3 text-xs text-blue-800 font-semibold">
+            📋 Workflow: Select Approved LPO → Enter Received Qty → Save as Draft → <strong>Approve GRN</strong> → Stock Updated
+          </div>
+
+          {loading?<Spinner/>:receipts.length===0?<EmptyState msg="No GRNs yet" onCreate={()=>{setForm({supplier:"",deliveryNote:"",receivedDate:new Date().toISOString().split("T")[0],receivedBy:"",remarks:""});setSel(null);setSelLpoId("");setLpoItems([]);setMode("form");}}/>:(
+            <div className="space-y-3">
+              {receipts
+                .filter(r=>!search||`${r.grnNum} ${r.supplier} ${r.lpoReference}`.toLowerCase().includes(search.toLowerCase()))
+                .map(r=>{
+                  const proj = projects.find(p=>p.id===r.pid);
+                  const lpo  = lpos.find(l=>l.id===r.lpoId);
+                  const isDraft = r.grnStatus === "Draft";
+                  return (
+                    <div key={r.id} className={`bg-white rounded-xl border shadow-sm p-4 ${isDraft?"border-orange-200 bg-orange-50/30":"border-green-200"}`}>
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-sm font-bold text-green-700">{r.grnNum}</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${isDraft?"bg-orange-100 text-orange-700 border-orange-300":"bg-green-100 text-green-700 border-green-200"}`}>
+                              {r.grnStatus}
+                            </span>
+                            {r.lpoReference&&<span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">LPO: {r.lpoReference}</span>}
+                          </div>
+                          <div className="text-sm font-semibold text-slate-800 mt-1">{r.supplier}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {proj?.number} · DN: {r.deliveryNote||"—"} · {fmtDate(r.receivedDate)} · {r.receivedBy}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-wrap shrink-0">
+                          {isDraft && (
+                            <button
+                              onClick={()=>handleApproveGRN(r.id)}
+                              className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                            >
+                              ✅ Approve GRN
+                            </button>
+                          )}
+                          {isDraft && (
+                            <ActBtn onClick={()=>setConfirmId({type:"receipt",id:r.id})} label="Del" color="del"/>
+                          )}
+                        </div>
+                      </div>
+                      {/* Items table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs min-w-[600px]">
+                          <thead className="bg-slate-50">
+                            <tr>{["Item","Unit","Ordered","Prev Rec.","Pending","Received","Rate"].map(h=>(
+                              <th key={h} className="text-left px-3 py-1.5 font-bold text-slate-500">{h}</th>
+                            ))}</tr>
+                          </thead>
+                          <tbody>
+                            {r.items.map((it,i)=>(
+                              <tr key={i} className="border-t border-slate-100">
+                                <td className="px-3 py-1.5 font-medium text-slate-700">{it.name}</td>
+                                <td className="px-3 py-1.5 text-slate-500">{it.unit}</td>
+                                <td className="px-3 py-1.5 text-center">{it.orderedQty}</td>
+                                <td className="px-3 py-1.5 text-center text-amber-600">{it.prevRecQty}</td>
+                                <td className="px-3 py-1.5 text-center text-blue-700 font-bold">{it.pendingQty}</td>
+                                <td className="px-3 py-1.5 text-center text-green-700 font-bold">{it.qty}</td>
+                                <td className="px-3 py-1.5 text-slate-500">AED {it.rate||0}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {!isDraft && (
+                        <div className="mt-2 text-xs text-green-600 font-semibold">
+                          ✅ Stock updated on approval
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           )}
         </>
       )}
 
-      {/* ISSUES TAB */}
-      {tab==="issues"&&(
+      {/* ── ISSUES TAB ── */}
+      {tab === "issues" && (
         <>
           <div className="flex items-center justify-between mb-3">
             <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Issue no, issued to..."/>
-            <AddBtn onClick={()=>{setForm(EMPTY_ISS_FORM());setSel(null);setMode("form");}} label="Issue Material"/>
+            <AddBtn onClick={()=>{setForm({...EMPTY_ISS_FORM(),items:[EMPTY_STOCK_ITEM()]});setSel(null);setMode("form");}} label="Issue Material"/>
           </div>
-          {loading?<Spinner/>:issues.length===0?<EmptyState msg="No issues yet" onCreate={()=>{setForm(EMPTY_ISS_FORM());setSel(null);setMode("form");}}/>:(
+          {loading?<Spinner/>:issues.length===0?<EmptyState msg="No issues yet" onCreate={()=>{setForm({...EMPTY_ISS_FORM(),items:[EMPTY_STOCK_ITEM()]});setSel(null);setMode("form");}}/>:(
             <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
               <table className="w-full text-sm min-w-[800px]">
                 <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>{["Issue No.","Project","Issued To","Dept","Location","Date","Items","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr>
+                  <tr>{["Issue No.","Project","Issued To","Dept","Date","Items","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {issues.filter(i=>!search||`${i.issueNum} ${i.issuedTo}`.toLowerCase().includes(search.toLowerCase())).map(i=>{
-                    const proj=projects.find(p=>p.id===i.pid);
-                    return (
-                      <tr key={i.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-mono text-xs font-bold text-orange-700">{i.issueNum}</td>
-                        <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
-                        <td className="px-4 py-3 font-medium text-slate-800">{i.issuedTo}</td>
-                        <td className="px-4 py-3 text-xs"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{i.dept}</span></td>
-                        <td className="px-4 py-3 text-xs text-slate-600">{i.location||"—"}</td>
-                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(i.issueDate)}</td>
-                        <td className="px-4 py-3">
-                          <div className="space-y-0.5">{i.items.map(it=><div key={it.id} className="text-xs text-slate-600"><span className="font-semibold">{it.name}</span>: {it.qty} {it.unit}</div>)}</div>
-                        </td>
-                        <td className="px-4 py-3"><ActBtn onClick={()=>setConfirmId({type:"issue",id:i.id})} label="Del" color="del"/></td>
-                      </tr>
-                    );
-                  })}
+                  {issues
+                    .filter(i=>!search||`${i.issueNum} ${i.issuedTo}`.toLowerCase().includes(search.toLowerCase()))
+                    .map(i=>{
+                      const proj=projects.find(p=>p.id===i.pid);
+                      return (
+                        <tr key={i.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-mono text-xs font-bold text-orange-700">{i.issueNum}</td>
+                          <td className="px-4 py-3 text-xs font-bold">{proj?.number||"—"}</td>
+                          <td className="px-4 py-3 font-medium">{i.issuedTo}</td>
+                          <td className="px-4 py-3 text-xs"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{i.dept}</span></td>
+                          <td className="px-4 py-3 text-xs whitespace-nowrap">{fmtDate(i.issueDate)}</td>
+                          <td className="px-4 py-3">
+                            {i.items.map((it,idx)=>(
+                              <div key={idx} className="text-xs text-slate-600"><span className="font-semibold">{it.name}</span>: {it.qty} {it.unit}</div>
+                            ))}
+                          </td>
+                          <td className="px-4 py-3">
+                            <ActBtn onClick={()=>setConfirmId({type:"issue",id:i.id})} label="Del" color="del"/>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
@@ -6639,7 +7057,6 @@ const MaterialStore = ({ stock, receipts, issues, loading, onAddStock, onUpdateS
     </div>
   );
 };
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTHORITY NOC & PERMITS HOOK
@@ -7281,7 +7698,7 @@ export default function App() {
   const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
   const { mrs, loading: mrLoad, add: addMr, update: updMr, remove: delMr, updateStatus: updMrStatus } = useMatReqs();
   const { lpos, loading: lpoLoad, add: addLpo, update: updLpo, remove: delLpo } = useLPOs();
-  const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeStock, addReceipt, removeReceipt, addIssue, removeIssue } = useStore();
+  const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeStock, addReceipt, approveReceipt, removeReceipt, addIssue, removeIssue } = useStore();
   const { nocs, loading: nocLoad, add: addNoc, update: updNoc, remove: delNoc } = useNOCs();
   const [prefillMr, setPrefillMr] = useState(null);
 
@@ -7332,7 +7749,7 @@ export default function App() {
       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} userIsAdmin={userIsAdmin} userProfile={userProfile} permReqs={permReqs} onUpdatePermReq={updatePermReq}/>;
       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}}/>;
       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
-      case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
+      case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onApproveReceipt={approveReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
     }
