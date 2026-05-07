@@ -3596,6 +3596,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       safety:r.safety?.length?r.safety.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_SAF()],
     });
     setActiveSection("header"); setMode("form");
+      loadAttendance((rpt&&rpt.id)||"").then(att => { if(att&&att.length) attRowsRef.current=att; });
   };
   const openView = r => { setSel(r); setMode("view"); };
 
@@ -3656,7 +3657,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   // ── VIEW ────────────────────────────────────────────────────────────────────
   if (mode==="view"&&sel) {
     const proj = projects.find(p=>p.id===sel.pid);
-    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+    const totalMP = sel.manpowerTotal || (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
     return (
       <div className="p-6 max-w-4xl space-y-4">
         {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
@@ -3906,7 +3907,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         const proj = projects.find(p => p.id === rpt.pid);
         const att = await loadAttendance(rpt.id);
         setPrintData({ rpt, proj, att });
-        setTimeout(() => window.print(), 300);
+        setTimeout(() => window.print(), 800);
       };
 
   return (
@@ -3994,7 +3995,7 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
       <style dangerouslySetInnerHTML={{__html:`
         @media print {
           * { visibility: hidden !important; }
-          #dpr-print-overlay, #dpr-print-overlay * { visibility: visible !important; } #dpr-print-overlay { position:fixed;top:0;left:0;width:100%;background:white; }
+          #dpr-print-overlay { display: block !important; } #dpr-print-overlay, #dpr-print-overlay * { visibility: visible !important; } #dpr-print-overlay { position:fixed;top:0;left:0;width:100%;background:white; }
         }
         #dpr-print-overlay { display: none; }
         @page { size: A4 landscape; margin: 12mm; }
