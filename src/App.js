@@ -3264,8 +3264,9 @@ const DprAttendanceViewPanel = ({ dprId, loadAttendance, subcontractors = [] }) 
 };
 // ── End DprAttendanceViewPanel ────────────────────────────────────────
 
-const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast, allReports = [] }) => {
+const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, onRowsChange, showToast, allReports = [] }) => {
   const [rows, setRows]       = useState([]);
+  useEffect(() => { if (typeof onRowsChange === 'function') onRowsChange(rows); }, [rows]);
   const [loading, setLoading] = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [subId,   setSubId]   = useState("");
@@ -3343,7 +3344,6 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
     setSaving(false);
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
     showToast("Attendance saved!");
-        if (onSaved) onSaved(rows.filter(r => r.am==="P" || r.pm==="P").length);
   };
 
   // ── Summary counts ────────────────────────────────────────────────
@@ -3385,9 +3385,8 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
       {/* ── Toolbar ── */}
       <div className="bg-slate-50 px-3 py-2.5 flex flex-wrap gap-2 items-end border-b border-slate-200">
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs font-semibold text-slate-600 mb-1">Auto-load employees (from Manpower Master)</label>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Load from Manpower Master</label>
           <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full text-xs">
-          <p className="text-xs text-slate-400 mt-0.5">Select company then click Load Employees. Adds active staff from Manpower Master — no daily re-entry needed.</p>
             <option value="">Select Subcontractor...</option>
             {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </Sel>
@@ -3520,7 +3519,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
               {[...new Set(rows.map(r=>r.subId||"manual"))].map(sid=>{
                 const grp = rows.filter(r=>(r.subId||"manual")===sid);
                 const present = grp.filter(r=>r.am==="P"||r.pm==="P").length;
-                const nm = sid==="manual" ? "Direct Entry" : subName(sid);
+                const nm = sid==="manual" ? "Manual Entry" : subName(sid);
                 return (
                   <div key={sid} className="bg-white border border-slate-200 rounded-lg px-3 py-2 min-w-[120px]">
                     <div className="text-xs text-slate-500 font-semibold truncate max-w-[130px]">{nm}</div>
@@ -3568,6 +3567,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
+  const attRowsRef = useRef([]);
   const [mpAttDprId, setMpAttDprId] = useState(null);
   const [activeSection, setActiveSection] = useState("header");
 
@@ -3611,12 +3611,16 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       materials:form.materials.filter(r=>r.material),
       inspections:form.inspections.filter(r=>r.location||r.type),
       safety:form.safety.filter(r=>r.obs),
-      manpowerTotal: totalMP,
+      manpowerTotal: (attRowsRef.current||[]).filter(r=>r.am==="P"||r.pm==="P").length || totalMP,
       issues:form.issues, visitors:form.visitors, remarks:form.remarks,
       status: submitStatus || form.status,
     };
     const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
     setSaving(false);
+    // Auto-save attendance with DPR
+    const _dprId = res.id || (sel && sel.id);
+    const _attRows = attRowsRef.current || [];
+    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).catch(()=>{}); }
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
         if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
     showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
@@ -3752,8 +3756,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-          <div className="text-xs text-slate-400 italic px-2 mb-1">Legacy summary (optional) — use Daily Attendance Register below for detailed tracking</div>
+      {activeSection==="manpower"&&<div style={{display:"none"}} className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
           rows={form.manpower||[]} renderRow={r=>(
@@ -3779,8 +3782,8 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         saveAttendance={saveAttendance}
         showToast={showToast}
         allReports={reports}
-      
-        onSaved={(cnt) => { setSel(p => p ? {...p, manpowerTotal: cnt} : p); if(sel) onUpdate(sel.id,{pid:sel.pid,date:sel.date,reportNum:sel.reportNum,weather:sel.weather,temp:sel.temp,workHours:sel.workHours,manpower:sel.manpower||[],equipment:sel.equipment||[],activities:sel.activities||[],materials:sel.materials||[],inspections:sel.inspections||[],safety:sel.safety||[],manpowerTotal:cnt,issues:sel.issues,visitors:sel.visitors,remarks:sel.remarks,status:sel.status,preparedBy:sel.preparedBy}); }}
+
+        onRowsChange={r=>{ attRowsRef.current=r; }}
       />}
 
       {/* EQUIPMENT section */}
@@ -3983,14 +3986,8 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
           '</div></body></html>'
         ].join('');
 
-        const _pf = document.createElement('iframe');
-        _pf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0';
-        document.body.appendChild(_pf);
-        _pf.contentDocument.open();
-        _pf.contentDocument.write(html);
-        _pf.contentDocument.close();
-        setTimeout(function(){ _pf.contentWindow.focus(); _pf.contentWindow.print(); setTimeout(function(){ document.body.removeChild(_pf); }, 2000); }, 400);
-
+        const pw = window.open('', '_blank', 'width=1100,height=800');
+        if (pw) { pw.document.write(html); pw.document.close(); pw.focus(); }
       };
 
   return (
