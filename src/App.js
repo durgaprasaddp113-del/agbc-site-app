@@ -3569,6 +3569,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
   const attRowsRef = useRef([]);
   const [mpAttDprId, setMpAttDprId] = useState(null);
+  const [printData, setPrintData] = useState(null);
   const [activeSection, setActiveSection] = useState("header");
 
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
@@ -3902,92 +3903,9 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
 
       const handlePrintDPR = async (rpt) => {
         const proj = projects.find(p => p.id === rpt.pid);
-        const att  = await loadAttendance(rpt.id);
-        const presentAM = att.filter(r => r.am === "P").length;
-        const presentPM = att.filter(r => r.pm === "P").length;
-
-        const mkRow = (r, i) => [
-          '<tr style="border-bottom:1px solid #e2e8f0">',
-          '<td style="padding:4px 6px;text-align:center;color:#94a3b8">' + (i+1) + '</td>',
-          '<td style="padding:4px 6px;font-weight:700;color:#1d4ed8">' + (r.empId||'--') + '</td>',
-          '<td style="padding:4px 6px;font-weight:600">' + (r.name||'--') + '</td>',
-          '<td style="padding:4px 6px;color:#64748b">' + (r.designation||'--') + '</td>',
-          '<td style="padding:4px 6px;text-align:center;color:#7c3aed;font-weight:700">' + (r.teamNo||'--') + '</td>',
-          '<td style="padding:4px 6px;text-align:center;font-weight:900;color:' + (r.am==="P"?'#15803d':'#b91c1c') + '">' + r.am + '</td>',
-          '<td style="padding:4px 6px;text-align:center;font-weight:900;color:' + (r.pm==="P"?'#15803d':'#b91c1c') + '">' + r.pm + '</td>',
-          '<td style="padding:4px 6px;text-align:center;color:#d97706">' + (r.ot&&r.ot!=="0"?r.ot:'--') + '</td>',
-          '<td style="padding:4px 6px;color:#475569">' + (r.description||'--') + '</td>',
-          '</tr>'
-        ].join('');
-
-        const secTbl = (title, rows, heads, cols) => {
-          if (!rows || !rows.length) return '';
-          return '<div style="margin-top:12px">' +
-            '<div style="background:#1e293b;color:white;padding:5px 10px;font-weight:700;font-size:11px">' + title + '</div>' +
-            '<table style="width:100%;border-collapse:collapse;font-size:10px">' +
-            '<thead><tr style="background:#f1f5f9">' + heads.map(h => '<th style="padding:4px 8px;text-align:left;font-weight:700;color:#64748b;border-bottom:1px solid #e2e8f0">' + h + '</th>').join('') + '</tr></thead>' +
-            '<tbody>' + rows.map(r => '<tr>' + cols.map(c => '<td style="padding:3px 8px;color:#374151;border-bottom:1px solid #f1f5f9">' + (r[c]||'--') + '</td>').join('') + '</tr>').join('') + '</tbody>' +
-            '</table></div>';
-        };
-
-        const html = [
-          '<!DOCTYPE html><html><head><title>' + (rpt.reportNum||'DPR') + '</title>',
-          '<style>',
-          'body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;margin:0;padding:16px}',
-          '@page{size:A4 landscape;margin:12mm}',
-          '@media print{.noprint{display:none}}',
-          '</style></head><body>',
-          '<div style="text-align:center;border-bottom:3px double #1e293b;padding-bottom:8px;margin-bottom:10px">',
-          '<div style="font-size:16px;font-weight:900">AL GHAITH BUILDING CONSTRUCTION LLC</div>',
-          '<div style="font-size:12px;font-weight:700;color:#d97706">SITE DAILY REPORT</div>',
-          '</div>',
-          '<table style="width:100%;border:1px solid #e2e8f0;border-collapse:collapse;margin-bottom:10px">',
-          '<tr style="background:#f8fafc">',
-          '<td style="padding:4px 8px"><b>Site No:</b> ' + (proj?proj.number:'--') + '</td>',
-          '<td style="padding:4px 8px"><b>Project:</b> ' + (proj?proj.name:'--') + '</td>',
-          '<td style="padding:4px 8px"><b>Date:</b> ' + (rpt.date||'--') + '</td>',
-          '<td style="padding:4px 8px"><b>Report No:</b> ' + (rpt.reportNum||'--') + '</td>',
-          '</tr><tr>',
-          '<td style="padding:4px 8px"><b>Prepared By:</b> ' + (rpt.preparedBy||'--') + '</td>',
-          '<td style="padding:4px 8px"><b>Weather:</b> ' + (rpt.weather||'--') + ' ' + (rpt.temp?rpt.temp+'C':'') + '</td>',
-          '<td style="padding:4px 8px"><b>Work Hours:</b> ' + (rpt.workHours||'8') + 'h</td>',
-          '<td style="padding:4px 8px"><b>Status:</b> ' + (rpt.status||'--') + '</td>',
-          '</tr></table>',
-          att.length > 0 ? [
-            '<div style="margin-bottom:12px">',
-            '<div style="background:#1e293b;color:white;padding:5px 10px;font-weight:700;font-size:11px">',
-            'MANPOWER ATTENDANCE | Total: ' + att.length + ' | AM Present: ' + presentAM + ' | PM Present: ' + presentPM,
-            '</div>',
-            '<table style="width:100%;border-collapse:collapse;font-size:10px">',
-            '<thead><tr style="background:#f1f5f9">',
-            ['S.No','ID No','Name','Designation','Team','A.M','P.M','O.T','Description of Work'].map(h => '<th style="padding:4px 6px;text-align:left;font-weight:700;color:#475569;border-bottom:2px solid #e2e8f0">' + h + '</th>').join(''),
-            '</tr></thead>',
-            '<tbody>' + att.map((r,i) => mkRow(r,i)).join('') + '</tbody>',
-            '<tfoot><tr style="background:#1e293b;color:white">',
-            '<td colspan="5" style="padding:4px 8px;font-weight:700;font-size:10px">TOTAL PRESENT</td>',
-            '<td style="padding:4px 6px;font-weight:900;color:#86efac;text-align:center">' + presentAM + '</td>',
-            '<td style="padding:4px 6px;font-weight:900;color:#93c5fd;text-align:center">' + presentPM + '</td>',
-            '<td colspan="2" style="padding:4px 8px;color:#cbd5e1;font-size:10px">Absent: ' + att.filter(r=>r.am==="A"&&r.pm==="A").length + '</td>',
-            '</tr></tfoot></table></div>'
-          ].join('') : '',
-          secTbl('EQUIPMENT', rpt.equipment||[], ['Equipment','Qty','Status','Operator','Remarks'], ['name','qty','status','operator','remarks']),
-          secTbl('WORK ACTIVITIES', rpt.activities||[], ['Location','Activity','Trade','Progress %','Remarks'], ['location','activity','trade','progress','remarks']),
-          secTbl('MATERIALS', rpt.materials||[], ['Material','Qty','Unit','Supplier','DN No.'], ['material','qty','unit','supplier','dn']),
-          secTbl('SAFETY', rpt.safety||[], ['Observation','Severity','Action','Responsible','Status'], ['obs','severity','action','responsible','status']),
-          rpt.issues ? '<div style="margin-top:10px;padding:6px 10px;background:#fff5f5;border:1px solid #fecaca"><b style="color:#dc2626">Issues:</b> ' + rpt.issues + '</div>' : '',
-          rpt.remarks ? '<div style="margin-top:6px;padding:6px 10px;background:#f8fafc;border:1px solid #e2e8f0"><b>Remarks:</b> ' + rpt.remarks + '</div>' : '',
-          '<div style="margin-top:28px;display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;padding-top:10px">',
-          '<div style="width:180px;text-align:center"><div style="border-top:1px solid #374151;padding-top:3px;font-size:10px">Signature Site Engineer</div></div>',
-          '<div style="width:180px;text-align:center"><div style="border-top:1px solid #374151;padding-top:3px;font-size:10px">Signature Site Incharge</div></div>',
-          '</div>',
-          '<div class="noprint" style="text-align:center;margin-top:14px">',
-          '<button onclick="window.print()" style="padding:8px 24px;background:#1e293b;color:white;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">Print</button>',
-          '<button onclick="window.close()" style="margin-left:10px;padding:8px 16px;background:#e2e8f0;color:#374151;border:none;border-radius:6px;font-size:13px;cursor:pointer">Close</button>',
-          '</div></body></html>'
-        ].join('');
-
-        const pw = window.open('', '_blank', 'width=1100,height=800');
-        if (pw) { pw.document.write(html); pw.document.close(); pw.focus(); }
+        const att = await loadAttendance(rpt.id);
+        setPrintData({ rpt, proj, att });
+        setTimeout(() => window.print(), 300);
       };
 
   return (
@@ -4071,6 +3989,69 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
 
   const filtered = inspections.filter(i => (fStatus === "All" || i.status === fStatus) && (fProject === "All" || i.pid === fProject));
 
+      {/* CSS Print Overlay */}
+      <style dangerouslySetInnerHTML={{__html:`
+        @media print {
+          body > * { display: none !important; }
+          #dpr-print-overlay { display: block !important; }
+        }
+        #dpr-print-overlay { display: none; }
+        @page { size: A4 landscape; margin: 12mm; }
+      `}}/>
+      {printData && (
+        <div id="dpr-print-overlay" style={{fontFamily:'Arial,sans-serif',fontSize:'12px',color:'#1e293b',padding:'16px'}}>
+          <div style={{textAlign:'center',borderBottom:'3px double #1e293b',paddingBottom:'8px',marginBottom:'10px'}}>
+            <div style={{fontSize:'16px',fontWeight:'900'}}>AL GHAITH BUILDING CONSTRUCTION LLC</div>
+            <div style={{fontSize:'12px',fontWeight:'700',color:'#d97706'}}>SITE DAILY REPORT</div>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'10px',border:'1px solid #e2e8f0'}}><tbody>
+            <tr style={{background:'#f8fafc'}}>
+              <td style={{padding:'4px 8px'}}><b>Site No:</b> {printData.proj?.number||'--'}</td>
+              <td style={{padding:'4px 8px'}}><b>Project:</b> {printData.proj?.name||'--'}</td>
+              <td style={{padding:'4px 8px'}}><b>Date:</b> {printData.rpt.date||'--'}</td>
+              <td style={{padding:'4px 8px'}}><b>Report No:</b> {printData.rpt.reportNum||'--'}</td>
+            </tr><tr>
+              <td style={{padding:'4px 8px'}}><b>Prepared By:</b> {printData.rpt.preparedBy||'--'}</td>
+              <td style={{padding:'4px 8px'}}><b>Weather:</b> {printData.rpt.weather||'--'} {printData.rpt.temp?printData.rpt.temp+'C':''}</td>
+              <td style={{padding:'4px 8px'}}><b>Work Hours:</b> {printData.rpt.workHours||'8'}h</td>
+              <td style={{padding:'4px 8px'}}><b>Status:</b> {printData.rpt.status||'--'}</td>
+            </tr>
+          </tbody></table>
+          {printData.att.length>0&&(
+            <div style={{marginBottom:'12px'}}>
+              <div style={{background:'#1e293b',color:'white',padding:'5px 10px',fontWeight:'700',fontSize:'11px'}}>
+                MANPOWER ATTENDANCE | Total: {printData.att.length} | AM Present: {printData.att.filter(r=>r.am==='P').length} | PM Present: {printData.att.filter(r=>r.pm==='P').length}
+              </div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}><thead>
+                <tr style={{background:'#f1f5f9'}}>{['S.No','ID No','Name','Designation','Team','A.M','P.M','O.T','Description of Work'].map(h=>(<th key={h} style={{padding:'4px 6px',textAlign:'left',fontWeight:'700',color:'#475569',borderBottom:'2px solid #e2e8f0'}}>{h}</th>))}</tr>
+              </thead><tbody>
+                {printData.att.map((r,i)=>(
+                  <tr key={i} style={{borderBottom:'1px solid #e2e8f0',background:r.am==='A'&&r.pm==='A'?'#fff5f5':''}}>
+                    <td style={{padding:'3px 6px',textAlign:'center',color:'#94a3b8'}}>{i+1}</td>
+                    <td style={{padding:'3px 6px',fontWeight:'700',color:'#1d4ed8'}}>{r.empId||'--'}</td>
+                    <td style={{padding:'3px 6px',fontWeight:'600'}}>{r.name||'--'}</td>
+                    <td style={{padding:'3px 6px',color:'#64748b'}}>{r.designation||'--'}</td>
+                    <td style={{padding:'3px 6px',textAlign:'center',color:'#7c3aed',fontWeight:'700'}}>{r.teamNo||'--'}</td>
+                    <td style={{padding:'3px 6px',textAlign:'center',fontWeight:'900',color:r.am==='P'?'#15803d':'#b91c1c'}}>{r.am}</td>
+                    <td style={{padding:'3px 6px',textAlign:'center',fontWeight:'900',color:r.pm==='P'?'#15803d':'#b91c1c'}}>{r.pm}</td>
+                    <td style={{padding:'3px 6px',textAlign:'center',color:'#d97706'}}>{r.ot&&r.ot!=='0'?r.ot:'--'}</td>
+                    <td style={{padding:'3px 6px',color:'#475569'}}>{r.description||'--'}</td>
+                  </tr>
+                ))}
+              </tbody><tfoot><tr style={{background:'#1e293b',color:'white'}}>
+                <td colSpan={5} style={{padding:'4px 8px',fontWeight:'700',fontSize:'10px'}}>TOTAL PRESENT</td>
+                <td style={{padding:'4px 6px',fontWeight:'900',color:'#86efac',textAlign:'center'}}>{printData.att.filter(r=>r.am==='P').length}</td>
+                <td style={{padding:'4px 6px',fontWeight:'900',color:'#93c5fd',textAlign:'center'}}>{printData.att.filter(r=>r.pm==='P').length}</td>
+                <td colSpan={2} style={{padding:'4px 8px',color:'#cbd5e1',fontSize:'10px'}}>Absent: {printData.att.filter(r=>r.am==='A'&&r.pm==='A').length}</td>
+              </tr></tfoot></table>
+            </div>
+          )}
+          <div style={{marginTop:'30px',display:'flex',justifyContent:'space-between',borderTop:'1px solid #e2e8f0',paddingTop:'12px'}}>
+            <div style={{width:'180px',textAlign:'center'}}><div style={{borderTop:'1px solid #374151',paddingTop:'3px',fontSize:'10px'}}>Signature Site Engineer</div></div>
+            <div style={{width:'180px',textAlign:'center'}}><div style={{borderTop:'1px solid #374151',paddingTop:'3px',fontSize:'10px'}}>Signature Site Incharge</div></div>
+          </div>
+        </div>
+      )}
   if (mode === "view" && sel) return (
     <div className="p-6 max-w-2xl">
       {confirmId && <ConfirmDialog message="Delete this inspection request?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
