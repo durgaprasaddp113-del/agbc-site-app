@@ -3165,154 +3165,266 @@ const EMPTY_ATT_ROW = (mp) => ({
   mpId: mp ? mp.id : "", subId: mp ? mp.subId : "",
   empId: mp ? mp.empId : "", name: mp ? mp.name : "",
   designation: mp ? mp.designation : "", teamNo: mp ? mp.defaultTeamNo : "",
-  am: "0", pm: "0", ot: "0", description: "", remarks: "",
+  am: "P", pm: "P", ot: "0", description: "", remarks: "",
 });
 
-const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast }) => {
+const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast, allReports = [] }) => {
   const [rows, setRows]       = useState([]);
-  const [subId, setSubId]     = useState("");
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [loaded, setLoaded]   = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [subId,   setSubId]   = useState("");
 
+  // Load saved attendance when opening existing DPR
   useEffect(() => {
-    if (dprId) {
-      setLoading(true);
-      loadAttendance(dprId).then(att => {
-        if (att.length) { setRows(att); setLoaded(true); }
-        setLoading(false);
-      });
-    }
+    if (!dprId) return;
+    setLoading(true);
+    loadAttendance(dprId).then(att => {
+      if (att && att.length) setRows(att.map(a => ({ ...a, rowId: a.id || Date.now()+Math.random() })));
+      setLoading(false);
+    });
   }, [dprId, loadAttendance]);
 
-  const activeForSub = subId ? masters.filter(m => m.subId === subId && m.status === "Active") : [];
+  // ── Toggle P / A ──────────────────────────────────────────────────
+  const toggle = (rowId, field) =>
+    setRows(p => p.map(r => (r.rowId===rowId||r.id===rowId) ? { ...r, [field]: r[field]==="P"?"A":"P" } : r));
 
+  const setCell = (rowId, key, val) =>
+    setRows(p => p.map(r => (r.rowId===rowId||r.id===rowId) ? { ...r, [key]: val } : r));
+
+  const delRow = (rowId) =>
+    setRows(p => p.filter(r => r.rowId!==rowId && r.id!==rowId));
+
+  const addRow = () =>
+    setRows(p => [...p, { rowId:Date.now()+Math.random(), mpId:"", subId:"", empId:"", name:"", designation:"", am:"P", pm:"P", ot:"", description:"", teamNo:"", remarks:"" }]);
+
+  // ── Load from Manpower Master ─────────────────────────────────────
   const loadFromMaster = () => {
     if (!subId) { showToast("Select a subcontractor first","error"); return; }
-    if (!activeForSub.length) { showToast("No active employees for this subcontractor","error"); return; }
-    const existing = rows.filter(r => r.subId !== subId);
-    const newRows  = activeForSub.map(mp => EMPTY_ATT_ROW(mp));
-    setRows([...existing, ...newRows]);
-    setLoaded(true);
-    showToast(`Loaded ${newRows.length} employees from master`);
+    const active = masters.filter(m => m.subId===subId && m.status==="Active");
+    if (!active.length) { showToast("No active employees for this subcontractor","error"); return; }
+    const existingIds = new Set(rows.map(r=>r.mpId).filter(Boolean));
+    const newRows = active.filter(m=>!existingIds.has(m.id)).map(mp=>({
+      rowId: Date.now()+Math.random(),
+      mpId: mp.id, subId: mp.subId,
+      empId: mp.empId, name: mp.name,
+      designation: mp.designation, teamNo: mp.defaultTeamNo||"",
+      am:"P", pm:"P", ot:"", description:"", remarks:""
+    }));
+    if (!newRows.length) { showToast("All employees already loaded","error"); return; }
+    setRows(p => [...p, ...newRows]);
+    showToast(newRows.length+" employees loaded from master");
   };
 
-  const setCell = (rowId, key, val) => setRows(p => p.map(r => r.rowId === rowId || r.id === rowId ? { ...r, [key]: val } : r));
-  const delRow  = (rowId) => setRows(p => p.filter(r => r.rowId !== rowId && r.id !== rowId));
-  const addManual = () => setRows(p => [...p, EMPTY_ATT_ROW(null)]);
+  // ── Copy from Last DPR ────────────────────────────────────────────
+  const copyFromLastDpr = async () => {
+    if (!allReports || allReports.length === 0) {
+      showToast("No previous DPR found","error"); return;
+    }
+    // Get most recent DPR (skip current one)
+    const prev = allReports.filter(r => r.id !== dprId).sort((a,b) => new Date(b.date) - new Date(a.date))[0];
+    if (!prev) { showToast("No previous DPR found","error"); return; }
+    setLoading(true);
+    const prevAtt = await loadAttendance(prev.id);
+    setLoading(false);
+    if (!prevAtt || !prevAtt.length) { showToast("Previous DPR has no attendance records","error"); return; }
+    // Copy employees, reset daily values
+    const copied = prevAtt.map(a => ({
+      rowId: Date.now()+Math.random(),
+      mpId: a.mpId||"", subId: a.subId||"",
+      empId: a.empId||"", name: a.name||"",
+      designation: a.designation||"", teamNo: a.teamNo||"",
+      am:"P", pm:"P", ot:"", description:"", remarks:""
+    }));
+    setRows(copied);
+    showToast(copied.length+" employees copied from last DPR");
+  };
 
+  // ── Save Attendance ───────────────────────────────────────────────
   const handleSave = async () => {
     if (!dprId) { showToast("Save the DPR first, then save attendance","error"); return; }
     setSaving(true);
     const res = await saveAttendance(dprId, rows);
     setSaving(false);
-    if (!res.ok) { showToast(res.error || "Save failed","error"); return; }
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
     showToast("Attendance saved!");
   };
 
-  const subName = id => (subcontractors.find(s => s.id === id) || {}).name || "";
-  const grouped = rows.reduce((acc, r) => { const k = r.subId||"unknown"; if (!acc[k]) acc[k]=[]; acc[k].push(r); return acc; }, {});
-  const totalAM = rows.reduce((s,r) => s + (parseInt(r.am)||0), 0);
-  const totalPM = rows.reduce((s,r) => s + (parseInt(r.pm)||0), 0);
+  // ── Summary counts ────────────────────────────────────────────────
+  const presentAM = rows.filter(r=>r.am==="P").length;
+  const presentPM = rows.filter(r=>r.pm==="P").length;
+  const absentAM  = rows.filter(r=>r.am==="A").length;
+
+  // Subcontractor lookup
+  const subName = id => (subcontractors.find(s=>s.id===id)||{}).name||"";
+
+  // PA Toggle Button
+  const PABtn = ({ val, onClick }) => (
+    <button onClick={onClick}
+      className={`w-8 h-8 rounded-lg font-black text-sm border-2 transition-all ${
+        val==="P"
+          ? "bg-green-100 text-green-700 border-green-400 hover:bg-green-200"
+          : "bg-red-100 text-red-700 border-red-400 hover:bg-red-200"
+      }`}>
+      {val}
+    </button>
+  );
 
   return (
-    <div className="mt-4 border border-blue-200 rounded-xl overflow-hidden">
-      <div className="bg-blue-600 px-4 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-white font-bold text-sm">Detailed Attendance (from Master)</span>
-          {rows.length > 0 && (
-            <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{rows.length} employees</span>
-          )}
+    <div className="mt-4 border-2 border-slate-200 rounded-xl overflow-hidden shadow-sm">
+
+      {/* ── Header Bar ── */}
+      <div className="bg-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className="text-white font-bold text-sm">Daily Attendance Register</span>
+          <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-semibold">{rows.length} workers</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-blue-200">
-          <span>AM: {totalAM}</span>
-          <span>PM: {totalPM}</span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-green-300 font-bold">AM Present: {presentAM}</span>
+          <span className="text-red-300 font-bold">Absent: {absentAM}</span>
+          <span className="text-blue-300 font-bold">PM Present: {presentPM}</span>
         </div>
       </div>
 
-      <div className="bg-blue-50 p-3 flex flex-wrap gap-2 items-end border-b border-blue-200">
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-xs font-semibold text-blue-700 mb-1">Load Subcontractor from Master</label>
-          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full">
+      {/* ── Toolbar ── */}
+      <div className="bg-slate-50 px-3 py-2.5 flex flex-wrap gap-2 items-end border-b border-slate-200">
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Load from Manpower Master</label>
+          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full text-xs">
             <option value="">Select Subcontractor...</option>
             {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </Sel>
         </div>
-        <button onClick={loadFromMaster} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-          &#8635; Load from Master
+        <button onClick={loadFromMaster}
+          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+          &#8635; Load Master
         </button>
-        <button onClick={addManual} className="px-3 py-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+        <button onClick={copyFromLastDpr} disabled={loading}
+          className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+          &#9650; Copy Last DPR
+        </button>
+        <button onClick={addRow}
+          className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
           + Add Row
         </button>
-        {rows.length > 0 && dprId && (
-          <button onClick={handleSave} disabled={saving} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-            {saving ? "Saving..." : "Save Attendance"}
+        {rows.length > 0 && (
+          <button onClick={handleSave} disabled={saving}
+            className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+            {saving?"Saving...":"&#128190; Save Attendance"}
           </button>
         )}
       </div>
 
-      {loading ? <div className="p-4 text-center text-sm text-slate-400">Loading attendance...</div> :
-       rows.length === 0 ? (
-        <div className="p-6 text-center">
-          <p className="text-sm text-slate-400">No attendance records yet.</p>
-          <p className="text-xs text-slate-300 mt-1">Select a subcontractor above and click "Load from Master"</p>
+      {/* ── Table ── */}
+      {loading ? (
+        <div className="p-6 text-center text-sm text-slate-400">Loading attendance...</div>
+      ) : rows.length === 0 ? (
+        <div className="p-8 text-center">
+          <div className="text-3xl mb-2">&#128101;</div>
+          <p className="text-sm font-semibold text-slate-500">No manpower added yet</p>
+          <p className="text-xs text-slate-400 mt-1">Use "Load Master" to auto-fill from saved employees, or "Copy Last DPR" to reuse yesterday's list</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          {Object.entries(grouped).map(([gSubId, gRows]) => (
-            <div key={gSubId}>
-              {gSubId !== "unknown" && (
-                <div className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 border-b border-slate-200">
-                  {subName(gSubId)} — {gRows.filter(r=>parseInt(r.am)>0||parseInt(r.pm)>0).length}/{gRows.length} present
+          <table className="w-full text-xs min-w-[750px]">
+            <thead>
+              <tr className="bg-slate-700 text-white">
+                {["S.No","ID No","Name","Designation","A.M","P.M","O.T","Description of Work",""].map(h=>(
+                  <th key={h} className="px-2 py-2.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r,idx)=>{
+                const rid = r.rowId||r.id;
+                const isAbsent = r.am==="A" && r.pm==="A";
+                return (
+                  <tr key={rid} className={`border-b border-slate-100 transition-colors ${isAbsent?"bg-red-50":"hover:bg-amber-50/30"}`}>
+                    <td className="px-2 py-2 text-slate-400 font-mono w-10 text-center">{idx+1}</td>
+                    <td className="px-2 py-2 w-16">
+                      {r.mpId
+                        ? <span className="font-mono font-bold text-blue-700">{r.empId||"—"}</span>
+                        : <Inp value={r.empId} onChange={e=>setCell(rid,"empId",e.target.value)} placeholder="ID" className="w-14"/>}
+                    </td>
+                    <td className="px-2 py-2 min-w-[120px]">
+                      {r.mpId
+                        ? <span className="font-semibold text-slate-800">{r.name}</span>
+                        : <Inp value={r.name} onChange={e=>setCell(rid,"name",e.target.value)} placeholder="Full name"/>}
+                    </td>
+                    <td className="px-2 py-2 min-w-[110px]">
+                      {r.mpId
+                        ? <span className="text-slate-500">{r.designation||"—"}</span>
+                        : <Inp value={r.designation} onChange={e=>setCell(rid,"designation",e.target.value)} placeholder="Trade"/>}
+                    </td>
+                    <td className="px-2 py-2 w-12 text-center">
+                      <PABtn val={r.am||"P"} onClick={()=>toggle(rid,"am")}/>
+                    </td>
+                    <td className="px-2 py-2 w-12 text-center">
+                      <PABtn val={r.pm||"P"} onClick={()=>toggle(rid,"pm")}/>
+                    </td>
+                    <td className="px-2 py-2 w-16">
+                      <Inp value={r.ot||""} onChange={e=>setCell(rid,"ot",e.target.value)}
+                        placeholder="0" className="w-12 text-center text-amber-700 font-semibold"/>
+                    </td>
+                    <td className="px-2 py-2 min-w-[160px]">
+                      <Inp value={r.description||""} onChange={e=>setCell(rid,"description",e.target.value)}
+                        placeholder="Formwork, rebar, concrete pour..."/>
+                    </td>
+                    <td className="px-2 py-2 w-8 text-center">
+                      <button onClick={()=>delRow(rid)}
+                        className="w-6 h-6 rounded-full bg-red-100 hover:bg-red-200 text-red-600 font-bold text-xs transition-colors">
+                        &#215;
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+
+            {/* ── Summary Footer ── */}
+            <tfoot>
+              <tr className="bg-slate-700 text-white">
+                <td colSpan={4} className="px-3 py-2 font-bold text-xs">TOTAL PRESENT</td>
+                <td className="px-2 py-2 text-center font-black text-green-300 text-sm">{presentAM}</td>
+                <td className="px-2 py-2 text-center font-black text-blue-300 text-sm">{presentPM}</td>
+                <td colSpan={3} className="px-3 py-2 text-xs text-slate-300">
+                  Absent: {absentAM} &nbsp;|&nbsp; OT: {rows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)} hrs
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+
+          {/* ── Subcontractor Summary Card ── */}
+          <div className="bg-slate-50 border-t-2 border-slate-200 px-4 py-3">
+            <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Manpower Summary by Category</div>
+            <div className="flex flex-wrap gap-3">
+              {[...new Set(rows.map(r=>r.subId||"manual"))].map(sid=>{
+                const grp = rows.filter(r=>(r.subId||"manual")===sid);
+                const present = grp.filter(r=>r.am==="P"||r.pm==="P").length;
+                const nm = sid==="manual" ? "Manual Entry" : subName(sid);
+                return (
+                  <div key={sid} className="bg-white border border-slate-200 rounded-lg px-3 py-2 min-w-[120px]">
+                    <div className="text-xs text-slate-500 font-semibold truncate max-w-[130px]">{nm}</div>
+                    <div className="text-xl font-black text-slate-800 mt-0.5">{present}<span className="text-xs font-normal text-slate-400">/{grp.length}</span></div>
+                    <div className="text-xs text-slate-400">present</div>
+                  </div>
+                );
+              })}
+              <div className="bg-amber-500 border border-amber-400 rounded-lg px-3 py-2 min-w-[120px]">
+                <div className="text-xs text-white font-semibold">TOTAL</div>
+                <div className="text-xl font-black text-white mt-0.5">
+                  {rows.filter(r=>r.am==="P"||r.pm==="P").length}
+                  <span className="text-xs font-normal text-amber-200">/{rows.length}</span>
                 </div>
-              )}
-              <table className="w-full text-xs min-w-[900px]">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    {["S.No","Emp ID","Name","Designation","A.M","P.M","O.T Hrs","Description of Work","Team No","Remarks",""].map(h=>(
-                      <th key={h} className="text-left px-2 py-2 font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {gRows.map((r, idx) => (
-                    <tr key={r.rowId||r.id} className="hover:bg-slate-50">
-                      <td className="px-2 py-1.5 text-slate-400 w-8">{idx+1}</td>
-                      <td className="px-2 py-1.5 w-20">
-                        {r.mpId ? <span className="font-mono text-blue-700 font-semibold">{r.empId||"—"}</span>
-                          : <Inp value={r.empId} onChange={e=>setCell(r.rowId||r.id,"empId",e.target.value)} placeholder="ID"/>}
-                      </td>
-                      <td className="px-2 py-1.5 w-32">
-                        {r.mpId ? <span className="font-semibold text-slate-800">{r.name}</span>
-                          : <Inp value={r.name} onChange={e=>setCell(r.rowId||r.id,"name",e.target.value)} placeholder="Name"/>}
-                      </td>
-                      <td className="px-2 py-1.5 w-28">
-                        {r.mpId ? <span className="text-slate-500">{r.designation||"—"}</span>
-                          : <Inp value={r.designation} onChange={e=>setCell(r.rowId||r.id,"designation",e.target.value)} placeholder="Trade"/>}
-                      </td>
-                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.am} onChange={e=>setCell(r.rowId||r.id,"am",e.target.value)} className="text-center font-bold text-green-700"/></td>
-                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.pm} onChange={e=>setCell(r.rowId||r.id,"pm",e.target.value)} className="text-center font-bold text-blue-700"/></td>
-                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" step="0.5" value={r.ot} onChange={e=>setCell(r.rowId||r.id,"ot",e.target.value)} className="text-center text-amber-700"/></td>
-                      <td className="px-2 py-1.5 min-w-[150px]"><Inp value={r.description} onChange={e=>setCell(r.rowId||r.id,"description",e.target.value)} placeholder="Formwork, Rebar, Concrete..."/></td>
-                      <td className="px-2 py-1.5 w-20"><Inp value={r.teamNo} onChange={e=>setCell(r.rowId||r.id,"teamNo",e.target.value)} placeholder="T-1"/></td>
-                      <td className="px-2 py-1.5 min-w-[120px]"><Inp value={r.remarks} onChange={e=>setCell(r.rowId||r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
-                      <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow(r.rowId||r.id)} className="text-red-400 hover:text-red-600 text-base transition-colors">&#215;</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-blue-50 border-t-2 border-blue-200">
-                  <tr>
-                    <td colSpan={4} className="px-2 py-1.5 font-bold text-xs text-blue-700">SUBTOTAL</td>
-                    <td className="px-2 py-1.5 font-black text-green-700">{gRows.reduce((s,r)=>s+(parseInt(r.am)||0),0)}</td>
-                    <td className="px-2 py-1.5 font-black text-blue-700">{gRows.reduce((s,r)=>s+(parseInt(r.pm)||0),0)}</td>
-                    <td className="px-2 py-1.5 font-black text-amber-700">{gRows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)}</td>
-                    <td colSpan={4}></td>
-                  </tr>
-                </tfoot>
-              </table>
+                <div className="text-xs text-amber-200">present</div>
+              </div>
             </div>
-          ))}
-          {!dprId && <div className="p-2 text-center text-xs text-amber-600 bg-amber-50 border-t border-amber-100">Save the DPR first to persist attendance records</div>}
+          </div>
+
+          {!dprId && (
+            <div className="px-4 py-2 text-center text-xs text-amber-700 bg-amber-50 border-t border-amber-200">
+              &#9888; Save the DPR first, then click "Save Attendance" to store records
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -3541,6 +3653,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         loadAttendance={loadAttendance}
         saveAttendance={saveAttendance}
         showToast={showToast}
+        allReports={reports}
       />}
 
       {/* EQUIPMENT section */}
@@ -11722,8 +11835,8 @@ function useManpowerMaster() {
     if (error) return [];
     return (data || []).map(a => ({
       id: a.id, dprId: a.dpr_id, subId: a.subcontractor_id || "",
-      mpId: a.manpower_id || "", am: String(a.am_count || 0),
-      pm: String(a.pm_count || 0), ot: String(a.ot_hours || 0),
+      mpId: a.manpower_id || "", am: a.am_count===1?"P":"A",
+      pm: a.pm_count===1?"P":"A", ot: String(a.ot_hours || 0),
       description: a.description_of_work || "", teamNo: a.team_no || "", remarks: a.daily_remarks || "",
     }));
   };
@@ -11735,7 +11848,7 @@ function useManpowerMaster() {
     if (!valid.length) return { ok: true };
     const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
       dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null,
-      am_count: parseInt(r.am) || 0, pm_count: parseInt(r.pm) || 0,
+      am_count: r.am==="P"?1:0, pm_count: r.pm==="P"?1:0,
       ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
       team_no: r.teamNo || "", daily_remarks: r.remarks || "",
     })));
