@@ -3709,6 +3709,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
         {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
         <div className="flex flex-wrap gap-3">
+              <button onClick={()=>handlePrintDPR(sel)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold transition-colors">Print DPR</button>
           <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
           {sel.status==="Draft"&&<button onClick={async()=>{setSaving(true);const r=await onUpdate(sel.id,{...sel,status:"Submitted"});setSaving(false);if(r.ok){setSel(p=>({...p,status:"Submitted"}));showToast("Report submitted!");}}} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">Submit Final</button>}
           <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
