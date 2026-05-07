@@ -880,7 +880,7 @@ function useDailyReports() {
 
   const add = async (f) => {
     const reportNum = await getNextNum();
-    const { error } = await supabase.from("daily_reports").insert([{
+    const { data, error } = await supabase.from("daily_reports").insert([{
       report_number: reportNum,
       project_id: f.pid, report_date: f.date || null,
       weather: f.weather, temperature_high: parseInt(f.temp) || null,
@@ -895,9 +895,9 @@ function useDailyReports() {
       issues_delays: f.issues, visitors: f.visitors,
       remarks: f.remarks, status: f.status || "Draft",
       prepared_by_name: f.preparedBy,
-    }]);
+    }]).select('id');
     if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true, reportNum };
+    const newId = (data && data[0]) ? data[0].id : null; await loadData(); return { ok: true, id: newId, reportNum };
   };
 
   const update = async (id, f) => {
@@ -3298,7 +3298,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
   const loadFromMaster = () => {
     if (!subId) { showToast("Select a subcontractor first","error"); return; }
     const active = masters.filter(m => m.subId===subId && m.status==="Active");
-    if (!active.length) { showToast("No active employees for this subcontractor","error"); return; }
+    if (!active.length) { showToast("No active employees for this subcontractor. Add employees in Manpower Master module first.","error"); return; }
     const existingIds = new Set(rows.map(r=>r.mpId).filter(Boolean));
     const newRows = active.filter(m=>!existingIds.has(m.id)).map(mp=>({
       rowId: Date.now()+Math.random(),
@@ -3619,10 +3619,11 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
     setSaving(false);
     // Auto-save attendance with DPR
-    const _dprId = res.id || (sel && sel.id);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); setSaving(false); return; }
+    const _dprId = res.id || res.dprId || (sel && sel.id);
     const _attRows = attRowsRef.current || [];
     if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).catch(()=>{}); }
-    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    // error already checked above
         if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
     showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
   };
@@ -3992,8 +3993,8 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
       {/* CSS Print Overlay */}
       <style dangerouslySetInnerHTML={{__html:`
         @media print {
-          body > * { display: none !important; }
-          #dpr-print-overlay { display: block !important; }
+          * { visibility: hidden !important; }
+          #dpr-print-overlay, #dpr-print-overlay * { visibility: visible !important; } #dpr-print-overlay { position:fixed;top:0;left:0;width:100%;background:white; }
         }
         #dpr-print-overlay { display: none; }
         @page { size: A4 landscape; margin: 12mm; }
