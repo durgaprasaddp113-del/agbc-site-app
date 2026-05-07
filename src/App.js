@@ -3407,7 +3407,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
         {rows.length > 0 && (
           <button onClick={handleSave} disabled={saving}
             className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-            {saving?"Saving...":"&#128190; Save Attendance"}
+            {saving?"Saving...":"Save Attendance"}
           </button>
         )}
       </div>
@@ -3520,7 +3520,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
               {[...new Set(rows.map(r=>r.subId||"manual"))].map(sid=>{
                 const grp = rows.filter(r=>(r.subId||"manual")===sid);
                 const present = grp.filter(r=>r.am==="P"||r.pm==="P").length;
-                const nm = sid==="manual" ? "Manual Entry" : subName(sid);
+                const nm = sid==="manual" ? "Direct Entry" : subName(sid);
                 return (
                   <div key={sid} className="bg-white border border-slate-200 rounded-lg px-3 py-2 min-w-[120px]">
                     <div className="text-xs text-slate-500 font-semibold truncate max-w-[130px]">{nm}</div>
@@ -3780,7 +3780,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         showToast={showToast}
         allReports={reports}
       
-        onSaved={(cnt) => setSel(p => p ? {...p, manpowerTotal: cnt} : p)}
+        onSaved={(cnt) => { setSel(p => p ? {...p, manpowerTotal: cnt} : p); if(sel) onUpdate(sel.id,{pid:sel.pid,date:sel.date,reportNum:sel.reportNum,weather:sel.weather,temp:sel.temp,workHours:sel.workHours,manpower:sel.manpower||[],equipment:sel.equipment||[],activities:sel.activities||[],materials:sel.materials||[],inspections:sel.inspections||[],safety:sel.safety||[],manpowerTotal:cnt,issues:sel.issues,visitors:sel.visitors,remarks:sel.remarks,status:sel.status,preparedBy:sel.preparedBy}); }}
       />}
 
       {/* EQUIPMENT section */}
