@@ -3320,7 +3320,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
 };
 // ── End DprAttendancePanel ────────────────────────────────────────────
 
-const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
+const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [] }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
@@ -3516,15 +3516,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
-      {activeSection==="manpower"&&<DprAttendancePanel
-        dprId={mpAttDprId||(sel?sel.id:null)}
-        subcontractors={subcontractors}
-        masters={mpMasters}
-        loadAttendance={loadAttendance}
-        saveAttendance={saveAttendance}
-        showToast={showToast}
-      />}
       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
@@ -3542,6 +3533,15 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
           Total Workers: <span className="text-blue-600">{(form.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0)}</span>
         </div>
       </div>}
+      {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
+      {activeSection==="manpower"&&<DprAttendancePanel
+        dprId={mpAttDprId||(sel?sel.id:null)}
+        subcontractors={subcontractors}
+        masters={mpMasters}
+        loadAttendance={loadAttendance}
+        saveAttendance={saveAttendance}
+        showToast={showToast}
+      />}
 
       {/* EQUIPMENT section */}
       {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
@@ -11628,9 +11628,6 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${NOC_ST_COLOR[n.status]||NOC_ST_COLOR.Draft}`}>{n.status}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${NOC_PRI_COLOR[n.priority]||""}`}>{n.priority}</span>
-                    </td>
                     <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(n.submissionDate)||"—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {n.expiryDate ? (
@@ -12243,7 +12240,7 @@ export default function App() {
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} tasks={tasks} snags={snags} inspections={inspections} photos={photos} reports={reports} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
-      case "reports":        return <DailyReports subcontractors={subs} {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
+      case "reports":        return <DailyReports {...pp} subcontractors={subs} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
