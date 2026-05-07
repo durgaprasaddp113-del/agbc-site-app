@@ -3551,7 +3551,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
 };
 // ── End DprAttendancePanel ────────────────────────────────────────────
 
-const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [] }) => {
+const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [], onReload }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
@@ -3570,6 +3570,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const attRowsRef = useRef([]);
   const [mpAttDprId, setMpAttDprId] = useState(null);
   const [printData, setPrintData] = useState(null);
+  useEffect(() => { if (printData) { const t = setTimeout(() => window.print(), 600); return () => clearTimeout(t); } }, [printData]);
   const [activeSection, setActiveSection] = useState("header");
 
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
@@ -3623,7 +3624,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     if (!res.ok) { showToast(res.error||"Save failed","error"); setSaving(false); return; }
     const _dprId = res.id || res.dprId || (sel && sel.id);
     const _attRows = attRowsRef.current || [];
-    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).catch(()=>{}); }
+    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).then(()=>{ if(onReload) onReload(); }).catch(()=>{}); }
     // error already checked above
         if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
     showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
@@ -3907,7 +3908,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         const proj = projects.find(p => p.id === rpt.pid);
         const att = await loadAttendance(rpt.id);
         setPrintData({ rpt, proj, att });
-        setTimeout(() => window.print(), 800);
+        // print via useEffect
       };
 
   return (
@@ -12559,7 +12560,7 @@ export default function App() {
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} tasks={tasks} snags={snags} inspections={inspections} photos={photos} reports={reports} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
-      case "reports":        return <DailyReports {...pp} subcontractors={subs} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
+      case "reports":        return <DailyReports {...pp} subcontractors={subs} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} onReload={reloadR} />;
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
