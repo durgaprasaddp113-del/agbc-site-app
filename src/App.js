@@ -3343,6 +3343,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
     setSaving(false);
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
     showToast("Attendance saved!");
+        if (onSaved) onSaved(rows.filter(r => r.am==="P" || r.pm==="P").length);
   };
 
   // ── Summary counts ────────────────────────────────────────────────
@@ -3384,8 +3385,9 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
       {/* ── Toolbar ── */}
       <div className="bg-slate-50 px-3 py-2.5 flex flex-wrap gap-2 items-end border-b border-slate-200">
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs font-semibold text-slate-600 mb-1">Load from Manpower Master</label>
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Auto-load employees (from Manpower Master)</label>
           <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full text-xs">
+          <p className="text-xs text-slate-400 mt-0.5">Select company then click Load Employees. Adds active staff from Manpower Master — no daily re-entry needed.</p>
             <option value="">Select Subcontractor...</option>
             {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </Sel>
@@ -3751,6 +3753,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
 
       {/* MANPOWER section */}
       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <div className="text-xs text-slate-400 italic px-2 mb-1">Legacy summary (optional) — use Daily Attendance Register below for detailed tracking</div>
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
           rows={form.manpower||[]} renderRow={r=>(
@@ -3776,6 +3779,8 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         saveAttendance={saveAttendance}
         showToast={showToast}
         allReports={reports}
+      
+        onSaved={(cnt) => setSel(p => p ? {...p, manpowerTotal: cnt} : p)}
       />}
 
       {/* EQUIPMENT section */}
@@ -3978,8 +3983,14 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
           '</div></body></html>'
         ].join('');
 
-        const pw = window.open('', '_blank', 'width=1100,height=800');
-        if (pw) { pw.document.write(html); pw.document.close(); pw.focus(); }
+        const _pf = document.createElement('iframe');
+        _pf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0';
+        document.body.appendChild(_pf);
+        _pf.contentDocument.open();
+        _pf.contentDocument.write(html);
+        _pf.contentDocument.close();
+        setTimeout(function(){ _pf.contentWindow.focus(); _pf.contentWindow.print(); setTimeout(function(){ document.body.removeChild(_pf); }, 2000); }, 400);
+
       };
 
   return (
