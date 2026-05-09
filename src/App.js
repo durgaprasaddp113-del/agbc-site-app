@@ -866,6 +866,9 @@ function useDailyReports() {
         preparedBy: r.prepared_by_name || "",
       };
     }));
+        try { const {data:aC}=await supabase.from('dpr_attendance').select('dpr_id,am_count,pm_count');
+          if(aC&&aC.length){const m={};aC.forEach(a=>{if(!m[a.dpr_id])m[a.dpr_id]=0;if(a.am_count===1||a.pm_count===1)m[a.dpr_id]++;});
+          setReports(p=>p.map(r=>({...r,manpowerTotal:m[r.id]||r.manpowerTotal}))); } } catch(e){}
     setLoading(false);
   }, []);
   useEffect(() => { loadData(); }, [loadData]);
@@ -3322,6 +3325,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
 
 const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
+  const [showPrint, setShowPrint] = useState(null);
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
   const [fProject, setFProject] = useState(navFilter.projectId || "All");
@@ -3396,6 +3400,62 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     showToast("Report deleted!"); setConfirmId(null); if(mode!=="list") goList();
   };
 
+      {showPrint&&(
+        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,zIndex:9999,background:'white',overflowY:'auto',padding:'20px'}}>
+          <div style={{maxWidth:'1050px',margin:'0 auto'}}>
+            <div style={{textAlign:'center',borderBottom:'3px double #1e293b',paddingBottom:'8px',marginBottom:'12px'}}>
+              <div style={{fontSize:'17px',fontWeight:'900'}}>AL GHAITH BUILDING CONSTRUCTION (LLC)</div>
+              <div style={{fontSize:'12px',fontWeight:'700',color:'#d97706'}}>SITE DAILY REPORT</div>
+            </div>
+            <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'10px',fontSize:'12px'}}><tbody>
+              <tr style={{background:'#f8fafc'}}>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Site No:</b> {showPrint.proj?.number||'--'}</td>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Project:</b> {showPrint.proj?.name||'--'}</td>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Date:</b> {showPrint.rpt.date||'--'}</td>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Report No:</b> {showPrint.rpt.reportNum||'--'}</td>
+              </tr><tr>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Prepared By:</b> {showPrint.rpt.preparedBy||'--'}</td>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Weather:</b> {showPrint.rpt.weather||'--'} {showPrint.rpt.temp?showPrint.rpt.temp+'C':''}</td>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Work Hours:</b> {showPrint.rpt.workHours||'8'}h</td>
+                <td style={{padding:'4px 8px',border:'1px solid #e2e8f0'}}><b>Status:</b> {showPrint.rpt.status||'--'}</td>
+              </tr>
+            </tbody></table>
+            <div style={{background:'#1e293b',color:'white',padding:'5px 10px',fontWeight:'700',fontSize:'11px'}}>
+              MANPOWER ATTENDANCE | Total: {showPrint.att.length} | AM Present: {showPrint.att.filter(r=>r.am==='P').length} | PM Present: {showPrint.att.filter(r=>r.pm==='P').length}
+            </div>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',marginBottom:'12px'}}>
+              <thead><tr style={{background:'#f1f5f9'}}>{['S.No','ID No','Name','Designation','Team','A.M','P.M','O.T','Description'].map(h=>(<th key={h} style={{padding:'4px 6px',textAlign:'left',fontWeight:'700',color:'#475569',border:'1px solid #e2e8f0'}}>{h}</th>))}</tr></thead>
+              <tbody>{showPrint.att.map((r,i)=>(
+                <tr key={i} style={{background:i%2===0?'white':'#f8fafc'}}>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',textAlign:'center'}}>{i+1}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',fontWeight:'700',color:'#1d4ed8'}}>{r.empId||'--'}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',fontWeight:'600'}}>{r.name||'--'}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0'}}>{r.designation||'--'}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',textAlign:'center',color:'#7c3aed',fontWeight:'700'}}>{r.teamNo||'--'}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',textAlign:'center',fontWeight:'900',color:r.am==='P'?'#15803d':'#b91c1c'}}>{r.am}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',textAlign:'center',fontWeight:'900',color:r.pm==='P'?'#15803d':'#b91c1c'}}>{r.pm}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0',textAlign:'center'}}>{r.ot&&r.ot!=='0'?r.ot:'--'}</td>
+                  <td style={{padding:'3px 6px',border:'1px solid #e2e8f0'}}>{r.description||'--'}</td>
+                </tr>
+              ))}</tbody>
+              <tfoot><tr style={{background:'#1e293b',color:'white'}}>
+                <td colSpan={5} style={{padding:'4px 8px',fontWeight:'700'}}>TOTAL PRESENT</td>
+                <td style={{padding:'4px 6px',textAlign:'center',fontWeight:'900',color:'#86efac'}}>{showPrint.att.filter(r=>r.am==='P').length}</td>
+                <td style={{padding:'4px 6px',textAlign:'center',fontWeight:'900',color:'#93c5fd'}}>{showPrint.att.filter(r=>r.pm==='P').length}</td>
+                <td colSpan={2} style={{padding:'4px 8px',color:'#cbd5e1',fontSize:'10px'}}>Absent: {showPrint.att.filter(r=>r.am==='A'&&r.pm==='A').length}</td>
+              </tr></tfoot>
+            </table>
+            <div style={{marginTop:'30px',display:'flex',justifyContent:'space-between',borderTop:'1px solid #e2e8f0',paddingTop:'10px'}}>
+              <div style={{width:'180px',textAlign:'center'}}><div style={{borderTop:'1px solid #374151',marginTop:'24px',paddingTop:'3px',fontSize:'10px'}}>Signature Site Engineer</div></div>
+              <div style={{width:'180px',textAlign:'center'}}><div style={{borderTop:'1px solid #374151',marginTop:'24px',paddingTop:'3px',fontSize:'10px'}}>Signature Site Incharge</div></div>
+            </div>
+            <div style={{textAlign:'center',marginTop:'14px',display:'flex',gap:'8px',justifyContent:'center'}}>
+              <button onClick={()=>window.print()} style={{padding:'9px 28px',background:'#1e293b',color:'white',border:'none',borderRadius:'6px',fontSize:'13px',fontWeight:'700',cursor:'pointer'}}>Print / Save as PDF</button>
+              <button onClick={()=>setShowPrint(null)} style={{padding:'9px 18px',background:'#e2e8f0',color:'#374151',border:'none',borderRadius:'6px',fontSize:'13px',cursor:'pointer'}}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
   const filtered = reports.filter(r => {
     if (fProject!=="All" && r.pid!==fProject) return false;
     if (fStatus!=="All" && r.status!==fStatus) return false;
@@ -3655,6 +3715,14 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     {header:"Prepared By",key:"preparedBy",width:20},{header:"Weather",key:"weather",width:14},
     {header:"Manpower",key:"manpowerTotal",width:12},{header:"Status",key:"status",width:14},
   ];
+
+
+  const handlePrintDPR = async (rpt) => {
+    showToast('Loading report...');
+    const proj = projects.find(p=>p.id===rpt.pid);
+    const att = await loadAttendance(rpt.id);
+    setShowPrint({rpt,proj,att});
+  };
 
   return (
     <div className="p-6">
