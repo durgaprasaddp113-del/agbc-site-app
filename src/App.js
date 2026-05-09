@@ -3580,6 +3580,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const attRowsRef = useRef([]);
   const [mpAttDprId, setMpAttDprId] = useState(null);
   const [printData, setPrintData] = useState(null);
+  const [showPrint, setShowPrint] = useState(null);
   const [printRptId, setPrintRptId] = useState(null);
   useEffect(() => {
     if (!printRptId || !printData) return;
