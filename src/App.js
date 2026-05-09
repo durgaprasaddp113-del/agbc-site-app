@@ -866,7 +866,17 @@ function useDailyReports() {
         preparedBy: r.prepared_by_name || "",
       };
     }));
-    setLoading(false);
+    const { data: attCounts } = await supabase.from("dpr_attendance")
+          .select("dpr_id, am_count, pm_count");
+        if (attCounts && attCounts.length && data) {
+          const cntMap = {};
+          attCounts.forEach(a => {
+            if (!cntMap[a.dpr_id]) cntMap[a.dpr_id] = 0;
+            if (a.am_count===1 || a.pm_count===1) cntMap[a.dpr_id]++;
+          });
+          setReports(prev => prev.map(r => ({ ...r, manpowerTotal: cntMap[r.id] || r.manpowerTotal })));
+        }
+        setLoading(false);
   }, []);
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -925,7 +935,7 @@ function useDailyReports() {
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
   };
-  return { reports, loading, add, update, remove };
+  return { reports, loading, add, update, reload: loadData, remove };
 }
 
 
@@ -3570,7 +3580,13 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const attRowsRef = useRef([]);
   const [mpAttDprId, setMpAttDprId] = useState(null);
   const [printData, setPrintData] = useState(null);
-  useEffect(() => { if (printData) { const t = setTimeout(() => window.print(), 600); return () => clearTimeout(t); } }, [printData]);
+  const [printRptId, setPrintRptId] = useState(null);
+  useEffect(() => {
+    if (!printRptId || !printData) return;
+    loadAttendance(printData.rpt.id).then(att => {
+      setPrintData(p => p ? {...p, att: att||[]} : p);
+    });
+  }, [printRptId]);
   const [activeSection, setActiveSection] = useState("header");
 
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
@@ -3624,10 +3640,10 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     if (!res.ok) { showToast(res.error||"Save failed","error"); setSaving(false); return; }
     const _dprId = res.id || res.dprId || (sel && sel.id);
     const _attRows = attRowsRef.current || [];
-    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).then(()=>{ if(onReload) onReload(); }).catch(()=>{}); }
+    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).then(()=>{ setTimeout(()=>{ if(onReload) onReload(); },500); }).catch(()=>{}); }
     // error already checked above
         if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
-    showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
+    showToast(sel?"Report updated!":"Report created: "+res.reportNum); setTimeout(()=>goList(),1200);
   };
 
   const handleDelete = async id => {
@@ -3646,7 +3662,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
 
   const SECTIONS = [
     {id:"header",label:"📋 Report Info"},
-    {id:"manpower",label:`👷 Manpower (${(form.manpower||[]).filter(r=>r.trade||r.count).length})`},
+    {id:"manpower",label:`👷 Manpower (${(attRowsRef.current||[]).length})`},
     {id:"equipment",label:`🚜 Equipment (${(form.equipment||[]).filter(r=>r.name).length})`},
     {id:"activities",label:`🔨 Activities (${(form.activities||[]).filter(r=>r.activity).length})`},
     {id:"materials",label:`📦 Materials (${(form.materials||[]).filter(r=>r.material).length})`},
@@ -3661,6 +3677,53 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     const totalMP = sel.manpowerTotal || (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
     return (
       <div className="p-6 max-w-4xl space-y-4">
+            {/* Print Overlay - needed in view mode */}
+            {printData&&<div id="dpr-print-overlay" style={{fontFamily:"Arial,sans-serif",fontSize:"12px",color:"#1e293b",padding:"16px"}}>
+              <div style={{textAlign:"center",borderBottom:"3px double #1e293b",paddingBottom:"8px",marginBottom:"10px"}}>
+                <div style={{fontSize:"16px",fontWeight:"900"}}>AL GHAITH BUILDING CONSTRUCTION LLC</div>
+                <div style={{fontSize:"12px",fontWeight:"700",color:"#d97706"}}>SITE DAILY REPORT</div>
+              </div>
+              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"10px",border:"1px solid #e2e8f0"}}><tbody>
+                <tr style={{background:"#f8fafc"}}>
+                  <td style={{padding:"4px 8px"}}><b>Site No:</b> {printData.proj?.number||"--"}</td>
+                  <td style={{padding:"4px 8px"}}><b>Project:</b> {printData.proj?.name||"--"}</td>
+                  <td style={{padding:"4px 8px"}}><b>Date:</b> {printData.rpt.date||"--"}</td>
+                  <td style={{padding:"4px 8px"}}><b>Report No:</b> {printData.rpt.reportNum||"--"}</td>
+                </tr><tr>
+                  <td style={{padding:"4px 8px"}}><b>Prepared By:</b> {printData.rpt.preparedBy||"--"}</td>
+                  <td style={{padding:"4px 8px"}}><b>Weather:</b> {printData.rpt.weather||"--"}</td>
+                  <td style={{padding:"4px 8px"}}><b>Work Hours:</b> {printData.rpt.workHours||"8"}h</td>
+                  <td style={{padding:"4px 8px"}}><b>Status:</b> {printData.rpt.status||"--"}</td>
+                </tr>
+              </tbody></table>
+              {printData.att&&printData.att.length>0&&<div style={{marginBottom:"12px"}}>
+                <div style={{background:"#1e293b",color:"white",padding:"5px 10px",fontWeight:"700",fontSize:"11px"}}>MANPOWER ATTENDANCE | Total: {printData.att.length} | AM Present: {printData.att.filter(r=>r.am==="P").length} | PM Present: {printData.att.filter(r=>r.pm==="P").length}</div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:"10px"}}><thead><tr style={{background:"#f1f5f9"}}>
+                  {["S.No","ID","Name","Designation","Team","A.M","P.M","O.T","Description"].map(h=><th key={h} style={{padding:"4px 6px",textAlign:"left",fontWeight:"700",color:"#475569",borderBottom:"2px solid #e2e8f0"}}>{h}</th>)}
+                </tr></thead><tbody>
+                  {printData.att.map((r,i)=><tr key={i} style={{borderBottom:"1px solid #e2e8f0",background:r.am==="A"&&r.pm==="A"?"#fff5f5":""}}>
+                    <td style={{padding:"3px 6px",textAlign:"center",color:"#94a3b8"}}>{i+1}</td>
+                    <td style={{padding:"3px 6px",fontWeight:"700",color:"#1d4ed8"}}>{r.empId||"--"}</td>
+                    <td style={{padding:"3px 6px",fontWeight:"600"}}>{r.name||"--"}</td>
+                    <td style={{padding:"3px 6px",color:"#64748b"}}>{r.designation||"--"}</td>
+                    <td style={{padding:"3px 6px",textAlign:"center",color:"#7c3aed",fontWeight:"700"}}>{r.teamNo||"--"}</td>
+                    <td style={{padding:"3px 6px",textAlign:"center",fontWeight:"900",color:r.am==="P"?"#15803d":"#b91c1c"}}>{r.am}</td>
+                    <td style={{padding:"3px 6px",textAlign:"center",fontWeight:"900",color:r.pm==="P"?"#15803d":"#b91c1c"}}>{r.pm}</td>
+                    <td style={{padding:"3px 6px",textAlign:"center",color:"#d97706"}}>{r.ot&&r.ot!=="0"?r.ot:"--"}</td>
+                    <td style={{padding:"3px 6px",color:"#475569"}}>{r.description||"--"}</td>
+                  </tr>)}
+                </tbody><tfoot><tr style={{background:"#1e293b",color:"white"}}>
+                  <td colSpan={5} style={{padding:"4px 8px",fontWeight:"700",fontSize:"10px"}}>TOTAL PRESENT</td>
+                  <td style={{padding:"4px 6px",fontWeight:"900",color:"#86efac",textAlign:"center"}}>{printData.att.filter(r=>r.am==="P").length}</td>
+                  <td style={{padding:"4px 6px",fontWeight:"900",color:"#93c5fd",textAlign:"center"}}>{printData.att.filter(r=>r.pm==="P").length}</td>
+                  <td colSpan={2} style={{padding:"4px 8px",color:"#cbd5e1",fontSize:"10px"}}>Absent: {printData.att.filter(r=>r.am==="A"&&r.pm==="A").length}</td>
+                </tr></tfoot></table>
+              </div>}
+              <div style={{marginTop:"28px",display:"flex",justifyContent:"space-between",borderTop:"1px solid #e2e8f0",paddingTop:"10px"}}>
+                <div style={{width:"180px",textAlign:"center"}}><div style={{borderTop:"1px solid #374151",paddingTop:"3px",fontSize:"10px"}}>Signature Site Engineer</div></div>
+                <div style={{width:"180px",textAlign:"center"}}><div style={{borderTop:"1px solid #374151",paddingTop:"3px",fontSize:"10px"}}>Signature Site Incharge</div></div>
+              </div>
+            </div>}
         {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
         <BackBtn onClick={goList}/>
         {/* Header banner */}
@@ -3894,7 +3957,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     ...r,
     projectNum:(projects.find(p=>p.id===r.pid)||{}).number||"—",
     projectName:(projects.find(p=>p.id===r.pid)||{}).name||"—",
-    manpowerTotal:(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0),
+    manpowerTotal: r.manpowerTotal || 0,
   }));
   const RPT_COLS = [
     {header:"Report No.",key:"reportNum",width:14},{header:"Date",key:"date",width:14,type:"date"},
@@ -3904,11 +3967,10 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   ];
 
 
-      const handlePrintDPR = async (rpt) => {
+      const handlePrintDPR = (rpt) => {
         const proj = projects.find(p => p.id === rpt.pid);
-        const att = await loadAttendance(rpt.id);
-        setPrintData({ rpt, proj, att });
-        // print via useEffect
+        setPrintData({ rpt, proj, att: [] });
+        setPrintRptId(String(rpt.id || '') + '_' + Date.now());
       };
 
   return (
@@ -3930,7 +3992,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             <tbody className="divide-y divide-slate-100">
               {filtered.map(r=>{
                 const proj=projects.find(p=>p.id===r.pid);
-                const mp=(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+                const mp = r.manpowerTotal || 0;
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
@@ -12508,7 +12570,7 @@ export default function App() {
   const { projects, loading: plLoad, add: addP, update: updP, remove: delP } = useProjects();
   const { tasks, loading: tlLoad, add: addT, update: updT, remove: delT } = useTasks();
   const { snags, loading: slLoad, add: addS, update: updS, remove: delS } = useSnags();
-  const { reports, loading: rlLoad, add: addR, update: updR, remove: delR } = useDailyReports();
+  const { reports, loading: rlLoad, add: addR, update: updR, remove: delR, reload: reloadDpr } = useDailyReports();
   const { inspections, loading: ilLoad, add: addI, update: updI, remove: delI } = useInspections();
   const { drawings, loading: dlLoad, add: addD, update: updD, remove: delD } = useDrawings();
   const { subs, loading: sbLoad, add: addSub, update: updSub, remove: delSub } = useSubcontractors();
@@ -12560,7 +12622,7 @@ export default function App() {
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} tasks={tasks} snags={snags} inspections={inspections} photos={photos} reports={reports} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
-      case "reports":        return <DailyReports {...pp} subcontractors={subs} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} onReload={reloadR} />;
+      case "reports":        return <DailyReports {...pp} subcontractors={subs} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} onReload={reloadDpr} />;
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
