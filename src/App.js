@@ -2440,7 +2440,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
   useEffect(() => {
     setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -2590,7 +2590,7 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast,
   useEffect(() => {
     setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -2865,7 +2865,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     setFProject(navFilter.projectId || "All");
     setFStatus(navFilter.status || "All");
     setFDate(navFilter.date || "");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [activeSection, setActiveSection] = useState("header");
@@ -5183,7 +5183,7 @@ function useMatReqs() {
     if (data) setMrs(data.map(r => ({
       id: r.id,
       mrNum: r.mr_number || "",
-      pid: r.project_id || "",
+      pid: String(r.project_id||"").toLowerCase(),
       requestedBy: r.requested_by || "",
       dept: r.department || "Civil",
       date: r.date || "",
@@ -5432,7 +5432,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
   useEffect(() => {
     setFStatus(navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -5615,7 +5615,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           ))}
         </div>
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
-        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{projects.map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
@@ -5961,7 +5961,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
         btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
       <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
-        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{projects.map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
@@ -6463,7 +6463,7 @@ const MaterialStore = ({
     if (navFilter.status === "Low Stock") { setFLowOnly(true); setFStatus("Low Stock"); }
     else if (navFilter.status) setFStatus(navFilter.status);
     if (navFilter.projectId) setFProject(navFilter.projectId);
-  }, [navFilter]);
+  }, [navFilter.projectId]);
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
@@ -11069,7 +11069,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
     setFProject(navFilter.projectId || "All");
     setFStatus(navFilter.status || "All");
     setFExpiry(navFilter.expiry || "All");
-  }, [navFilter]);
+  }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -11422,8 +11422,8 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
         <div className="flex flex-wrap gap-2">
           <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="NOC no, authority, type..."/>
           <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
-            <option value="All">All Projects</option>
-            {projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}
+            <option value="all">All Projects</option>
+            {projects.map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number}</option>)}
           </Sel>
           <Sel value={fAuth} onChange={e=>setFAuth(e.target.value)} className="w-auto">
             <option value="All">All Authorities</option>
