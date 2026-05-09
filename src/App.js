@@ -2852,7 +2852,7 @@ const DynTable = ({ heads, rows, renderRow }) => (
   </div>
 );
 
-const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
+const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [], mpMasters = [], loadAttendance, saveAttendance }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
@@ -10541,6 +10541,347 @@ const MaterialStore = ({
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTHORITY NOC & PERMITS HOOK
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ── useManpowerMaster Hook ──────────────────────────────────────────
+function useManpowerMaster() {
+  const [masters, setMasters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const loadData = useCallback(async () => {
+    const { data, error } = await supabase.from("manpower_master").select("*").order("created_at", { ascending: true });
+    if (error) { console.error("ManpowerMaster:", error.message); setLoading(false); return; }
+    if (data) setMasters(data.map(m => ({
+      id: m.id, subId: m.subcontractor_id || "",
+      empId: m.employee_id || "", name: m.name || "",
+      designation: m.designation || "", defaultTeamNo: m.default_team_no || "",
+      status: m.status || "Active", dateJoined: m.date_joined || "",
+      dateLeft: m.date_left || "", remarks: m.remarks || "",
+    })));
+    setLoading(false);
+  }, []);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const addMaster = async (f) => {
+    const { error } = await supabase.from("manpower_master").insert([{
+      subcontractor_id: f.subId || null, employee_id: f.empId || "",
+      name: f.name || "", designation: f.designation || "",
+      default_team_no: f.defaultTeamNo || "", status: f.status || "Active",
+      date_joined: f.dateJoined || null, date_left: f.dateLeft || null, remarks: f.remarks || "",
+    }]);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const updateMaster = async (id, f) => {
+    const { error } = await supabase.from("manpower_master").update({
+      subcontractor_id: f.subId || null, employee_id: f.empId || "",
+      name: f.name || "", designation: f.designation || "",
+      default_team_no: f.defaultTeamNo || "", status: f.status || "Active",
+      date_joined: f.dateJoined || null, date_left: f.dateLeft || null, remarks: f.remarks || "",
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const removeMaster = async (id) => {
+    const { error } = await supabase.from("manpower_master").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const toggleStatus = async (id, cur) => {
+    const { error } = await supabase.from("manpower_master")
+      .update({ status: cur === "Active" ? "Inactive" : "Active" }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const loadAttendance = async (dprId) => {
+    if (!dprId) return [];
+    const { data, error } = await supabase.from("dpr_attendance").select("*").eq("dpr_id", dprId).order("created_at");
+    if (error) return [];
+    return (data || []).map(a => ({
+      id: a.id, subId: a.subcontractor_id || "",
+      mpId: a.manpower_id || "", empId: a.employee_id || "",
+      name: a.emp_name || "", designation: a.designation || "",
+      am: a.am_count === 1 ? "P" : "A", pm: a.pm_count === 1 ? "P" : "A",
+      ot: String(a.ot_hours || 0), description: a.description_of_work || "",
+      teamNo: a.team_no || "", remarks: a.daily_remarks || "",
+    }));
+  };
+
+  const saveAttendance = async (dprId, rows) => {
+    if (!dprId) return { ok: false, error: "No DPR ID" };
+    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
+    const valid = rows.filter(r => r.name && r.name.trim());
+    if (!valid.length) return { ok: true };
+    const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
+      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null,
+      employee_id: r.empId || "", emp_name: r.name || "", designation: r.designation || "",
+      am_count: r.am === "P" ? 1 : 0, pm_count: r.pm === "P" ? 1 : 0,
+      ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
+      team_no: r.teamNo || "", daily_remarks: r.remarks || "",
+    })));
+    if (error) return { ok: false, error: error.message };
+    const presentCount = valid.filter(r => r.am === "P" || r.pm === "P").length;
+    await supabase.from("daily_reports").update({ manpower_total: presentCount }).eq("id", dprId);
+    return { ok: true };
+  };
+
+  return { masters, loading, addMaster, updateMaster, removeMaster, toggleStatus, loadAttendance, saveAttendance };
+}
+
+// ── ManpowerMaster Component ─────────────────────────────────────────
+const MP_TRADES = ["Foreman","Carpenter","Mason","Plumber","Electrician","Steel Fixer","Bar Bender","Scaffolder","Helper","Driver","Equipment Operator","Painter","Welder","Tiler","Other"];
+const EMPTY_MP_FORM = () => ({ subId:"", empId:"", name:"", designation:"", defaultTeamNo:"", status:"Active", dateJoined:"", dateLeft:"", remarks:"" });
+
+const ManpowerMaster = ({ subcontractors = [], showToast }) => {
+  const { masters, loading, addMaster, updateMaster, removeMaster, toggleStatus } = useManpowerMaster();
+  const [mode, setMode] = useState("list");
+  const [sel, setSel] = useState(null);
+  const [form, setForm] = useState(EMPTY_MP_FORM());
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [fSub, setFSub] = useState("All");
+  const [fStatus, setFStatus] = useState("Active");
+  const [confirmId, setConfirmId] = useState(null);
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const filtered = masters.filter(m => {
+    if (fSub !== "All" && m.subId !== fSub) return false;
+    if (fStatus !== "All" && m.status !== fStatus) return false;
+    if (search && !`${m.empId} ${m.name} ${m.designation}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const openCreate = () => { setForm(EMPTY_MP_FORM()); setSel(null); setMode("form"); };
+  const openEdit = m => { setSel(m); setForm({ subId:m.subId, empId:m.empId, name:m.name, designation:m.designation, defaultTeamNo:m.defaultTeamNo, status:m.status, dateJoined:m.dateJoined, dateLeft:m.dateLeft, remarks:m.remarks }); setMode("form"); };
+
+  const handleSave = async () => {
+    if (!form.subId) { showToast("Select a subcontractor","error"); return; }
+    if (!form.empId.trim()) { showToast("Employee ID required","error"); return; }
+    if (!form.name.trim()) { showToast("Name required","error"); return; }
+    setSaving(true);
+    const res = sel ? await updateMaster(sel.id, form) : await addMaster(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error || "Save failed","error"); return; }
+    showToast(sel ? "Updated!" : "Employee added!"); setMode("list"); setSel(null);
+  };
+
+  const subName = id => (subcontractors.find(s => s.id === id) || {}).name || "—";
+
+  if (mode === "form") return (
+    <div className="p-4 max-w-2xl mx-auto">
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={() => { setMode("list"); setSel(null); }} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">&#8592;</button>
+        <h2 className="text-lg font-bold text-slate-800">{sel ? "Edit Employee" : "Add Employee"}</h2>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2">
+            <Lbl t="Subcontractor" req/>
+            <Sel value={form.subId} onChange={set("subId")}>
+              <option value="">Select...</option>
+              {subcontractors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Sel>
+          </div>
+          <div><Lbl t="Employee ID / Labour Card" req/><Inp value={form.empId} onChange={set("empId")} placeholder="LC-001"/></div>
+          <div><Lbl t="Name" req/><Inp value={form.name} onChange={set("name")} placeholder="Full name"/></div>
+          <div><Lbl t="Designation / Trade"/><Sel value={form.designation} onChange={set("designation")}><option value="">Select...</option>{MP_TRADES.map(d=><option key={d}>{d}</option>)}</Sel></div>
+          <div><Lbl t="Default Team No"/><Inp value={form.defaultTeamNo} onChange={set("defaultTeamNo")} placeholder="T-1"/></div>
+          <div><Lbl t="Status"/><Sel value={form.status} onChange={set("status")}><option value="Active">Active</option><option value="Inactive">Inactive</option></Sel></div>
+          <div><Lbl t="Date Joined"/><Inp type="date" value={form.dateJoined} onChange={set("dateJoined")}/></div>
+          <div className="sm:col-span-2"><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
+        </div>
+        <div className="flex gap-2">
+          <Btn onClick={handleSave} saving={saving} label={sel ? "Update" : "Save"}/>
+          <button onClick={() => { setMode("list"); setSel(null); }} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Manpower Master</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Employee database — auto-fills DPR attendance</p>
+        </div>
+        <button onClick={openCreate} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold">+ Add Employee</button>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Sel value={fSub} onChange={e=>setFSub(e.target.value)} className="w-auto">
+          <option value="All">All Companies</option>
+          {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+        </Sel>
+        <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto">
+          <option value="All">All</option>
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+        </Sel>
+        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..."/>
+      </div>
+      {loading ? <Spinner/> : filtered.length === 0 ? <EmptyState msg="No employees found" onCreate={openCreate}/> : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm min-w-[700px]">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["S.No","Emp ID","Name","Designation","Team","Company","Status","Actions"].map(h=>(
+                <th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((m,idx)=>(
+                <tr key={m.id} className={`hover:bg-slate-50 ${m.status==="Inactive"?"opacity-50":""}`}>
+                  <td className="px-3 py-2 text-slate-400 text-xs">{idx+1}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-blue-700 font-semibold">{m.empId||"—"}</td>
+                  <td className="px-3 py-2 font-semibold text-slate-800">{m.name}</td>
+                  <td className="px-3 py-2 text-slate-500 text-xs">{m.designation||"—"}</td>
+                  <td className="px-3 py-2 text-slate-500 text-xs">{m.defaultTeamNo||"—"}</td>
+                  <td className="px-3 py-2 text-xs text-slate-500 max-w-[120px] truncate">{subName(m.subId)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${m.status==="Active"?"bg-green-100 text-green-700":"bg-red-100 text-red-700"}`}>{m.status}</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      <button onClick={()=>openEdit(m)} className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 text-slate-700">Edit</button>
+                      <button onClick={()=>toggleStatus(m.id,m.status)} className={`px-2 py-1 text-xs rounded font-medium ${m.status==="Active"?"bg-amber-50 text-amber-700":"bg-green-50 text-green-700"}`}>{m.status==="Active"?"Deactivate":"Activate"}</button>
+                      <button onClick={()=>setConfirmId(m.id)} className="px-2 py-1 text-xs rounded bg-red-50 text-red-600">Del</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {confirmId&&<ConfirmDialog message="Delete this employee permanently?" onConfirm={async()=>{await removeMaster(confirmId);showToast("Deleted");setConfirmId(null);}} onCancel={()=>setConfirmId(null)}/>}
+    </div>
+  );
+};
+
+// ── DPR Attendance Panel ─────────────────────────────────────────────
+const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendance, saveAttendance, showToast, allReports=[] }) => {
+  const [rows, setRows] = useState([]);
+  const [subId, setSubId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!dprId) return;
+    setLoading(true);
+    loadAttendance(dprId).then(att => { if (att.length) setRows(att); setLoading(false); });
+  }, [dprId]);
+
+  const toggle = (id, field) => setRows(p => p.map(r => (r.id===id||r.rowId===id) ? {...r, [field]: r[field]==="P"?"A":"P"} : r));
+  const setCell = (id, k, v) => setRows(p => p.map(r => (r.id===id||r.rowId===id) ? {...r, [k]: v} : r));
+  const delRow = id => setRows(p => p.filter(r => r.id!==id && r.rowId!==id));
+  const addRow = () => setRows(p => [...p, { rowId:Date.now(), mpId:"", subId:"", empId:"", name:"", designation:"", am:"P", pm:"P", ot:"", description:"", teamNo:"", remarks:"" }]);
+
+  const loadFromMaster = () => {
+    if (!subId) { showToast("Select a subcontractor","error"); return; }
+    const active = masters.filter(m => m.subId===subId && m.status==="Active");
+    if (!active.length) { showToast("No active employees. Add employees in Manpower Master first.","error"); return; }
+    const existIds = new Set(rows.map(r=>r.mpId).filter(Boolean));
+    const newRows = active.filter(m=>!existIds.has(m.id)).map(m=>({ rowId:Date.now()+Math.random(), mpId:m.id, subId:m.subId, empId:m.empId, name:m.name, designation:m.designation, teamNo:m.defaultTeamNo||"", am:"P", pm:"P", ot:"", description:"", remarks:"" }));
+    if (!newRows.length) { showToast("All employees already loaded","error"); return; }
+    setRows(p=>[...p,...newRows]);
+    showToast(newRows.length+" employees loaded");
+  };
+
+  const copyLastDpr = async () => {
+    const prev = (allReports||[]).filter(r=>r.id!==dprId).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+    if (!prev) { showToast("No previous DPR found","error"); return; }
+    setLoading(true);
+    const att = await loadAttendance(prev.id);
+    setLoading(false);
+    if (!att.length) { showToast("Previous DPR has no attendance","error"); return; }
+    setRows(att.map(a=>({rowId:Date.now()+Math.random(), mpId:a.mpId||"", subId:a.subId||"", empId:a.empId||"", name:a.name||"", designation:a.designation||"", teamNo:a.teamNo||"", am:"P", pm:"P", ot:"", description:"", remarks:""})));
+    showToast(att.length+" employees copied from last DPR");
+  };
+
+  const handleSave = async () => {
+    if (!dprId) { showToast("Save the DPR first","error"); return; }
+    setSaving(true);
+    const res = await saveAttendance(dprId, rows);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    showToast("Attendance saved!");
+  };
+
+  const presentAM = rows.filter(r=>r.am==="P").length;
+  const presentPM = rows.filter(r=>r.pm==="P").length;
+  const subName = id => (subcontractors.find(s=>s.id===id)||{}).name||"";
+
+  const PABtn = ({val, onClick}) => (
+    <button onClick={onClick} className={`w-8 h-8 rounded-lg font-black text-sm border-2 transition-all ${val==="P"?"bg-green-100 text-green-700 border-green-400":"bg-red-100 text-red-700 border-red-400"}`}>{val}</button>
+  );
+
+  return (
+    <div className="mt-3 border-2 border-slate-200 rounded-xl overflow-hidden">
+      <div className="bg-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-white font-bold text-sm">Daily Attendance Register</span>
+          <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full">{rows.length} workers</span>
+        </div>
+        <div className="flex gap-3 text-xs">
+          <span className="text-green-300 font-bold">AM: {presentAM}</span>
+          <span className="text-blue-300 font-bold">PM: {presentPM}</span>
+          <span className="text-red-300 font-bold">Absent: {rows.filter(r=>r.am==="A"&&r.pm==="A").length}</span>
+        </div>
+      </div>
+      <div className="bg-slate-50 px-3 py-2 flex flex-wrap gap-2 items-end border-b border-slate-200">
+        <div className="flex-1 min-w-[160px]">
+          <label className="block text-xs font-semibold text-slate-600 mb-1">Load from Manpower Master</label>
+          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full text-xs">
+            <option value="">Select Subcontractor...</option>
+            {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </Sel>
+        </div>
+        <button onClick={loadFromMaster} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold">&#8635; Load Employees</button>
+        <button onClick={copyLastDpr} disabled={loading} className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold">Copy Last DPR</button>
+        <button onClick={addRow} className="px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold">+ Add Row</button>
+        {rows.length>0&&<button onClick={handleSave} disabled={saving} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold">{saving?"Saving...":"Save Attendance"}</button>}
+      </div>
+      {loading?<div className="p-4 text-center text-sm text-slate-400">Loading...</div>:rows.length===0?(
+        <div className="p-6 text-center"><p className="text-sm text-slate-400">No attendance yet. Load from Master or add rows manually.</p></div>
+      ):(
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[750px]">
+            <thead><tr className="bg-slate-700 text-white">{["S.No","ID No","Name","Designation","Team","A.M","P.M","O.T","Description of Work",""].map(h=>(<th key={h} className="px-2 py-2 text-left font-bold uppercase">{h}</th>))}</tr></thead>
+            <tbody>
+              {rows.map((r,idx)=>{
+                const rid = r.rowId||r.id;
+                return (
+                  <tr key={rid} className={`border-b border-slate-100 ${r.am==="A"&&r.pm==="A"?"bg-red-50":"hover:bg-amber-50/30"}`}>
+                    <td className="px-2 py-1.5 text-slate-400 text-center">{idx+1}</td>
+                    <td className="px-2 py-1.5">{r.mpId?<span className="font-mono font-bold text-blue-700">{r.empId||"—"}</span>:<Inp value={r.empId} onChange={e=>setCell(rid,"empId",e.target.value)} placeholder="ID" className="w-14"/>}</td>
+                    <td className="px-2 py-1.5">{r.mpId?<span className="font-semibold text-slate-800">{r.name}</span>:<Inp value={r.name} onChange={e=>setCell(rid,"name",e.target.value)} placeholder="Name"/>}</td>
+                    <td className="px-2 py-1.5">{r.mpId?<span className="text-slate-500">{r.designation||"—"}</span>:<Inp value={r.designation} onChange={e=>setCell(rid,"designation",e.target.value)} placeholder="Trade"/>}</td>
+                    <td className="px-2 py-1.5"><Inp value={r.teamNo||""} onChange={e=>setCell(rid,"teamNo",e.target.value)} placeholder="T-1" className="w-14 text-center font-semibold text-purple-700"/></td>
+                    <td className="px-2 py-1.5 text-center"><PABtn val={r.am||"P"} onClick={()=>toggle(rid,"am")}/></td>
+                    <td className="px-2 py-1.5 text-center"><PABtn val={r.pm||"P"} onClick={()=>toggle(rid,"pm")}/></td>
+                    <td className="px-2 py-1.5"><Inp value={r.ot||""} onChange={e=>setCell(rid,"ot",e.target.value)} placeholder="0" className="w-12 text-center text-amber-700"/></td>
+                    <td className="px-2 py-1.5"><Inp value={r.description||""} onChange={e=>setCell(rid,"description",e.target.value)} placeholder="Description..."/></td>
+                    <td className="px-2 py-1.5 text-center"><button onClick={()=>delRow(rid)} className="w-6 h-6 rounded-full bg-red-100 hover:bg-red-200 text-red-600 font-bold text-xs">&#215;</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot><tr className="bg-slate-700 text-white">
+              <td colSpan={5} className="px-3 py-1.5 font-bold text-xs">TOTAL PRESENT</td>
+              <td className="px-2 py-1.5 text-center font-black text-green-300">{presentAM}</td>
+              <td className="px-2 py-1.5 text-center font-black text-blue-300">{presentPM}</td>
+              <td colSpan={3} className="px-3 py-1.5 text-xs text-slate-300">OT: {rows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)} hrs</td>
+            </tr></tfoot>
+          </table>
+          {!dprId&&<div className="p-2 text-center text-xs text-amber-600 bg-amber-50">Save the DPR first, then Save Attendance</div>}
+        </div>
+      )}
+    </div>
+  );
+};
+// ── End DPR Attendance Panel ─────────────────────────────────────────
+
 function useNOCs() {
   const [nocs, setNocs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11170,278 +11511,6 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
 // ============================================================
 
 // ── useManpowerMaster Hook ────────────────────────────────────────────────────
-function useManpowerMaster() {
-  const [masters, setMasters] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from("manpower_master")
-      .select("*")
-      .order("employee_name");
-    if (data) setMasters(data.map(m => ({
-      id:          m.id,
-      subId:       m.subcontractor_id  || "",
-      pid:         m.project_id        || "",
-      empId:       m.employee_id       || "",
-      name:        m.employee_name     || "",
-      designation: m.designation       || "",
-      trade:       m.trade             || "",
-      teamNo:      m.default_team_no   || "",
-      status:      m.status            || "Active",
-      dateJoined:  m.date_joined       || "",
-      dateLeft:    m.date_left         || "",
-      remarks:     m.remarks           || "",
-    })));
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const addMaster = async (f) => {
-    const { error } = await supabase.from("manpower_master").insert([{
-      subcontractor_id: f.subId  || null,
-      project_id:       f.pid    || null,
-      employee_id:      f.empId,
-      employee_name:    f.name,
-      designation:      f.designation,
-      trade:            f.trade,
-      default_team_no:  f.teamNo,
-      status:           f.status || "Active",
-      date_joined:      f.dateJoined || null,
-      date_left:        f.dateLeft   || null,
-      remarks:          f.remarks,
-    }]);
-    if (error) return { ok: false, error: error.message };
-    await load(); return { ok: true };
-  };
-
-  const updateMaster = async (id, f) => {
-    const { error } = await supabase.from("manpower_master").update({
-      subcontractor_id: f.subId  || null,
-      project_id:       f.pid    || null,
-      employee_id:      f.empId,
-      employee_name:    f.name,
-      designation:      f.designation,
-      trade:            f.trade,
-      default_team_no:  f.teamNo,
-      status:           f.status || "Active",
-      date_joined:      f.dateJoined || null,
-      date_left:        f.dateLeft   || null,
-      remarks:          f.remarks,
-      updated_at:       new Date().toISOString(),
-    }).eq("id", id);
-    if (error) return { ok: false, error: error.message };
-    await load(); return { ok: true };
-  };
-
-  const removeMaster = async (id) => {
-    const { error } = await supabase.from("manpower_master").delete().eq("id", id);
-    if (error) return { ok: false, error: error.message };
-    await load(); return { ok: true };
-  };
-
-  const getActiveBySubcontractor = (subId) =>
-    masters.filter(m => m.subId === subId && m.status === "Active");
-
-  return { masters, loading, addMaster, updateMaster, removeMaster, getActiveBySubcontractor, reload: load };
-}
-
-// ── ManpowerMaster Component ──────────────────────────────────────────────────
-const ManpowerMaster = ({ subcontractors, projects, showToast }) => {
-  const { masters, loading, addMaster, updateMaster, removeMaster } = useManpowerMaster();
-  const [mode,      setMode]      = useState("list");
-  const [sel,       setSel]       = useState(null);
-  const [saving,    setSaving]    = useState(false);
-  const [search,    setSearch]    = useState("");
-  const [fSub,      setFSub]      = useState("All");
-  const [fStatus,   setFStatus]   = useState("Active");
-  const [confirmId, setConfirmId] = useState(null);
-  const [form,      setForm]      = useState(EMPTY_MP_FORM());
-
-  function EMPTY_MP_FORM() {
-    return { subId:"", pid:"", empId:"", name:"", designation:"", trade:"",
-             teamNo:"", status:"Active", dateJoined:"", dateLeft:"", remarks:"" };
-  }
-
-  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
-
-  const filtered = masters.filter(m => {
-    if (fSub    !== "All" && m.subId  !== fSub)    return false;
-    if (fStatus !== "All" && m.status !== fStatus)  return false;
-    if (search  && !`${m.empId} ${m.name} ${m.designation} ${m.trade}`
-        .toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const goList = () => { setMode("list"); setSel(null); setForm(EMPTY_MP_FORM()); };
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { showToast("Employee name required", "error"); return; }
-    if (!form.subId)       { showToast("Select subcontractor", "error"); return; }
-    setSaving(true);
-    const res = sel ? await updateMaster(sel.id, form) : await addMaster(form);
-    setSaving(false);
-    if (!res.ok) { showToast(res.error || "Failed", "error"); return; }
-    showToast(sel ? "Employee updated!" : "Employee added to master!"); goList();
-  };
-
-  const handleDelete = async (id) => {
-    const res = await removeMaster(id);
-    if (!res.ok) { showToast(res.error, "error"); return; }
-    showToast("Deleted!"); setConfirmId(null);
-  };
-
-  const TRADES = ["Mason","Carpenter","Steel Fixer","Plasterer","Painter","Tiler",
-    "Electrician","Plumber","AC Technician","Helper","Supervisor","Foreman",
-    "Safety Officer","Surveyor","Driver","Cleaner","Other"];
-  const STATUS_OPTS = ["Active","Inactive","On Leave","Resigned"];
-
-  // ── Form ───────────────────────────────────────────────────────────────────
-  if (mode === "form") return (
-    <div className="p-6 max-w-2xl">
-      <BackBtn onClick={goList}/>
-      <h2 className="text-xl font-bold text-slate-800 mb-4">
-        {sel ? "Edit Employee" : "Add Employee to Master"}
-      </h2>
-      <FormCard>
-        <Grid2>
-          <div>
-            <Lbl t="Subcontractor" req/>
-            <Sel value={form.subId} onChange={set("subId")}>
-              <option value="">Select subcontractor...</option>
-              {subcontractors.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
-            </Sel>
-          </div>
-          <div>
-            <Lbl t="Project"/>
-            <Sel value={form.pid} onChange={set("pid")}>
-              <option value="">All Projects</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}
-            </Sel>
-          </div>
-          <div><Lbl t="Employee ID / Labour Card No"/><Inp value={form.empId} onChange={set("empId")} placeholder="LC-001"/></div>
-          <div><Lbl t="Employee Name" req/><Inp value={form.name} onChange={set("name")} placeholder="Full name"/></div>
-          <div>
-            <Lbl t="Designation / Trade"/>
-            <Sel value={form.trade} onChange={e => { set("trade")(e); set("designation")(e); }}>
-              <option value="">Select trade...</option>
-              {TRADES.map(t => <option key={t}>{t}</option>)}
-            </Sel>
-          </div>
-          <div><Lbl t="Custom Designation"/><Inp value={form.designation} onChange={set("designation")} placeholder="e.g. Senior Mason"/></div>
-          <div><Lbl t="Default Team No"/><Inp value={form.teamNo} onChange={set("teamNo")} placeholder="T-01"/></div>
-          <div>
-            <Lbl t="Status"/>
-            <Sel value={form.status} onChange={set("status")}>
-              {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
-            </Sel>
-          </div>
-          <div><Lbl t="Date Joined"/><Inp type="date" value={form.dateJoined} onChange={set("dateJoined")}/></div>
-          <div><Lbl t="Date Left (if resigned)"/><Inp type="date" value={form.dateLeft} onChange={set("dateLeft")}/></div>
-        </Grid2>
-        <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
-        <div className="flex gap-3 pt-2">
-          <Btn saving={saving} onClick={handleSave} label={sel ? "Update" : "Add Employee"}/>
-          <Btn onClick={goList} label="Cancel" color="slate"/>
-        </div>
-      </FormCard>
-    </div>
-  );
-
-  // ── List ───────────────────────────────────────────────────────────────────
-  const activeCount   = masters.filter(m => m.status === "Active").length;
-  const inactiveCount = masters.filter(m => m.status !== "Active").length;
-
-  return (
-    <div className="p-6">
-      {confirmId && <ConfirmDialog
-        message="Permanently delete this employee from master?"
-        onConfirm={() => handleDelete(confirmId)}
-        onCancel={() => setConfirmId(null)}/>}
-
-      {/* KPI */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        {[
-          { l:"Total Employees", v: masters.length,     c:"bg-blue-500"  },
-          { l:"Active",          v: activeCount,         c:"bg-green-500" },
-          { l:"Inactive",        v: inactiveCount,       c:"bg-slate-500" },
-          { l:"Subcontractors",  v: [...new Set(masters.map(m=>m.subId))].filter(Boolean).length, c:"bg-amber-500" },
-        ].map(k => (
-          <div key={k.l} className={`${k.c} rounded-xl p-3 text-white`}>
-            <div className="text-2xl font-bold">{k.v}</div>
-            <div className="text-xs opacity-80 mt-0.5">{k.l}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div className="flex flex-wrap gap-2">
-          <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="ID, name, trade..."/>
-          <Sel value={fSub} onChange={e=>setFSub(e.target.value)} className="w-auto">
-            <option value="All">All Subcontractors</option>
-            {subcontractors.map(s=><option key={s.id} value={s.id}>{s.companyName}</option>)}
-          </Sel>
-          <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto">
-            <option value="All">All Status</option>
-            {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
-          </Sel>
-        </div>
-        <AddBtn onClick={()=>{setForm(EMPTY_MP_FORM());setSel(null);setMode("form");}} label="Add Employee"/>
-      </div>
-
-      {loading ? <Spinner/> : filtered.length === 0 ? (
-        <EmptyState msg="No employees found" onCreate={()=>{setForm(EMPTY_MP_FORM());setSel(null);setMode("form");}}/>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
-          <table className="w-full text-sm min-w-[900px]">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>{["S.No","Emp ID","Name","Trade / Designation","Subcontractor","Team","Joined","Status","Actions"].map(h=>(
-                <th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{h}</th>
-              ))}</tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((m, idx) => {
-                const sub  = subcontractors.find(s => s.id === m.subId);
-                const sBadge = m.status === "Active"
-                  ? "bg-green-100 text-green-700 border-green-200"
-                  : m.status === "On Leave"
-                    ? "bg-amber-100 text-amber-700 border-amber-200"
-                    : "bg-slate-100 text-slate-600 border-slate-200";
-                return (
-                  <tr key={m.id} className={`hover:bg-slate-50 ${m.status !== "Active" ? "opacity-60" : ""}`}>
-                    <td className="px-3 py-2.5 text-xs text-slate-400">{idx+1}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{m.empId||"—"}</td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-800">{m.name}</td>
-                    <td className="px-3 py-2.5 text-xs text-slate-600">{m.designation||m.trade||"—"}</td>
-                    <td className="px-3 py-2.5 text-xs text-slate-700">{sub?.companyName||"—"}</td>
-                    <td className="px-3 py-2.5 text-xs text-center">{m.teamNo||"—"}</td>
-                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{m.dateJoined ? fmtDate(m.dateJoined) : "—"}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${sBadge}`}>{m.status}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex gap-1">
-                        <ActBtn onClick={()=>{setSel(m);setForm({...m});setMode("form");}} label="Edit" color="edit"/>
-                        {m.status === "Active"
-                          ? <ActBtn onClick={async()=>{await updateMaster(m.id,{...m,status:"Inactive"});showToast("Marked inactive");}} label="Deactivate" color="slate"/>
-                          : <ActBtn onClick={async()=>{await updateMaster(m.id,{...m,status:"Active"});showToast("Reactivated!");}} label="Activate" color="edit"/>
-                        }
-                        <ActBtn onClick={()=>setConfirmId(m.id)} label="Del" color="del"/>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-};
 
 
 // ── DPR Manpower Section — Drop-in replacement for manpower rows in DPR form ──
@@ -11687,6 +11756,7 @@ export default function App() {
   const { lpos, loading: lpoLoad, add: addLpo, update: updLpo, remove: delLpo } = useLPOs();
   const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeStock, addReceipt, approveReceipt, removeReceipt, addIssue, removeIssue } = useStore();
   const { nocs, loading: nocLoad, add: addNoc, update: updNoc, remove: delNoc } = useNOCs();
+  const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
   const [prefillMr, setPrefillMr] = useState(null);
 
   const { profile: userProfile } = useUserProfile(user);
@@ -11728,7 +11798,7 @@ export default function App() {
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
-      case "reports":        return <DailyReports {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
+      case "reports":        return <DailyReports subcontractors={subs} mpMasters={mpMasters} loadAttendance={loadAttendance} saveAttendance={saveAttendance} {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
