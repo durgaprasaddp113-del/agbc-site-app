@@ -1387,6 +1387,7 @@ const NAV = [
   { id: "mr", label: "Material Request", icon: "mr" },
   { id: "lpo", label: "LPO", icon: "lpo" },
   { id: "store", label: "Material Store", icon: "store" },
+          { id: "manpower-master", label: "Manpower Master", icon: "users" },
   { id: "noc", label: "NOC & Permits", icon: "noc" },
 ];
 
@@ -3045,6 +3046,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
+      {activeSection==="manpower"&&<DprAttendancePanel dprId={sel?sel.id:null} subcontractors={subcontractors||[]} masters={mpMasters||[]} loadAttendance={loadAttendance} saveAttendance={saveAttendance} showToast={showToast} allReports={reports}/>}
       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
