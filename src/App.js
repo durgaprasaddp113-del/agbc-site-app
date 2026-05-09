@@ -5473,7 +5473,9 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
 
   const filtered = mrs.filter(m => {
     if (fStatus!=="All" && m.status!==fStatus) return false;
-    if (fProject!=="All" && m.pid!==fProject) return false;
+        const _pid  = String(m.pid || "").toLowerCase().trim();
+        const _fpid = String(fProject || "").toLowerCase().trim();
+        if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
     if (search && !`${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase().includes(search.toLowerCase())) return false;
         if (fLpoStatus==="LPO Raised" && !lpos.some(l=>l.mrId===m.id)) return false;
     if (fLpoStatus==="Pending LPO" && lpos.some(l=>l.mrId===m.id)) return false;
@@ -5613,7 +5615,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           ))}
         </div>
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
-        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
@@ -5742,7 +5744,9 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
 
   const filtered = lpos.filter(l => {
     if (fStatus!=="All" && l.status!==fStatus) return false;
-    if (fProject!=="All" && l.pid!==fProject) return false;
+        const _pid  = String(l.pid || "").toLowerCase().trim();
+        const _fpid = String(fProject || "").toLowerCase().trim();
+        if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
     if (fDelivery==="overdue") {
       if (l.deliveryStatus==="Fully Delivered" || !l.deliveryDate || new Date(l.deliveryDate) >= new Date()) return false;
     }
@@ -5957,7 +5961,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
         btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
       <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
-        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
+        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
@@ -11105,7 +11109,9 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
   };
 
   const filtered = nocs.filter(n => {
-    if (fProject!=="All" && n.pid!==fProject) return false;
+        const _pid  = String(n.pid || "").toLowerCase().trim();
+        const _fpid = String(fProject || "").toLowerCase().trim();
+        if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
     if (fAuth!=="All" && n.authority!==fAuth) return false;
     if (fStatus!=="All" && n.status!==fStatus) return false;
     if (fExpiry==="expiring" && !isExpiringSoon(n.expiryDate,n.status)) return false;
@@ -11415,7 +11421,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap gap-2">
           <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="NOC no, authority, type..."/>
-          <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto">
+          <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
             <option value="All">All Projects</option>
             {projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}
           </Sel>
