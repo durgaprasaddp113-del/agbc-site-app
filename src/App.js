@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { uploadToR2, validateImageFile, fileSizeLabel } from "./r2Storage";
 import { supabase } from "./supabase";
 import Login from "./Login";
@@ -722,8 +722,6 @@ function useTasks() {
       location: t.location || "", trade: t.trade || "", assignee: t.assignee_name || "",
       subName: t.subcontractor_name || "",
       priority: t.priority || "Medium", status: t.status || "Open", due: t.due_date || "",
-      quantity: Number(t.quantity ?? t.executed_quantity ?? t.qty) || 0,
-      elementId: t.element_id || t.element || "",
     })));
     setLoading(false);
   }, []);
@@ -2072,122 +2070,7 @@ const PROG_STATUS_COLOR = {
   "Completed":   "bg-green-100 text-green-700 border-green-200",
 };
 
-const ELEMENT_DEFAULTS = [
-  { key: "excavation", name: "Excavation", type: "Civil / Earthwork", floor: "Basement", zone: "Foundation Zone", area: "Whole Plot", workPackage: "Substructure", unit: "m3" },
-  { key: "footing", name: "Footing", type: "Structural", floor: "Basement", zone: "Grid Foundation", area: "Footing Area", workPackage: "Substructure", unit: "m3" },
-  { key: "column", name: "Column", type: "Structural", floor: "Ground to Roof", zone: "All Grids", area: "Core + Perimeter", workPackage: "Superstructure", unit: "m3" },
-  { key: "slab", name: "Slab", type: "Structural", floor: "All Floors", zone: "Deck", area: "Typical Floor Plate", workPackage: "Superstructure", unit: "m2" },
-  { key: "beam", name: "Beam", type: "Structural", floor: "All Floors", zone: "Primary Grid", area: "Beam Network", workPackage: "Superstructure", unit: "m3" },
-  { key: "wall", name: "Wall", type: "Architectural", floor: "All Floors", zone: "Partitions + External", area: "Envelope", workPackage: "Masonry", unit: "m2" },
-  { key: "mep", name: "MEP", type: "MEP", floor: "All Floors", zone: "Service Routes", area: "MEP Corridors", workPackage: "MEP Works", unit: "m" },
-  { key: "finishing", name: "Finishing", type: "Architectural", floor: "All Floors", zone: "Units + Common", area: "Interior Surface", workPackage: "Finishes", unit: "m2" },
-];
-
-const clampPct = (n) => Math.min(100, Math.max(0, Number(n) || 0));
-const safeNum = (n) => Number(n) || 0;
-const norm = (v) => String(v || "").toLowerCase();
-const includesAny = (txt, tokens = []) => tokens.some(t => norm(txt).includes(norm(t)));
-const completedStatus = (s) => ["completed", "closed"].includes(norm(s));
-const taskQty = (t = {}) => {
-  const direct = safeNum(t.quantity ?? t.qty ?? t.executedQty ?? t.executed_quantity);
-  if (direct > 0) return direct;
-  const m = `${t.title || ""} ${t.desc || ""}`.match(/(\d+(\.\d+)?)/);
-  return m ? safeNum(m[1]) : 0;
-};
-const progressTone = (actualPct, plannedPct) => {
-  const actual = safeNum(actualPct);
-  const planned = safeNum(plannedPct);
-  if (actual <= 0) return { label: "Not Started", color: "bg-slate-100 text-slate-600 border-slate-200", tile: "border-slate-200 bg-slate-50" };
-  if (actual >= planned) return { label: "On Track", color: "bg-green-100 text-green-700 border-green-200", tile: "border-green-200 bg-green-50" };
-  const delay = planned - actual;
-  if (delay < 10) return { label: "Slight Delay", color: "bg-amber-100 text-amber-700 border-amber-200", tile: "border-amber-200 bg-amber-50" };
-  return { label: "Critical Delay", color: "bg-red-100 text-red-700 border-red-200", tile: "border-red-200 bg-red-50" };
-};
-const resolveElementKey = (task = {}) => {
-  const byId = norm(task.elementId || task.element_id || task.element || task.elementKey);
-  if (byId && ELEMENT_DEFAULTS.some(el => el.key === byId)) return byId;
-  const text = `${task.title || ""} ${task.desc || ""} ${task.location || ""} ${task.trade || ""}`;
-  const hit = ELEMENT_DEFAULTS.find(el => includesAny(text, [...(elementTokens[el.key] || []), el.key, el.name]));
-  return hit?.key || null;
-};
-const buildProjectProgressModel = ({ projectId, tasks = [], progressItems = [], snags = [], inspections = [], photos = [], reports = [], manualByKey = {} }) => {
-  const projectTasks = tasks.filter(t => t.pid === projectId);
-  const projectSnags = snags.filter(s => s.pid === projectId);
-  const projectInspections = inspections.filter(i => i.pid === projectId);
-  const projectPhotos = photos.filter(ph => ph.project_id === projectId);
-  const projectReports = reports.filter(r => r.pid === projectId);
-  const tasksWithElement = projectTasks.map(t => ({ ...t, _elementKey: resolveElementKey(t) }));
-
-  const elements = ELEMENT_DEFAULTS.map((el) => {
-    const tokenList = elementTokens[el.key] || [el.name];
-    const fallback = manualByKey[el.key] || {};
-    const linkedProgress = progressItems.filter(pg => pg.pid === projectId && includesAny(`${pg.activity} ${pg.remarks}`, tokenList));
-    const linkedTasks = tasksWithElement.filter(t => t._elementKey === el.key || includesAny(`${t.title} ${t.desc} ${t.location} ${t.trade}`, tokenList));
-    const linkedSnags = projectSnags.filter(s => includesAny(`${s.title} ${s.desc} ${s.location} ${s.category}`, tokenList));
-    const linkedInsps = projectInspections.filter(i => includesAny(`${i.title} ${i.desc} ${i.location} ${i.type}`, tokenList));
-    const linkedPhotos = projectPhotos.filter(ph => includesAny(`${ph.caption} ${ph.area}`, tokenList));
-    const boqQty = safeNum(fallback.boqQty);
-    const executedQtyAuto = linkedTasks.filter(t => completedStatus(t.status)).reduce((acc, t) => acc + taskQty(t), 0);
-    const executedQty = safeNum(fallback.executedQty) || executedQtyAuto;
-    const remainingQty = Math.max(0, boqQty - executedQty);
-    const completionPct = boqQty > 0 ? clampPct((executedQty / boqQty) * 100) : 0;
-    const plannedPct = safeNum(fallback.plannedPct) || clampPct(linkedProgress.reduce((a, p) => a + safeNum(p.pct), 0) / Math.max(1, linkedProgress.length));
-    const actualPct = safeNum(fallback.actualPct) || completionPct;
-    const variancePct = Number((actualPct - plannedPct).toFixed(1));
-    const recentCompletedQty = linkedTasks.filter(t => completedStatus(t.status)).slice(0, 7).reduce((acc, t) => acc + taskQty(t), 0);
-    const dailyOutput = safeNum(fallback.dailyOutput) || recentCompletedQty;
-    const weeklyOutput = safeNum(fallback.weeklyOutput) || linkedTasks.filter(t => completedStatus(t.status)).slice(0, 7).reduce((acc, t) => acc + taskQty(t), 0);
-    const productivityRate = safeNum(fallback.productivityRate) || (dailyOutput > 0 ? Number((executedQty / dailyOutput).toFixed(2)) : 0);
-    const plannedStart = fallback.plannedStart || linkedProgress[0]?.plannedStart || "";
-    const plannedFinish = fallback.plannedFinish || linkedProgress[0]?.plannedEnd || "";
-    const actualStart = fallback.actualStart || linkedProgress[0]?.actualStart || "";
-    let forecastCompletion = "Insufficient Data";
-    if (dailyOutput > 0 && remainingQty > 0) {
-      const d = new Date();
-      d.setDate(d.getDate() + Math.ceil(remainingQty / dailyOutput));
-      forecastCompletion = d.toISOString().slice(0, 10);
-    } else if (boqQty > 0 && remainingQty <= 0) {
-      forecastCompletion = "Completed";
-    }
-    const daysAheadBehind = plannedFinish ? Math.round((new Date(plannedFinish).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) : 0;
-    return {
-      ...el,
-      subcontractor: fallback.subcontractor || linkedTasks.find(t => t.subName)?.subName || "Not Assigned",
-      workPackage: fallback.workPackage || el.workPackage,
-      unit: fallback.unit || el.unit || "nos",
-      boqQty, executedQty, remainingQty, completionPct, plannedPct, actualPct, variancePct,
-      plannedStart, plannedFinish, actualStart, forecastCompletion,
-      productivityRate, dailyOutput, weeklyOutput,
-      delayStatus: progressTone(actualPct, plannedPct),
-      daysAheadBehind,
-      linkedTasksCount: linkedTasks.length,
-      linkedSnagsCount: linkedSnags.length,
-      linkedInspectionsCount: linkedInsps.length,
-      linkedPhotosCount: linkedPhotos.length,
-      materialConsumptionCount: projectReports.reduce((acc, r) => acc + (Array.isArray(r.materials) ? r.materials.filter(m => includesAny(m.material, tokenList)).length : 0), 0),
-      isCompletedByQty: boqQty > 0 && executedQty >= boqQty,
-    };
-  });
-  const totalBoq = elements.reduce((a, e) => a + safeNum(e.boqQty), 0);
-  const totalExecuted = elements.reduce((a, e) => a + safeNum(e.executedQty), 0);
-  const overallPct = totalBoq > 0 ? clampPct((totalExecuted / totalBoq) * 100) : 0;
-  const scopedElements = elements.filter(e => safeNum(e.boqQty) > 0 || safeNum(e.executedQty) > 0);
-  const projectCompletedByQty = scopedElements.length > 0 && scopedElements.every(e => e.isCompletedByQty);
-  return { elements, totalBoq, totalExecuted, overallPct, projectCompletedByQty };
-};
-
-const elementTokens = {
-  excavation: ["excavat", "shoring", "piling", "earthwork"],
-  footing: ["footing", "foundation", "raft"],
-  column: ["column", "rebar", "reinforcement"],
-  slab: ["slab", "deck", "pour"],
-  beam: ["beam", "girder"],
-  wall: ["wall", "block", "masonry", "plaster"],
-  mep: ["mep", "electrical", "plumbing", "hvac", "first fix", "second fix"],
-  finishing: ["finishing", "tile", "paint", "door", "window"],
-};
-
-const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg, tasks = [], snags = [], inspections = [], photos = [], reports = [], navFilter = {} }) => {
+const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [progTab, setProgTab] = useState("list"); // for progress: list | form
@@ -2200,8 +2083,6 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
   const [confirmId, setConfirmId] = useState(null);
   const [confirmPgId, setConfirmPgId] = useState(null);
   const [pgFilter, setPgFilter] = useState("All");
-  const [selectedElementKey, setSelectedElementKey] = useState(ELEMENT_DEFAULTS[0].key);
-  const [manualElementData, setManualElementData] = useState({});
   // Navigate from dashboard to specific project
   useEffect(() => {
     if (navFilter.projectId) {
@@ -2212,27 +2093,16 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
   const setPg = k => e => setPgForm(p => ({...p,[k]:e.target.value}));
 
-  const progressByProject = useMemo(() => {
-    const out = {};
-    (projects || []).forEach((p) => {
-      out[p.id] = buildProjectProgressModel({
-        projectId: p.id,
-        tasks,
-        progressItems,
-        snags,
-        inspections,
-        photos,
-        reports,
-        manualByKey: {},
-      });
-    });
-    return out;
-  }, [projects, tasks, progressItems, snags, inspections, photos, reports]);
-  const getOverall = (pid) => progressByProject[pid]?.overallPct || 0;
+  // Compute overall progress for a project
+  const getOverall = (pid) => {
+    const items = progressItems.filter(p => p.pid === pid);
+    if (!items.length) return 0;
+    return Math.round(items.reduce((a,i) => a + (Number(i.pct)||0), 0) / items.length);
+  };
 
   const openCreate = () => { setForm(EMPTY_PROJ); setSel(null); setMode("form"); };
   const openEdit   = p => { setSel(p); setForm({number:p.number,name:p.name,plot:p.plot,location:p.location,plotArea:String(p.plotArea||""),bua:String(p.bua||""),duration:String(p.duration||""),consultant:p.consultant,consultantContact:p.consultantContact,status:p.status,mapUrl:p.mapUrl}); setMode("form"); };
-  const openView   = p => { setSel(p); setProgTab("list"); setSelPg(null); setPgForm({...EMPTY_PG,pid:p.id}); setSelectedElementKey(ELEMENT_DEFAULTS[0].key); setMode("view"); };
+  const openView   = p => { setSel(p); setProgTab("list"); setSelPg(null); setPgForm({...EMPTY_PG,pid:p.id}); setMode("view"); };
   const goList     = () => { setMode("list"); setSel(null); };
 
   const handleSave = async () => {
@@ -2270,19 +2140,6 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
   };
 
   const filtered = projects.filter(p => [p.name,p.number,p.location,p.consultant].join(" ").toLowerCase().includes(search.toLowerCase()));
-  const selectedProgressModel = useMemo(() => {
-    if (!sel?.id) return null;
-    return buildProjectProgressModel({
-      projectId: sel.id,
-      tasks,
-      progressItems,
-      snags,
-      inspections,
-      photos,
-      reports,
-      manualByKey: manualElementData,
-    });
-  }, [sel?.id, tasks, progressItems, snags, inspections, photos, reports, manualElementData]);
 
   const exportData = filtered.map(p => ({
     ...p,
@@ -2321,42 +2178,8 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
   // ── VIEW PAGE ────────────────────────────────────────────────────────────────
   if (mode==="view"&&sel) {
     const projPgItems = progressItems.filter(p => p.pid===sel.id);
-    const overallPct  = selectedProgressModel?.overallPct || 0;
+    const overallPct  = getOverall(sel.id);
     const filteredPg  = projPgItems.filter(p => pgFilter==="All"||p.status===pgFilter);
-    const baseElements = selectedProgressModel?.elements || [];
-    const selectedElement = baseElements.find(e => e.key === selectedElementKey) || baseElements[0];
-    const applyManual = (key, value) => setManualElementData(prev => ({ ...prev, [selectedElement.key]: { ...(prev[selectedElement.key] || {}), [key]: value } }));
-    const elementDone = baseElements.filter(e => e.isCompletedByQty).length;
-    const elementInProg = baseElements.filter(e => e.actualPct > 0 && !e.isCompletedByQty).length;
-    const elementNotStarted = baseElements.filter(e => e.actualPct <= 0).length;
-    const elementExportData = baseElements.map(e => ({
-      element: e.name,
-      type: e.type,
-      area: e.area,
-      workPackage: e.workPackage,
-      subcontractor: e.subcontractor,
-      boqQty: e.boqQty,
-      executedQty: e.executedQty,
-      remainingQty: e.remainingQty,
-      plannedPct: e.plannedPct,
-      actualPct: e.actualPct,
-      variancePct: e.variancePct,
-      delayStatus: e.delayStatus.label,
-    }));
-    const elementCols = [
-      { header: "Element", key: "element", width: 22 },
-      { header: "Type", key: "type", width: 20 },
-      { header: "Area", key: "area", width: 22 },
-      { header: "Work Package", key: "workPackage", width: 20 },
-      { header: "Subcontractor", key: "subcontractor", width: 24 },
-      { header: "BOQ Qty", key: "boqQty", width: 12, type: "number" },
-      { header: "Executed Qty", key: "executedQty", width: 12, type: "number" },
-      { header: "Remaining Qty", key: "remainingQty", width: 12, type: "number" },
-      { header: "Planned %", key: "plannedPct", width: 10, type: "number" },
-      { header: "Actual %", key: "actualPct", width: 10, type: "number" },
-      { header: "Variance %", key: "variancePct", width: 10, type: "number" },
-      { header: "Delay Status", key: "delayStatus", width: 16 },
-    ];
 
     return (
       <div className="p-6 max-w-5xl space-y-4">
@@ -2372,10 +2195,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
               <h2 className="text-xl font-bold">{sel.name}</h2>
               <p className="text-slate-300 text-sm mt-1">{sel.location} {sel.consultant?`· ${sel.consultant}`:""}</p>
             </div>
-            <Badge
-              text={selectedProgressModel?.projectCompletedByQty ? "Completed (Qty Based)" : sel.status}
-              cls={selectedProgressModel?.projectCompletedByQty ? "bg-green-500/20 text-green-300 border-green-500/30" : "bg-amber-500/20 text-amber-300 border-amber-500/30"}
-            />
+            <Badge text={sel.status} cls="bg-amber-500/20 text-amber-300 border-amber-500/30"/>
           </div>
           <div className="mt-4 space-y-1">
             <div className="flex items-center justify-between text-xs text-slate-300">
@@ -2384,9 +2204,9 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
             </div>
             <PctBar pct={overallPct} showLabel={false} height="h-3"/>
             <div className="flex items-center gap-4 text-xs text-slate-400 mt-1">
-              <span>{elementDone} completed elements</span>
-              <span>{elementInProg} in progress</span>
-              <span>{elementNotStarted} not started</span>
+              <span>{projPgItems.filter(p=>p.status==="Completed").length} completed</span>
+              <span>{projPgItems.filter(p=>p.status==="In Progress").length} in progress</span>
+              <span>{projPgItems.filter(p=>p.status==="Not Started").length} not started</span>
             </div>
           </div>
         </div>
@@ -2399,135 +2219,9 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
             ))}
           </div>
           {sel.mapUrl&&<a href={sel.mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-3 text-blue-600 text-sm font-medium hover:underline"><Icon name="map" cls="w-4 h-4"/>View on Map</a>}
-          <div className="mt-3">
-            <ExportButtons data={elementExportData} excelCols={elementCols} pdfCols={elementCols} fileName={`${sel.number}_Element_Progress`} pdfTitle={`${sel.number} Element Progress`} />
-          </div>
           <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100">
             <Btn onClick={()=>openEdit(sel)} label="Edit Project"/>
             <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
-          </div>
-        </div>
-
-        {/* 3D Project Progress Viewer */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4 md:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="font-bold text-slate-800">3D Project Progress Viewer</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Tap any building element to inspect quantities, progress, and performance.</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-5">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {baseElements.map(el => {
-                  const isSelected = selectedElement?.key === el.key;
-                  const statusClass = el.delayStatus.tile;
-                  return (
-                    <button
-                      key={el.key}
-                      type="button"
-                      onClick={() => setSelectedElementKey(el.key)}
-                      className={`text-left rounded-xl border p-3 transition-all shadow-sm hover:shadow ${statusClass} ${isSelected ? "ring-2 ring-amber-400 scale-[1.01]" : ""}`}
-                    >
-                      <div className="text-sm font-semibold text-slate-800">{el.name}</div>
-                      <div className="text-[11px] text-slate-500">{el.type}</div>
-                      <div className="mt-2"><PctBar pct={el.actualPct} /></div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="lg:col-span-7 border border-slate-100 rounded-xl p-3 sm:p-4 bg-slate-50/60">
-              {selectedElement && (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-lg font-bold text-slate-800">{selectedElement.name}</div>
-                      <div className="text-xs text-slate-500">{selectedElement.type} · {selectedElement.floor} · {selectedElement.zone}</div>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded-full border font-semibold ${selectedElement.delayStatus.color}`}>{selectedElement.delayStatus.label}</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                    {[["Work Package", selectedElement.workPackage], ["Subcontractor", selectedElement.subcontractor], ["Area", selectedElement.area], ["BOQ Qty", `${selectedElement.boqQty} ${selectedElement.unit}`], ["Executed Qty", `${selectedElement.executedQty} ${selectedElement.unit}`], ["Remaining Qty", `${selectedElement.remainingQty} ${selectedElement.unit}`]].map(([k, v]) => (
-                      <div key={k} className="bg-white rounded-lg border border-slate-200 px-2.5 py-2"><div className="text-slate-400">{k}</div><div className="font-semibold text-slate-700 mt-0.5">{v}</div></div>
-                    ))}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-slate-600 mb-1"><span>Quantity Completion</span><span className="font-bold">{selectedElement.completionPct}%</span></div>
-                    <PctBar pct={selectedElement.completionPct} showLabel={false} height="h-3" />
-                  </div>
-
-                  <div className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs">
-                    <div className="text-slate-400 mb-2">Quantity Chart (BOQ vs Executed vs Remaining)</div>
-                    {(() => {
-                      const maxQ = Math.max(1, safeNum(selectedElement.boqQty), safeNum(selectedElement.executedQty), safeNum(selectedElement.remainingQty));
-                      const bars = [
-                        { k: "BOQ", v: safeNum(selectedElement.boqQty), c: "bg-slate-400" },
-                        { k: "Executed", v: safeNum(selectedElement.executedQty), c: "bg-green-500" },
-                        { k: "Remaining", v: safeNum(selectedElement.remainingQty), c: "bg-amber-500" },
-                      ];
-                      return (
-                        <div className="space-y-2">
-                          {bars.map(b => (
-                            <div key={b.k}>
-                              <div className="flex justify-between"><span>{b.k}</span><span>{b.v}</span></div>
-                              <div className="h-2 rounded-full bg-slate-100 overflow-hidden mt-1">
-                                <div className={`h-2 rounded-full ${b.c}`} style={{ width: `${Math.min(100, (b.v / maxQ) * 100)}%` }} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="bg-white border border-slate-200 rounded-lg p-2.5">
-                      <div className="text-slate-400 mb-2">Planned vs Actual</div>
-                      <div className="space-y-2">
-                        <div><div className="flex justify-between mb-1"><span>Planned</span><span>{selectedElement.plannedPct}%</span></div><PctBar pct={selectedElement.plannedPct} showLabel={false} /></div>
-                        <div><div className="flex justify-between mb-1"><span>Actual</span><span>{selectedElement.actualPct}%</span></div><PctBar pct={selectedElement.actualPct} showLabel={false} /></div>
-                        <div className="text-[11px] text-slate-500">Variance: <span className={`font-semibold ${selectedElement.variancePct >= 0 ? "text-green-700" : "text-red-700"}`}>{selectedElement.variancePct}%</span></div>
-                      </div>
-                    </div>
-                    <div className="bg-white border border-slate-200 rounded-lg p-2.5">
-                      <div className="text-slate-400 mb-1">Schedule</div>
-                      <div className="space-y-1">
-                        <div>Planned: <span className="font-semibold">{fmtDate(selectedElement.plannedStart)} - {fmtDate(selectedElement.plannedFinish)}</span></div>
-                        <div>Actual Start: <span className="font-semibold">{fmtDate(selectedElement.actualStart) || "—"}</span></div>
-                        <div>Forecast: <span className="font-semibold">{selectedElement.forecastCompletion === "Insufficient Data" || selectedElement.forecastCompletion === "Completed" ? selectedElement.forecastCompletion : fmtDate(selectedElement.forecastCompletion)}</span></div>
-                        <div>Days Ahead/Behind: <span className={`font-semibold ${selectedElement.daysAheadBehind >= 0 ? "text-green-700" : "text-red-700"}`}>{selectedElement.daysAheadBehind}</span></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-                    {[["Productivity", selectedElement.productivityRate], ["Daily Output", selectedElement.dailyOutput], ["Weekly Output", selectedElement.weeklyOutput], ["Delay", selectedElement.delayStatus.label], ["Linked Tasks", selectedElement.linkedTasksCount]].map(([k, v]) => (
-                      <div key={k} className="bg-white border border-slate-200 rounded-lg px-2 py-1.5"><div className="text-slate-400">{k}</div><div className="font-semibold text-slate-700">{v}</div></div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
-                    {[["Snags", selectedElement.linkedSnagsCount], ["Inspections", selectedElement.linkedInspectionsCount], ["Photos", selectedElement.linkedPhotosCount], ["Material Use", selectedElement.materialConsumptionCount], ["Unit", selectedElement.unit]].map(([k, v]) => (
-                      <div key={k} className="bg-white border border-slate-200 rounded-lg px-2 py-1.5"><div className="text-slate-400">{k}</div><div className="font-semibold text-slate-700">{v}</div></div>
-                    ))}
-                  </div>
-
-                  <div className="bg-white rounded-lg border border-slate-200 p-2.5">
-                    <div className="text-xs font-semibold text-slate-700 mb-2">Manual Fallback (used when task-based data is missing)</div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <Inp type="number" value={manualElementData[selectedElement.key]?.boqQty || ""} onChange={e => applyManual("boqQty", e.target.value)} placeholder="BOQ Qty" />
-                      <Inp type="number" value={manualElementData[selectedElement.key]?.executedQty || ""} onChange={e => applyManual("executedQty", e.target.value)} placeholder="Executed Qty" />
-                      <Inp type="number" value={manualElementData[selectedElement.key]?.plannedPct || ""} onChange={e => applyManual("plannedPct", e.target.value)} placeholder="Planned %" />
-                      <Inp type="number" value={manualElementData[selectedElement.key]?.actualPct || ""} onChange={e => applyManual("actualPct", e.target.value)} placeholder="Actual %" />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
@@ -2745,7 +2439,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
   useEffect(() => {
     setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter.projectId, navFilter.status]);
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -2895,7 +2589,7 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast,
   useEffect(() => {
     setFStatus(navFilter.overdue ? "__overdue__" : navFilter.status || "All");
     setFProject(navFilter.projectId || "All");
-  }, [navFilter.projectId]);
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -3158,168 +2852,6 @@ const DynTable = ({ heads, rows, renderRow }) => (
   </div>
 );
 
-
-// ── DPR Attendance Panel ─────────────────────────────────────────────
-const EMPTY_ATT_ROW = (mp) => ({
-  rowId: Date.now() + Math.random(),
-  mpId: mp ? mp.id : "", subId: mp ? mp.subId : "",
-  empId: mp ? mp.empId : "", name: mp ? mp.name : "",
-  designation: mp ? mp.designation : "", teamNo: mp ? mp.defaultTeamNo : "",
-  am: "0", pm: "0", ot: "0", description: "", remarks: "",
-});
-
-const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast }) => {
-  const [rows, setRows]       = useState([]);
-  const [subId, setSubId]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [loaded, setLoaded]   = useState(false);
-
-  useEffect(() => {
-    if (dprId) {
-      setLoading(true);
-      loadAttendance(dprId).then(att => {
-        if (att.length) { setRows(att); setLoaded(true); }
-        setLoading(false);
-      });
-    }
-  }, [dprId, loadAttendance]);
-
-  const activeForSub = subId ? masters.filter(m => m.subId === subId && m.status === "Active") : [];
-
-  const loadFromMaster = () => {
-    if (!subId) { showToast("Select a subcontractor first","error"); return; }
-    if (!activeForSub.length) { showToast("No active employees for this subcontractor","error"); return; }
-    const existing = rows.filter(r => r.subId !== subId);
-    const newRows  = activeForSub.map(mp => EMPTY_ATT_ROW(mp));
-    setRows([...existing, ...newRows]);
-    setLoaded(true);
-    showToast(`Loaded ${newRows.length} employees from master`);
-  };
-
-  const setCell = (rowId, key, val) => setRows(p => p.map(r => r.rowId === rowId || r.id === rowId ? { ...r, [key]: val } : r));
-  const delRow  = (rowId) => setRows(p => p.filter(r => r.rowId !== rowId && r.id !== rowId));
-  const addManual = () => setRows(p => [...p, EMPTY_ATT_ROW(null)]);
-
-  const handleSave = async () => {
-    if (!dprId) { showToast("Save the DPR first, then save attendance","error"); return; }
-    setSaving(true);
-    const res = await saveAttendance(dprId, rows);
-    setSaving(false);
-    if (!res.ok) { showToast(res.error || "Save failed","error"); return; }
-    showToast("Attendance saved!");
-  };
-
-  const subName = id => (subcontractors.find(s => s.id === id) || {}).name || "";
-  const grouped = rows.reduce((acc, r) => { const k = r.subId||"unknown"; if (!acc[k]) acc[k]=[]; acc[k].push(r); return acc; }, {});
-  const totalAM = rows.reduce((s,r) => s + (parseInt(r.am)||0), 0);
-  const totalPM = rows.reduce((s,r) => s + (parseInt(r.pm)||0), 0);
-
-  return (
-    <div className="mt-4 border border-blue-200 rounded-xl overflow-hidden">
-      <div className="bg-blue-600 px-4 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-white font-bold text-sm">Detailed Attendance (from Master)</span>
-          {rows.length > 0 && (
-            <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{rows.length} employees</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-blue-200">
-          <span>AM: {totalAM}</span>
-          <span>PM: {totalPM}</span>
-        </div>
-      </div>
-
-      <div className="bg-blue-50 p-3 flex flex-wrap gap-2 items-end border-b border-blue-200">
-        <div className="flex-1 min-w-[180px]">
-          <label className="block text-xs font-semibold text-blue-700 mb-1">Load Subcontractor from Master</label>
-          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full">
-            <option value="">Select Subcontractor...</option>
-            {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-          </Sel>
-        </div>
-        <button onClick={loadFromMaster} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-          &#8635; Load from Master
-        </button>
-        <button onClick={addManual} className="px-3 py-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-          + Add Row
-        </button>
-        {rows.length > 0 && dprId && (
-          <button onClick={handleSave} disabled={saving} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-            {saving ? "Saving..." : "Save Attendance"}
-          </button>
-        )}
-      </div>
-
-      {loading ? <div className="p-4 text-center text-sm text-slate-400">Loading attendance...</div> :
-       rows.length === 0 ? (
-        <div className="p-6 text-center">
-          <p className="text-sm text-slate-400">No attendance records yet.</p>
-          <p className="text-xs text-slate-300 mt-1">Select a subcontractor above and click "Load from Master"</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          {Object.entries(grouped).map(([gSubId, gRows]) => (
-            <div key={gSubId}>
-              {gSubId !== "unknown" && (
-                <div className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 border-b border-slate-200">
-                  {subName(gSubId)} — {gRows.filter(r=>parseInt(r.am)>0||parseInt(r.pm)>0).length}/{gRows.length} present
-                </div>
-              )}
-              <table className="w-full text-xs min-w-[900px]">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    {["S.No","Emp ID","Name","Designation","A.M","P.M","O.T Hrs","Description of Work","Team No","Remarks",""].map(h=>(
-                      <th key={h} className="text-left px-2 py-2 font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {gRows.map((r, idx) => (
-                    <tr key={r.rowId||r.id} className="hover:bg-slate-50">
-                      <td className="px-2 py-1.5 text-slate-400 w-8">{idx+1}</td>
-                      <td className="px-2 py-1.5 w-20">
-                        {r.mpId ? <span className="font-mono text-blue-700 font-semibold">{r.empId||"—"}</span>
-                          : <Inp value={r.empId} onChange={e=>setCell(r.rowId||r.id,"empId",e.target.value)} placeholder="ID"/>}
-                      </td>
-                      <td className="px-2 py-1.5 w-32">
-                        {r.mpId ? <span className="font-semibold text-slate-800">{r.name}</span>
-                          : <Inp value={r.name} onChange={e=>setCell(r.rowId||r.id,"name",e.target.value)} placeholder="Name"/>}
-                      </td>
-                      <td className="px-2 py-1.5 w-28">
-                        {r.mpId ? <span className="text-slate-500">{r.designation||"—"}</span>
-                          : <Inp value={r.designation} onChange={e=>setCell(r.rowId||r.id,"designation",e.target.value)} placeholder="Trade"/>}
-                      </td>
-                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.am} onChange={e=>setCell(r.rowId||r.id,"am",e.target.value)} className="text-center font-bold text-green-700"/></td>
-                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.pm} onChange={e=>setCell(r.rowId||r.id,"pm",e.target.value)} className="text-center font-bold text-blue-700"/></td>
-                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" step="0.5" value={r.ot} onChange={e=>setCell(r.rowId||r.id,"ot",e.target.value)} className="text-center text-amber-700"/></td>
-                      <td className="px-2 py-1.5 min-w-[150px]"><Inp value={r.description} onChange={e=>setCell(r.rowId||r.id,"description",e.target.value)} placeholder="Formwork, Rebar, Concrete..."/></td>
-                      <td className="px-2 py-1.5 w-20"><Inp value={r.teamNo} onChange={e=>setCell(r.rowId||r.id,"teamNo",e.target.value)} placeholder="T-1"/></td>
-                      <td className="px-2 py-1.5 min-w-[120px]"><Inp value={r.remarks} onChange={e=>setCell(r.rowId||r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
-                      <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow(r.rowId||r.id)} className="text-red-400 hover:text-red-600 text-base transition-colors">&#215;</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-blue-50 border-t-2 border-blue-200">
-                  <tr>
-                    <td colSpan={4} className="px-2 py-1.5 font-bold text-xs text-blue-700">SUBTOTAL</td>
-                    <td className="px-2 py-1.5 font-black text-green-700">{gRows.reduce((s,r)=>s+(parseInt(r.am)||0),0)}</td>
-                    <td className="px-2 py-1.5 font-black text-blue-700">{gRows.reduce((s,r)=>s+(parseInt(r.pm)||0),0)}</td>
-                    <td className="px-2 py-1.5 font-black text-amber-700">{gRows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)}</td>
-                    <td colSpan={4}></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ))}
-          {!dprId && <div className="p-2 text-center text-xs text-amber-600 bg-amber-50 border-t border-amber-100">Save the DPR first to persist attendance records</div>}
-        </div>
-      )}
-    </div>
-  );
-};
-// ── End DprAttendancePanel ────────────────────────────────────────────
-
 const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
@@ -3332,11 +2864,9 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     setFProject(navFilter.projectId || "All");
     setFStatus(navFilter.status || "All");
     setFDate(navFilter.date || "");
-  }, [navFilter.projectId]);
+  }, [navFilter]);
   const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
-  const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
-  const [mpAttDprId, setMpAttDprId] = useState(null);
   const [activeSection, setActiveSection] = useState("header");
 
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
@@ -3386,7 +2916,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
     setSaving(false);
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
-        if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
     showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
   };
 
@@ -3516,15 +3045,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
-      {activeSection==="manpower"&&<DprAttendancePanel
-        dprId={mpAttDprId||(sel?sel.id:null)}
-        subcontractors={subcontractors}
-        masters={mpMasters}
-        loadAttendance={loadAttendance}
-        saveAttendance={saveAttendance}
-        showToast={showToast}
-      />}
       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
@@ -3709,7 +3229,7 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_IR);
   const [fStatus, setFStatus] = useState(navFilter.status || "All");
-  useEffect(() => { setFStatus(navFilter.status || "All"); }, [navFilter.projectId]);
+  useEffect(() => { setFStatus(navFilter.status || "All"); }, [navFilter]);
   const [fProject, setFProject] = useState("All");
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
@@ -5661,7 +5181,7 @@ function useMatReqs() {
     if (data) setMrs(data.map(r => ({
       id: r.id,
       mrNum: r.mr_number || "",
-      pid: String(r.project_id||"").toLowerCase(),
+      pid: r.project_id || "",
       requestedBy: r.requested_by || "",
       dept: r.department || "Civil",
       date: r.date || "",
@@ -5759,7 +5279,7 @@ function useLPOs() {
       .order("created_at", { ascending: false });
     if (error) { console.error("LPOs:", error.message); setLoading(false); return; }
     if (data) setLpos(data.map(l => ({
-      id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
+      id: l.id, lpoNum: l.lpo_number || "", pid: l.project_id || "",
       supplierName: l.supplier_name || "", supplierContact: l.supplier_contact || "",
       supplierEmail: l.supplier_email || "", supplierAddress: l.supplier_address || "",
       supplierTrn: l.supplier_trn || "", mrId: l.mr_id || "", mrNum: l.mr_number || "",
@@ -5906,11 +5426,11 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
   const [search, setSearch] = useState("");
   const [fStatus, setFStatus] = useState(navFilter.status || "All");
   const [fLpoStatus, setFLpoStatus] = useState("All");
-  const [fProject, setFProject] = useState(String(navFilter.projectId||"").toLowerCase() || "all");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
   useEffect(() => {
     setFStatus(navFilter.status || "All");
-    setFProject(String(navFilter.projectId||"").toLowerCase() || "all");
-  }, [navFilter.projectId, navFilter.status]);
+    setFProject(navFilter.projectId || "All");
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -5950,17 +5470,13 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
   };
 
   const filtered = mrs.filter(m => {
-    const _pid  = String(m.pid  || "").toLowerCase();
-    const _fpid = String(fProject || "").toLowerCase();
-    if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
-    if (fStatus !== "All" && (m.status||"") !== fStatus) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const hay = `${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
+    if (fStatus!=="All" && m.status!==fStatus) return false;
+    if (fProject!=="All" && m.pid!==fProject) return false;
+    if (search && !`${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase().includes(search.toLowerCase())) return false;
+        if (fLpoStatus==="LPO Raised" && !lpos.some(l=>l.mrId===m.id)) return false;
+    if (fLpoStatus==="Pending LPO" && lpos.some(l=>l.mrId===m.id)) return false;
     return true;
-  })
+  });
 
   const DEL_BADGE = { "Pending":"bg-slate-100 text-slate-500 border-slate-200", "Partially Delivered":"bg-amber-100 text-amber-700 border-amber-200", "Fully Delivered":"bg-green-100 text-green-700 border-green-200" };
 
@@ -6095,7 +5611,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
           ))}
         </div>
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
-        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} — {p.name}</option>)}</Sel>
+        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
         {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
@@ -6162,7 +5678,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
   const [form, setForm] = useState(() => EMPTY_LPO(prefillMr));
   const [search, setSearch] = useState("");
   const [fStatus, setFStatus] = useState(navFilter.status || "All");
-  const [fProject, setFProject] = useState("All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
   const [fDelivery, setFDelivery] = useState(navFilter.delivery || "All");
   useEffect(() => {
     if (!prefillMr) {
@@ -6170,7 +5686,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
       setFProject(navFilter.projectId || "All");
       setFDelivery(navFilter.delivery || "All");
     }
-  }, [navFilter.projectId, prefillMr]);
+  }, [navFilter, prefillMr]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -6223,17 +5739,14 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
   };
 
   const filtered = lpos.filter(l => {
-    const _pid  = String(l.pid  || "").toLowerCase();
-    const _fpid = String(fProject || "").toLowerCase();
-    if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
-    if (fStatus !== "All" && (l.status||"") !== fStatus) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const hay = `${l.lpoNum} ${l.supplierName} ${l.mrNum}`.toLowerCase();
-      if (!hay.includes(q)) return false;
+    if (fStatus!=="All" && l.status!==fStatus) return false;
+    if (fProject!=="All" && l.pid!==fProject) return false;
+    if (fDelivery==="overdue") {
+      if (l.deliveryStatus==="Fully Delivered" || !l.deliveryDate || new Date(l.deliveryDate) >= new Date()) return false;
     }
+    if (search && !`${l.lpoNum} ${l.supplierName} ${l.mrNum}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  })
+  });
 
   // ── VIEW ────────────────────────────────────────────────────────────────────
   if (mode==="view"&&sel) return (
@@ -6442,7 +5955,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
         btn={<AddBtn onClick={openCreate} label="New LPO"/>}/>
       <div className="flex flex-wrap gap-1.5 mb-3">
         <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search LPO..."/>
-        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} — {p.name}</option>)}</Sel>
+        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}</Sel>
       </div>
       <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
       {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
@@ -6944,7 +6457,7 @@ const MaterialStore = ({
     if (navFilter.status === "Low Stock") { setFLowOnly(true); setFStatus("Low Stock"); }
     else if (navFilter.status) setFStatus(navFilter.status);
     if (navFilter.projectId) setFProject(navFilter.projectId);
-  }, [navFilter.projectId]);
+  }, [navFilter]);
 
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
@@ -11041,7 +10554,7 @@ function useNOCs() {
     if (data) setNocs(data.map(n => ({
       id: n.id,
       nocNum: n.noc_number || "",
-      pid: String(n.project_id||"").toLowerCase(),
+      pid: n.project_id || "",
       authority: n.authority_name || "",
       nocType: n.noc_type || "",
       desc: n.description || "",
@@ -11092,7 +10605,7 @@ function useNOCs() {
     if (f.file) fileUrl = await uploadFile(f.file);
     const { error } = await supabase.from("authority_nocs").insert([{
       noc_number: nocNum, project_id: f.pid || null,
-      authority_name: f.authority, noc_type: f.nocType==="Others" ? (f.customNocType||"Others") : f.nocType,
+      authority_name: f.authority, noc_type: f.nocType,
       description: f.desc,
       submission_date: f.submissionDate || null,
       approval_date: f.approvalDate || null,
@@ -11112,7 +10625,7 @@ function useNOCs() {
     if (f.file) fileUrl = await uploadFile(f.file);
     const { error } = await supabase.from("authority_nocs").update({
       project_id: f.pid || null, authority_name: f.authority,
-      noc_type: f.nocType==="Others" ? (f.customNocType||"Others") : f.nocType, description: f.desc,
+      noc_type: f.nocType, description: f.desc,
       submission_date: f.submissionDate || null,
       approval_date: f.approvalDate || null,
       expiry_date: f.expiryDate || null,
@@ -11201,7 +10714,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_NOC());
   const [search, setSearch] = useState("");
-  const [fProject, setFProject] = useState("All");
+  const [fProject, setFProject] = useState(navFilter.projectId || "All");
   const [fAuth, setFAuth] = useState("All");
   const [fStatus, setFStatus] = useState(navFilter.status || "All");
   const [fExpiry, setFExpiry] = useState(navFilter.expiry || "All");
@@ -11209,7 +10722,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
     setFProject(navFilter.projectId || "All");
     setFStatus(navFilter.status || "All");
     setFExpiry(navFilter.expiry || "All");
-  }, [navFilter.projectId]);
+  }, [navFilter]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
@@ -11218,7 +10731,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
   const openCreate = () => { setForm(EMPTY_NOC()); setSel(null); setMode("form"); };
   const openEdit = n => {
     setSel(n);
-    setForm({ pid:n.pid, authority:n.authority, nocType:NOC_TYPES.includes(n.nocType)?n.nocType:"Others",customNocType:NOC_TYPES.includes(n.nocType)?"":n.nocType, desc:n.desc,
+    setForm({ pid:n.pid, authority:n.authority, nocType:n.nocType, desc:n.desc,
       submissionDate:n.submissionDate, approvalDate:n.approvalDate, expiryDate:n.expiryDate,
       status:n.status, priority:n.priority, responsible:n.responsible, dept:n.dept,
       subRef:n.subRef, portalId:n.portalId, appType:n.appType, approvalRef:n.approvalRef,
@@ -11249,20 +10762,14 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
   };
 
   const filtered = nocs.filter(n => {
-    const _pid  = String(n.pid  || "").toLowerCase();
-    const _fpid = String(fProject || "").toLowerCase();
-    if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
-    if (fAuth !== "All" && (n.authority||"") !== fAuth) return false;
-    if (fStatus !== "All" && (n.status||"") !== fStatus) return false;
-    if (fExpiry === "expiring" && !isExpiringSoon(n.expiryDate, n.status)) return false;
-    if (fExpiry === "expired"  && !isExpired(n.expiryDate, n.status)) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const hay = `${n.nocNum} ${n.authority} ${n.nocType} ${n.responsible}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
+    if (fProject!=="All" && n.pid!==fProject) return false;
+    if (fAuth!=="All" && n.authority!==fAuth) return false;
+    if (fStatus!=="All" && n.status!==fStatus) return false;
+    if (fExpiry==="expiring" && !isExpiringSoon(n.expiryDate,n.status)) return false;
+    if (fExpiry==="expired" && !isExpired(n.expiryDate,n.status)) return false;
+    if (search && !`${n.nocNum} ${n.authority} ${n.nocType} ${n.responsible}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  })
+  });
 
   // Dashboard stats
   const stats = {
@@ -11448,9 +10955,6 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
               <Sel value={form.nocType} onChange={set("nocType")}>
                 {NOC_TYPES.map(t=><option key={t}>{t}</option>)}
               </Sel>
-              {form.nocType==="Others" && (
-                <Inp value={form.customNocType||""} onChange={e=>setForm(p=>({...p,customNocType:e.target.value}))} placeholder="Enter NOC/Permit type manually..." className="mt-2 border-amber-300"/>
-              )}
             </div>
             <div><Lbl t="Project"/>
               <Sel value={form.pid} onChange={set("pid")}>
@@ -11568,9 +11072,9 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap gap-2">
           <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="NOC no, authority, type..."/>
-          <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
-            <option value="all">All Projects</option>
-            {(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} — {p.name}</option>)}
+          <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto">
+            <option value="All">All Projects</option>
+            {projects.map(p=><option key={p.id} value={p.id}>{p.number}</option>)}
           </Sel>
           <Sel value={fAuth} onChange={e=>setFAuth(e.target.value)} className="w-auto">
             <option value="All">All Authorities</option>
@@ -11603,7 +11107,7 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
         <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
           <table className="w-full text-sm min-w-[1000px]">
             <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>{["NOC No.","Authority","Type","Description","Project","Status","Submitted","Expiry","Responsible","Actions"].map(h=>(
+              <tr>{["NOC No.","Authority","Type","Project","Status","Priority","Submitted","Expiry","Responsible","Actions"].map(h=>(
                 <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
               ))}</tr>
             </thead>
@@ -11623,7 +11127,6 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
                     <td className="px-4 py-3 text-xs text-slate-700 max-w-[160px]">
                       <div className="truncate font-semibold">{n.nocType}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 max-w-[160px]"><div className="truncate">{n.desc||"—"}</div></td>
                     <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${NOC_ST_COLOR[n.status]||NOC_ST_COLOR.Draft}`}>{n.status}</span>
@@ -11670,85 +11173,49 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
 function useManpowerMaster() {
   const [masters, setMasters] = useState([]);
   const [loading, setLoading] = useState(true);
-  const loadData = useCallback(async () => {
-    const { data, error } = await supabase.from("manpower_master").select("*").order("created_at", { ascending: true });
-    if (error) { console.error("ManpowerMaster:", error.message); setLoading(false); return; }
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("manpower_master")
+      .select("*")
+      .order("employee_name");
     if (data) setMasters(data.map(m => ({
-      id: m.id, subId: m.subcontractor_id || "",
-      empId: m.employee_id || "", name: m.name || "",
-      designation: m.designation || "", defaultTeamNo: m.default_team_no || "",
-      status: m.status || "Active", dateJoined: m.date_joined || "",
-      dateLeft: m.date_left || "", remarks: m.remarks || "",
+      id:          m.id,
+      subId:       m.subcontractor_id  || "",
+      pid:         m.project_id        || "",
+      empId:       m.employee_id       || "",
+      name:        m.employee_name     || "",
+      designation: m.designation       || "",
+      trade:       m.trade             || "",
+      teamNo:      m.default_team_no   || "",
+      status:      m.status            || "Active",
+      dateJoined:  m.date_joined       || "",
+      dateLeft:    m.date_left         || "",
+      remarks:     m.remarks           || "",
     })));
     setLoading(false);
   }, []);
-  useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => { load(); }, [load]);
 
   const addMaster = async (f) => {
     const { error } = await supabase.from("manpower_master").insert([{
-      subcontractor_id: f.subId || null, employee_id: f.empId || "",
-      name: f.name || "", designation: f.designation || "",
-      default_team_no: f.defaultTeamNo || "", status: f.status || "Active",
-      date_joined: f.dateJoined || null, date_left: f.dateLeft || null, remarks: f.remarks || "",
+      subcontractor_id: f.subId  || null,
+      project_id:       f.pid    || null,
+      employee_id:      f.empId,
+      employee_name:    f.name,
+      designation:      f.designation,
+      trade:            f.trade,
+      default_team_no:  f.teamNo,
+      status:           f.status || "Active",
+      date_joined:      f.dateJoined || null,
+      date_left:        f.dateLeft   || null,
+      remarks:          f.remarks,
     }]);
     if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true };
+    await load(); return { ok: true };
   };
-
-  const updateMaster = async (id, f) => {
-    const { error } = await supabase.from("manpower_master").update({
-      subcontractor_id: f.subId || null, employee_id: f.empId || "",
-      name: f.name || "", designation: f.designation || "",
-      default_team_no: f.defaultTeamNo || "", status: f.status || "Active",
-      date_joined: f.dateJoined || null, date_left: f.dateLeft || null, remarks: f.remarks || "",
-    }).eq("id", id);
-    if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true };
-  };
-
-  const removeMaster = async (id) => {
-    const { error } = await supabase.from("manpower_master").delete().eq("id", id);
-    if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true };
-  };
-
-  const toggleMpStatus = async (id, cur) => {
-    const { error } = await supabase.from("manpower_master")
-      .update({ status: cur === "Active" ? "Inactive" : "Active" }).eq("id", id);
-    if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true };
-  };
-
-  const loadAttendance = async (dprId) => {
-    if (!dprId) return [];
-    const { data, error } = await supabase.from("dpr_attendance").select("*").eq("dpr_id", dprId).order("created_at");
-    if (error) return [];
-    return (data || []).map(a => ({
-      id: a.id, dprId: a.dpr_id, subId: a.subcontractor_id || "",
-      mpId: a.manpower_id || "", am: String(a.am_count || 0),
-      pm: String(a.pm_count || 0), ot: String(a.ot_hours || 0),
-      description: a.description_of_work || "", teamNo: a.team_no || "", remarks: a.daily_remarks || "",
-    }));
-  };
-
-  const saveAttendance = async (dprId, rows) => {
-    if (!dprId) return { ok: false, error: "No DPR ID" };
-    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
-    const valid = rows.filter(r => r.mpId);
-    if (!valid.length) return { ok: true };
-    const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
-      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null,
-      am_count: parseInt(r.am) || 0, pm_count: parseInt(r.pm) || 0,
-      ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
-      team_no: r.teamNo || "", daily_remarks: r.remarks || "",
-    })));
-    if (error) return { ok: false, error: error.message };
-    return { ok: true };
-  };
-
-  return { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus, loadAttendance, saveAttendance };
-}
-
 
   const updateMaster = async (id, f) => {
     const { error } = await supabase.from("manpower_master").update({
@@ -11775,13 +11242,15 @@ function useManpowerMaster() {
     await load(); return { ok: true };
   };
 
+  const getActiveBySubcontractor = (subId) =>
+    masters.filter(m => m.subId === subId && m.status === "Active");
+
+  return { masters, loading, addMaster, updateMaster, removeMaster, getActiveBySubcontractor, reload: load };
+}
 
 // ── ManpowerMaster Component ──────────────────────────────────────────────────
-const EMPTY_MP_FORM = () => ({ subId:"", empId:"", name:"", designation:"", defaultTeamNo:"", status:"Active", dateJoined:"", dateLeft:"", remarks:"" });
-const MP_TRADES = ["Foreman","Carpenter","Mason","Plumber","Electrician","Steel Fixer","Bar Bender","Shuttering Carpenter","Scaffolder","Helper","Driver","Equipment Operator","Painter","Welder","Tiler","Waterproofing Applicator","Other"];
-
-const ManpowerMaster = ({ subcontractors = [], projects = [], showToast }) => {
-  const { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus } = useManpowerMaster();
+const ManpowerMaster = ({ subcontractors, projects, showToast }) => {
+  const { masters, loading, addMaster, updateMaster, removeMaster } = useManpowerMaster();
   const [mode,      setMode]      = useState("list");
   const [sel,       setSel]       = useState(null);
   const [saving,    setSaving]    = useState(false);
@@ -11790,173 +11259,189 @@ const ManpowerMaster = ({ subcontractors = [], projects = [], showToast }) => {
   const [fStatus,   setFStatus]   = useState("Active");
   const [confirmId, setConfirmId] = useState(null);
   const [form,      setForm]      = useState(EMPTY_MP_FORM());
+
+  function EMPTY_MP_FORM() {
+    return { subId:"", pid:"", empId:"", name:"", designation:"", trade:"",
+             teamNo:"", status:"Active", dateJoined:"", dateLeft:"", remarks:"" };
+  }
+
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const filtered = masters.filter(m => {
-    if (fSub !== "All" && m.subId !== fSub) return false;
-    if (fStatus !== "All" && m.status !== fStatus) return false;
-    if (search) { const q = search.toLowerCase(); if (!`${m.empId} ${m.name} ${m.designation}`.toLowerCase().includes(q)) return false; }
+    if (fSub    !== "All" && m.subId  !== fSub)    return false;
+    if (fStatus !== "All" && m.status !== fStatus)  return false;
+    if (search  && !`${m.empId} ${m.name} ${m.designation} ${m.trade}`
+        .toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const openCreate = () => { setForm({ ...EMPTY_MP_FORM(), subId: fSub !== "All" ? fSub : "" }); setSel(null); setMode("form"); };
-  const openEdit   = m  => { setSel(m); setForm({ subId:m.subId, empId:m.empId, name:m.name, designation:m.designation, defaultTeamNo:m.defaultTeamNo, status:m.status, dateJoined:m.dateJoined, dateLeft:m.dateLeft, remarks:m.remarks }); setMode("form"); };
+  const goList = () => { setMode("list"); setSel(null); setForm(EMPTY_MP_FORM()); };
 
   const handleSave = async () => {
-    if (!form.subId) { showToast("Select a subcontractor","error"); return; }
-    if (!form.empId.trim()) { showToast("Employee ID required","error"); return; }
-    if (!form.name.trim())  { showToast("Employee name required","error"); return; }
+    if (!form.name.trim()) { showToast("Employee name required", "error"); return; }
+    if (!form.subId)       { showToast("Select subcontractor", "error"); return; }
     setSaving(true);
     const res = sel ? await updateMaster(sel.id, form) : await addMaster(form);
     setSaving(false);
-    if (!res.ok) { showToast(res.error || "Save failed","error"); return; }
-    showToast(sel ? "Employee updated!" : "Employee added!"); setMode("list"); setSel(null);
+    if (!res.ok) { showToast(res.error || "Failed", "error"); return; }
+    showToast(sel ? "Employee updated!" : "Employee added to master!"); goList();
   };
 
   const handleDelete = async (id) => {
     const res = await removeMaster(id);
-    if (!res.ok) { showToast(res.error,"error"); return; }
-    showToast("Employee deleted!"); setConfirmId(null);
+    if (!res.ok) { showToast(res.error, "error"); return; }
+    showToast("Deleted!"); setConfirmId(null);
   };
 
-  const subName = id => (subcontractors.find(s => s.id === id) || {}).name || "—";
-  const totFor  = st => masters.filter(m => (fSub === "All" || m.subId === fSub) && m.status === st).length;
-  const totAll  = masters.filter(m => fSub === "All" || m.subId === fSub).length;
+  const TRADES = ["Mason","Carpenter","Steel Fixer","Plasterer","Painter","Tiler",
+    "Electrician","Plumber","AC Technician","Helper","Supervisor","Foreman",
+    "Safety Officer","Surveyor","Driver","Cleaner","Other"];
+  const STATUS_OPTS = ["Active","Inactive","On Leave","Resigned"];
 
+  // ── Form ───────────────────────────────────────────────────────────────────
   if (mode === "form") return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <div className="flex items-center gap-3 mb-5">
-        <button onClick={() => { setMode("list"); setSel(null); }} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors text-lg">&#8592;</button>
-        <div><h2 className="text-lg font-bold text-slate-800">{sel ? "Edit Employee" : "Add Employee"}</h2><p className="text-xs text-slate-400">Manpower Master Record</p></div>
-      </div>
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="sm:col-span-2">
-            <Lbl t="Subcontractor / Company" req/>
+    <div className="p-6 max-w-2xl">
+      <BackBtn onClick={goList}/>
+      <h2 className="text-xl font-bold text-slate-800 mb-4">
+        {sel ? "Edit Employee" : "Add Employee to Master"}
+      </h2>
+      <FormCard>
+        <Grid2>
+          <div>
+            <Lbl t="Subcontractor" req/>
             <Sel value={form.subId} onChange={set("subId")}>
-              <option value="">Select Subcontractor...</option>
-              {subcontractors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="">Select subcontractor...</option>
+              {subcontractors.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
             </Sel>
           </div>
-          <div><Lbl t="Employee ID / Labour Card No" req/><Inp value={form.empId} onChange={set("empId")} placeholder="e.g. LC-001"/></div>
+          <div>
+            <Lbl t="Project"/>
+            <Sel value={form.pid} onChange={set("pid")}>
+              <option value="">All Projects</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}
+            </Sel>
+          </div>
+          <div><Lbl t="Employee ID / Labour Card No"/><Inp value={form.empId} onChange={set("empId")} placeholder="LC-001"/></div>
           <div><Lbl t="Employee Name" req/><Inp value={form.name} onChange={set("name")} placeholder="Full name"/></div>
           <div>
             <Lbl t="Designation / Trade"/>
-            <Sel value={form.designation} onChange={set("designation")}>
-              <option value="">Select Trade...</option>
-              {MP_TRADES.map(d => <option key={d}>{d}</option>)}
+            <Sel value={form.trade} onChange={e => { set("trade")(e); set("designation")(e); }}>
+              <option value="">Select trade...</option>
+              {TRADES.map(t => <option key={t}>{t}</option>)}
             </Sel>
           </div>
-          <div><Lbl t="Default Team No"/><Inp value={form.defaultTeamNo} onChange={set("defaultTeamNo")} placeholder="e.g. T-1"/></div>
+          <div><Lbl t="Custom Designation"/><Inp value={form.designation} onChange={set("designation")} placeholder="e.g. Senior Mason"/></div>
+          <div><Lbl t="Default Team No"/><Inp value={form.teamNo} onChange={set("teamNo")} placeholder="T-01"/></div>
           <div>
             <Lbl t="Status"/>
             <Sel value={form.status} onChange={set("status")}>
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
+              {STATUS_OPTS.map(s => <option key={s}>{s}</option>)}
             </Sel>
           </div>
           <div><Lbl t="Date Joined"/><Inp type="date" value={form.dateJoined} onChange={set("dateJoined")}/></div>
           <div><Lbl t="Date Left (if resigned)"/><Inp type="date" value={form.dateLeft} onChange={set("dateLeft")}/></div>
-          <div className="sm:col-span-2"><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} placeholder="Any notes about this employee..." rows={2}/></div>
+        </Grid2>
+        <div><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2}/></div>
+        <div className="flex gap-3 pt-2">
+          <Btn saving={saving} onClick={handleSave} label={sel ? "Update" : "Add Employee"}/>
+          <Btn onClick={goList} label="Cancel" color="slate"/>
         </div>
-        <div className="flex gap-2 pt-1">
-          <Btn onClick={handleSave} saving={saving} label={sel ? "Update Employee" : "Save Employee"}/>
-          <button onClick={() => { setMode("list"); setSel(null); }} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition-colors">Cancel</button>
-        </div>
-      </div>
+      </FormCard>
     </div>
   );
 
-  return (
-    <div className="p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">Manpower Master</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Reusable employee database per subcontractor — auto-fills DPR attendance</p>
-        </div>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors whitespace-nowrap">
-          + Add Employee
-        </button>
-      </div>
+  // ── List ───────────────────────────────────────────────────────────────────
+  const activeCount   = masters.filter(m => m.status === "Active").length;
+  const inactiveCount = masters.filter(m => m.status !== "Active").length;
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        {[{l:"Total",v:totAll,c:"bg-blue-50 text-blue-700 border-blue-200"},{l:"Active",v:totFor("Active"),c:"bg-green-50 text-green-700 border-green-200"},{l:"Inactive",v:totFor("Inactive"),c:"bg-red-50 text-red-700 border-red-200"}].map(x=>(
-          <div key={x.l} className={`rounded-xl border p-3 text-center ${x.c}`}>
-            <div className="text-2xl font-black">{x.v}</div>
-            <div className="text-xs font-semibold mt-0.5">{x.l}</div>
+  return (
+    <div className="p-6">
+      {confirmId && <ConfirmDialog
+        message="Permanently delete this employee from master?"
+        onConfirm={() => handleDelete(confirmId)}
+        onCancel={() => setConfirmId(null)}/>}
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {[
+          { l:"Total Employees", v: masters.length,     c:"bg-blue-500"  },
+          { l:"Active",          v: activeCount,         c:"bg-green-500" },
+          { l:"Inactive",        v: inactiveCount,       c:"bg-slate-500" },
+          { l:"Subcontractors",  v: [...new Set(masters.map(m=>m.subId))].filter(Boolean).length, c:"bg-amber-500" },
+        ].map(k => (
+          <div key={k.l} className={`${k.c} rounded-xl p-3 text-white`}>
+            <div className="text-2xl font-bold">{k.v}</div>
+            <div className="text-xs opacity-80 mt-0.5">{k.l}</div>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        <Sel value={fSub} onChange={e=>setFSub(e.target.value)} className="w-auto">
-          <option value="All">All Companies</option>
-          {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-        </Sel>
-        <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto">
-          <option value="All">All Status</option>
-          <option value="Active">Active Only</option>
-          <option value="Inactive">Inactive Only</option>
-        </Sel>
-        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, ID, trade..."/>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="flex flex-wrap gap-2">
+          <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="ID, name, trade..."/>
+          <Sel value={fSub} onChange={e=>setFSub(e.target.value)} className="w-auto">
+            <option value="All">All Subcontractors</option>
+            {subcontractors.map(s=><option key={s.id} value={s.id}>{s.companyName}</option>)}
+          </Sel>
+          <Sel value={fStatus} onChange={e=>setFStatus(e.target.value)} className="w-auto">
+            <option value="All">All Status</option>
+            {STATUS_OPTS.map(s=><option key={s}>{s}</option>)}
+          </Sel>
+        </div>
+        <AddBtn onClick={()=>{setForm(EMPTY_MP_FORM());setSel(null);setMode("form");}} label="Add Employee"/>
       </div>
 
-      {loading ? <Spinner/> : filtered.length === 0 ? <EmptyState msg="No manpower records found" onCreate={openCreate}/> : (
+      {loading ? <Spinner/> : filtered.length === 0 ? (
+        <EmptyState msg="No employees found" onCreate={()=>{setForm(EMPTY_MP_FORM());setSel(null);setMode("form");}}/>
+      ) : (
         <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
-          <table className="w-full text-sm min-w-[800px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>{["S.No","Emp ID","Name","Designation","Team","Company","Status","Date Joined","Actions"].map(h=>(
-                <th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              <tr>{["S.No","Emp ID","Name","Trade / Designation","Subcontractor","Team","Joined","Status","Actions"].map(h=>(
+                <th key={h} className="text-left px-3 py-3 text-xs font-bold text-slate-500 uppercase whitespace-nowrap">{h}</th>
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.map((m,idx)=>(
-                <tr key={m.id} className={`hover:bg-slate-50 transition-colors ${m.status==="Inactive"?"opacity-50":""}`}>
-                  <td className="px-3 py-2.5 text-slate-400 text-xs">{idx+1}</td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-blue-700 font-semibold">{m.empId||"—"}</td>
-                  <td className="px-3 py-2.5 font-semibold text-slate-800">{m.name}</td>
-                  <td className="px-3 py-2.5 text-slate-500 text-xs">{m.designation||"—"}</td>
-                  <td className="px-3 py-2.5 text-slate-500 text-xs">{m.defaultTeamNo||"—"}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 max-w-[130px] truncate">{subName(m.subId)}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${m.status==="Active"?"bg-green-50 text-green-700 border-green-200":"bg-red-50 text-red-700 border-red-200"}`}>{m.status}</span>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-400">{m.dateJoined||"—"}</td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <button onClick={()=>openEdit(m)} className="px-2 py-1 text-xs rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors">Edit</button>
-                      <button onClick={()=>toggleMpStatus(m.id,m.status)} className={`px-2 py-1 text-xs rounded-md font-medium transition-colors ${m.status==="Active"?"bg-amber-50 hover:bg-amber-100 text-amber-700":"bg-green-50 hover:bg-green-100 text-green-700"}`}>
-                        {m.status==="Active"?"Deactivate":"Activate"}
-                      </button>
-                      <button onClick={()=>setConfirmId(m.id)} className="px-2 py-1 text-xs rounded-md bg-red-50 hover:bg-red-100 text-red-600 font-medium transition-colors">Del</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((m, idx) => {
+                const sub  = subcontractors.find(s => s.id === m.subId);
+                const sBadge = m.status === "Active"
+                  ? "bg-green-100 text-green-700 border-green-200"
+                  : m.status === "On Leave"
+                    ? "bg-amber-100 text-amber-700 border-amber-200"
+                    : "bg-slate-100 text-slate-600 border-slate-200";
+                return (
+                  <tr key={m.id} className={`hover:bg-slate-50 ${m.status !== "Active" ? "opacity-60" : ""}`}>
+                    <td className="px-3 py-2.5 text-xs text-slate-400">{idx+1}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{m.empId||"—"}</td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-800">{m.name}</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-600">{m.designation||m.trade||"—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-700">{sub?.companyName||"—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-center">{m.teamNo||"—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{m.dateJoined ? fmtDate(m.dateJoined) : "—"}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${sBadge}`}>{m.status}</span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex gap-1">
+                        <ActBtn onClick={()=>{setSel(m);setForm({...m});setMode("form");}} label="Edit" color="edit"/>
+                        {m.status === "Active"
+                          ? <ActBtn onClick={async()=>{await updateMaster(m.id,{...m,status:"Inactive"});showToast("Marked inactive");}} label="Deactivate" color="slate"/>
+                          : <ActBtn onClick={async()=>{await updateMaster(m.id,{...m,status:"Active"});showToast("Reactivated!");}} label="Activate" color="edit"/>
+                        }
+                        <ActBtn onClick={()=>setConfirmId(m.id)} label="Del" color="del"/>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {confirmId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <span className="text-red-600 text-lg font-bold">!</span>
-            </div>
-            <h3 className="font-bold text-slate-800 text-center mb-1">Delete Employee?</h3>
-            <p className="text-sm text-slate-500 text-center mb-5">This permanently removes the employee from master. Cannot be undone.</p>
-            <div className="flex gap-2">
-              <button onClick={()=>handleDelete(confirmId)} className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition-colors">Delete</button>
-              <button onClick={()=>setConfirmId(null)} className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50 transition-colors">Cancel</button>
-            </div>
-          </div>
         </div>
       )}
     </div>
   );
 };
-
 
 
 // ── DPR Manpower Section — Drop-in replacement for manpower rows in DPR form ──
@@ -12240,19 +11725,19 @@ export default function App() {
   const renderPage = () => {
     switch (page) {
       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs} onNavigate={navigate}/>;
-      case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} tasks={tasks} snags={snags} inspections={inspections} photos={photos} reports={reports} />;
+      case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
-      case "reports":        return <DailyReports subcontractors={subs} {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
+      case "reports":        return <DailyReports {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} userIsAdmin={userIsAdmin} userProfile={userProfile} permReqs={permReqs} onUpdatePermReq={updatePermReq}/>;
-      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}} navFilter={navFilter}/>;
-      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)} navFilter={navFilter}/>;
+      case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}}/>;
+      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onApproveReceipt={approveReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
-      case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast} navFilter={navFilter}/>;
+      case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
       default: return <div className="p-12 text-center text-slate-400 text-lg font-semibold">Module coming soon</div>;
     }
