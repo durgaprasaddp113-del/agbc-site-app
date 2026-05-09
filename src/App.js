@@ -5281,7 +5281,7 @@ function useLPOs() {
       .order("created_at", { ascending: false });
     if (error) { console.error("LPOs:", error.message); setLoading(false); return; }
     if (data) setLpos(data.map(l => ({
-      id: l.id, lpoNum: l.lpo_number || "", pid: l.project_id || "",
+      id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
       supplierName: l.supplier_name || "", supplierContact: l.supplier_contact || "",
       supplierEmail: l.supplier_email || "", supplierAddress: l.supplier_address || "",
       supplierTrn: l.supplier_trn || "", mrId: l.mr_id || "", mrNum: l.mr_number || "",
@@ -5690,7 +5690,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
       setFProject(navFilter.projectId || "All");
       setFDelivery(navFilter.delivery || "All");
     }
-  }, [navFilter, prefillMr]);
+  }, [navFilter.projectId, navFilter.status, navFilter.delivery, prefillMr]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
