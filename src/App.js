@@ -866,17 +866,7 @@ function useDailyReports() {
         preparedBy: r.prepared_by_name || "",
       };
     }));
-    const { data: attCounts } = await supabase.from("dpr_attendance")
-          .select("dpr_id, am_count, pm_count");
-        if (attCounts && attCounts.length && data) {
-          const cntMap = {};
-          attCounts.forEach(a => {
-            if (!cntMap[a.dpr_id]) cntMap[a.dpr_id] = 0;
-            if (a.am_count===1 || a.pm_count===1) cntMap[a.dpr_id]++;
-          });
-          setReports(prev => prev.map(r => ({ ...r, manpowerTotal: cntMap[r.id] || r.manpowerTotal })));
-        }
-        setLoading(false);
+    setLoading(false);
   }, []);
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -890,7 +880,7 @@ function useDailyReports() {
 
   const add = async (f) => {
     const reportNum = await getNextNum();
-    const { data, error } = await supabase.from("daily_reports").insert([{
+    const { error } = await supabase.from("daily_reports").insert([{
       report_number: reportNum,
       project_id: f.pid, report_date: f.date || null,
       weather: f.weather, temperature_high: parseInt(f.temp) || null,
@@ -905,9 +895,9 @@ function useDailyReports() {
       issues_delays: f.issues, visitors: f.visitors,
       remarks: f.remarks, status: f.status || "Draft",
       prepared_by_name: f.preparedBy,
-    }]).select('id');
+    }]);
     if (error) return { ok: false, error: error.message };
-    const newId = (data && data[0]) ? data[0].id : null; await loadData(); return { ok: true, id: newId, reportNum };
+    await loadData(); return { ok: true, reportNum };
   };
 
   const update = async (id, f) => {
@@ -935,7 +925,7 @@ function useDailyReports() {
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
   };
-  return { reports, loading, add, update, reload: loadData, remove };
+  return { reports, loading, add, update, remove };
 }
 
 
@@ -3175,385 +3165,154 @@ const EMPTY_ATT_ROW = (mp) => ({
   mpId: mp ? mp.id : "", subId: mp ? mp.subId : "",
   empId: mp ? mp.empId : "", name: mp ? mp.name : "",
   designation: mp ? mp.designation : "", teamNo: mp ? mp.defaultTeamNo : "",
-  am: "P", pm: "P", ot: "0", description: "", remarks: "",
+  am: "0", pm: "0", ot: "0", description: "", remarks: "",
 });
 
-// ── DPR Attendance View Panel (read-only) ────────────────────────────
-const DprAttendanceViewPanel = ({ dprId, loadAttendance, subcontractors = [] }) => {
-  const [rows, setRows]   = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!dprId) { setLoading(false); return; }
-    loadAttendance(dprId).then(att => { setRows(att||[]); setLoading(false); });
-  }, [dprId, loadAttendance]);
-
-  if (loading) return <div className="p-4 text-center text-sm text-slate-400">Loading attendance...</div>;
-  if (!rows.length) return null;
-
-  const subName = id => (subcontractors.find(s=>s.id===id)||{}).name||"";
-  const presentAM = rows.filter(r=>r.am==="P").length;
-  const presentPM = rows.filter(r=>r.pm==="P").length;
-
-  // Group by team
-  const teams = [...new Set(rows.map(r=>r.teamNo||"").filter(Boolean))];
-
-  return (
-    <div className="bg-white rounded-xl border-2 border-slate-200 overflow-hidden shadow-sm">
-      <div className="bg-slate-800 px-4 py-2.5 flex items-center justify-between">
-        <span className="text-white font-bold text-sm">Daily Attendance Register</span>
-        <div className="flex gap-4 text-xs">
-          <span className="text-green-300 font-bold">AM Present: {presentAM}</span>
-          <span className="text-blue-300 font-bold">PM Present: {presentPM}</span>
-          <span className="text-red-300 font-bold">Absent: {rows.filter(r=>r.am==="A"&&r.pm==="A").length}</span>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs min-w-[700px]">
-          <thead>
-            <tr className="bg-slate-700 text-white">
-              {["S.No","ID No","Name","Designation","Team","A.M","P.M","O.T","Description of Work"].map(h=>(
-                <th key={h} className="px-2 py-2.5 text-left font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r,idx)=>{
-              const absent = r.am==="A"&&r.pm==="A";
-              return (
-                <tr key={r.id||idx} className={`border-b border-slate-100 ${absent?"bg-red-50":idx%2===0?"bg-white":"bg-slate-50/50"}`}>
-                  <td className="px-2 py-2 text-slate-400 font-mono text-center">{idx+1}</td>
-                  <td className="px-2 py-2 font-mono font-bold text-blue-700">{r.empId||"—"}</td>
-                  <td className="px-2 py-2 font-semibold text-slate-800 whitespace-nowrap">{r.name||"—"}</td>
-                  <td className="px-2 py-2 text-slate-500">{r.designation||"—"}</td>
-                  <td className="px-2 py-2 font-semibold text-purple-700">{r.teamNo||"—"}</td>
-                  <td className="px-2 py-2 text-center">
-                    <span className={`flex w-7 h-7 rounded-lg font-black text-sm items-center justify-center border-2 ${r.am==="P"?"bg-green-100 text-green-700 border-green-400":"bg-red-100 text-red-700 border-red-400"}`}>{r.am}</span>
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <span className={`flex w-7 h-7 rounded-lg font-black text-sm items-center justify-center border-2 ${r.pm==="P"?"bg-green-100 text-green-700 border-green-400":"bg-red-100 text-red-700 border-red-400"}`}>{r.pm}</span>
-                  </td>
-                  <td className="px-2 py-2 text-center text-amber-700 font-semibold">{r.ot&&r.ot!=="0"?r.ot:"—"}</td>
-                  <td className="px-2 py-2 text-slate-600 max-w-[200px] truncate">{r.description||"—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="bg-slate-700 text-white">
-              <td colSpan={5} className="px-3 py-2 font-bold text-xs">TOTAL PRESENT</td>
-              <td className="px-2 py-2 text-center font-black text-green-300">{presentAM}</td>
-              <td className="px-2 py-2 text-center font-black text-blue-300">{presentPM}</td>
-              <td colSpan={2} className="px-3 py-2 text-xs text-slate-300">
-                Total: {rows.length} workers | Absent: {rows.filter(r=>r.am==="A"&&r.pm==="A").length}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      {teams.length > 0 && (
-        <div className="bg-slate-50 border-t border-slate-200 px-4 py-3">
-          <div className="text-xs font-bold text-slate-500 uppercase mb-2">Team Summary</div>
-          <div className="flex flex-wrap gap-2">
-            {teams.map(t=>{
-              const tRows = rows.filter(r=>r.teamNo===t);
-              const tDesc = tRows.find(r=>r.description)?.description||"";
-              return (
-                <div key={t} className="bg-white border border-purple-200 rounded-lg px-3 py-2 min-w-[100px]">
-                  <div className="text-xs font-bold text-purple-700">{t}</div>
-                  <div className="text-lg font-black text-slate-800">{tRows.filter(r=>r.am==="P"||r.pm==="P").length}<span className="text-xs font-normal text-slate-400">/{tRows.length}</span></div>
-                  {tDesc&&<div className="text-xs text-slate-400 truncate max-w-[120px]" title={tDesc}>{tDesc}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-// ── End DprAttendanceViewPanel ────────────────────────────────────────
-
-const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, onRowsChange, showToast, allReports = [] }) => {
+const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast }) => {
   const [rows, setRows]       = useState([]);
-  useEffect(() => { if (typeof onRowsChange === 'function') onRowsChange(rows); }, [rows]);
+  const [subId, setSubId]     = useState("");
   const [loading, setLoading] = useState(false);
-  const [saving,  setSaving]  = useState(false);
-  const [subId,   setSubId]   = useState("");
+  const [saving, setSaving]   = useState(false);
+  const [loaded, setLoaded]   = useState(false);
 
-  // Load saved attendance when opening existing DPR
   useEffect(() => {
-    if (!dprId) return;
-    setLoading(true);
-    loadAttendance(dprId).then(att => {
-      if (att && att.length) setRows(att.map(a => ({ ...a, rowId: a.id || Date.now()+Math.random() })));
-      setLoading(false);
-    });
+    if (dprId) {
+      setLoading(true);
+      loadAttendance(dprId).then(att => {
+        if (att.length) { setRows(att); setLoaded(true); }
+        setLoading(false);
+      });
+    }
   }, [dprId, loadAttendance]);
 
-  // ── Toggle P / A ──────────────────────────────────────────────────
-  const toggle = (rowId, field) =>
-    setRows(p => p.map(r => (r.rowId===rowId||r.id===rowId) ? { ...r, [field]: r[field]==="P"?"A":"P" } : r));
+  const activeForSub = subId ? masters.filter(m => m.subId === subId && m.status === "Active") : [];
 
-  const setCell = (rowId, key, val) =>
-    setRows(p => p.map(r => (r.rowId===rowId||r.id===rowId) ? { ...r, [key]: val } : r));
-
-  const delRow = (rowId) =>
-    setRows(p => p.filter(r => r.rowId!==rowId && r.id!==rowId));
-
-  const addRow = () =>
-    setRows(p => [...p, { rowId:Date.now()+Math.random(), mpId:"", subId:"", empId:"", name:"", designation:"", am:"P", pm:"P", ot:"", description:"", teamNo:"", remarks:"" }]);
-
-  // ── Load from Manpower Master ─────────────────────────────────────
   const loadFromMaster = () => {
     if (!subId) { showToast("Select a subcontractor first","error"); return; }
-    const active = masters.filter(m => m.subId===subId && m.status==="Active");
-    if (!active.length) { showToast("No active employees for this subcontractor. Add employees in Manpower Master module first.","error"); return; }
-    const existingIds = new Set(rows.map(r=>r.mpId).filter(Boolean));
-    const newRows = active.filter(m=>!existingIds.has(m.id)).map(mp=>({
-      rowId: Date.now()+Math.random(),
-      mpId: mp.id, subId: mp.subId,
-      empId: mp.empId, name: mp.name,
-      designation: mp.designation, teamNo: mp.defaultTeamNo||"",
-      am:"P", pm:"P", ot:"", description:"", remarks:""
-    }));
-    if (!newRows.length) { showToast("All employees already loaded","error"); return; }
-    setRows(p => [...p, ...newRows]);
-    showToast(newRows.length+" employees loaded from master");
+    if (!activeForSub.length) { showToast("No active employees for this subcontractor","error"); return; }
+    const existing = rows.filter(r => r.subId !== subId);
+    const newRows  = activeForSub.map(mp => EMPTY_ATT_ROW(mp));
+    setRows([...existing, ...newRows]);
+    setLoaded(true);
+    showToast(`Loaded ${newRows.length} employees from master`);
   };
 
-  // ── Copy from Last DPR ────────────────────────────────────────────
-  const copyFromLastDpr = async () => {
-    if (!allReports || allReports.length === 0) {
-      showToast("No previous DPR found","error"); return;
-    }
-    // Get most recent DPR (skip current one)
-    const prev = allReports.filter(r => r.id !== dprId).sort((a,b) => new Date(b.date) - new Date(a.date))[0];
-    if (!prev) { showToast("No previous DPR found","error"); return; }
-    setLoading(true);
-    const prevAtt = await loadAttendance(prev.id);
-    setLoading(false);
-    if (!prevAtt || !prevAtt.length) { showToast("Previous DPR has no attendance records","error"); return; }
-    // Copy employees, reset daily values
-    const copied = prevAtt.map(a => ({
-      rowId: Date.now()+Math.random(),
-      mpId: a.mpId||"", subId: a.subId||"",
-      empId: a.empId||"", name: a.name||"",
-      designation: a.designation||"", teamNo: a.teamNo||"",
-      am:"P", pm:"P", ot:"", description:"", remarks:""
-    }));
-    setRows(copied);
-    showToast(copied.length+" employees copied from last DPR");
-  };
+  const setCell = (rowId, key, val) => setRows(p => p.map(r => r.rowId === rowId || r.id === rowId ? { ...r, [key]: val } : r));
+  const delRow  = (rowId) => setRows(p => p.filter(r => r.rowId !== rowId && r.id !== rowId));
+  const addManual = () => setRows(p => [...p, EMPTY_ATT_ROW(null)]);
 
-  // ── Save Attendance ───────────────────────────────────────────────
   const handleSave = async () => {
     if (!dprId) { showToast("Save the DPR first, then save attendance","error"); return; }
     setSaving(true);
     const res = await saveAttendance(dprId, rows);
     setSaving(false);
-    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+    if (!res.ok) { showToast(res.error || "Save failed","error"); return; }
     showToast("Attendance saved!");
   };
 
-  // ── Summary counts ────────────────────────────────────────────────
-  const presentAM = rows.filter(r=>r.am==="P").length;
-  const presentPM = rows.filter(r=>r.pm==="P").length;
-  const absentAM  = rows.filter(r=>r.am==="A").length;
-
-  // Subcontractor lookup
-  const subName = id => (subcontractors.find(s=>s.id===id)||{}).name||"";
-
-  // PA Toggle Button
-  const PABtn = ({ val, onClick }) => (
-    <button onClick={onClick}
-      className={`w-8 h-8 rounded-lg font-black text-sm border-2 transition-all ${
-        val==="P"
-          ? "bg-green-100 text-green-700 border-green-400 hover:bg-green-200"
-          : "bg-red-100 text-red-700 border-red-400 hover:bg-red-200"
-      }`}>
-      {val}
-    </button>
-  );
+  const subName = id => (subcontractors.find(s => s.id === id) || {}).name || "";
+  const grouped = rows.reduce((acc, r) => { const k = r.subId||"unknown"; if (!acc[k]) acc[k]=[]; acc[k].push(r); return acc; }, {});
+  const totalAM = rows.reduce((s,r) => s + (parseInt(r.am)||0), 0);
+  const totalPM = rows.reduce((s,r) => s + (parseInt(r.pm)||0), 0);
 
   return (
-    <div className="mt-4 border-2 border-slate-200 rounded-xl overflow-hidden shadow-sm">
-
-      {/* ── Header Bar ── */}
-      <div className="bg-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <span className="text-white font-bold text-sm">Daily Attendance Register</span>
-          <span className="bg-amber-500 text-white text-xs px-2 py-0.5 rounded-full font-semibold">{rows.length} workers</span>
+    <div className="mt-4 border border-blue-200 rounded-xl overflow-hidden">
+      <div className="bg-blue-600 px-4 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-white font-bold text-sm">Detailed Attendance (from Master)</span>
+          {rows.length > 0 && (
+            <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{rows.length} employees</span>
+          )}
         </div>
-        <div className="flex items-center gap-3 text-xs">
-          <span className="text-green-300 font-bold">AM Present: {presentAM}</span>
-          <span className="text-red-300 font-bold">Absent: {absentAM}</span>
-          <span className="text-blue-300 font-bold">PM Present: {presentPM}</span>
+        <div className="flex items-center gap-2 text-xs text-blue-200">
+          <span>AM: {totalAM}</span>
+          <span>PM: {totalPM}</span>
         </div>
       </div>
 
-      {/* ── Toolbar ── */}
-      <div className="bg-slate-50 px-3 py-2.5 flex flex-wrap gap-2 items-end border-b border-slate-200">
-        <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs font-semibold text-slate-600 mb-1">Load from Manpower Master</label>
-          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full text-xs">
+      <div className="bg-blue-50 p-3 flex flex-wrap gap-2 items-end border-b border-blue-200">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs font-semibold text-blue-700 mb-1">Load Subcontractor from Master</label>
+          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full">
             <option value="">Select Subcontractor...</option>
             {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
           </Sel>
         </div>
-        <button onClick={loadFromMaster}
-          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-          &#8635; Load Master
+        <button onClick={loadFromMaster} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+          &#8635; Load from Master
         </button>
-        <button onClick={copyFromLastDpr} disabled={loading}
-          className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-          &#9650; Copy Last DPR
-        </button>
-        <button onClick={addRow}
-          className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+        <button onClick={addManual} className="px-3 py-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
           + Add Row
         </button>
-        {rows.length > 0 && (
-          <button onClick={handleSave} disabled={saving}
-            className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
-            {saving?"Saving...":"Save Attendance"}
+        {rows.length > 0 && dprId && (
+          <button onClick={handleSave} disabled={saving} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+            {saving ? "Saving..." : "Save Attendance"}
           </button>
         )}
       </div>
 
-      {/* ── Table ── */}
-      {loading ? (
-        <div className="p-6 text-center text-sm text-slate-400">Loading attendance...</div>
-      ) : rows.length === 0 ? (
-        <div className="p-8 text-center">
-          <div className="text-3xl mb-2">&#128101;</div>
-          <p className="text-sm font-semibold text-slate-500">No manpower added yet</p>
-          <p className="text-xs text-slate-400 mt-1">Use "Load Master" to auto-fill from saved employees, or "Copy Last DPR" to reuse yesterday's list</p>
+      {loading ? <div className="p-4 text-center text-sm text-slate-400">Loading attendance...</div> :
+       rows.length === 0 ? (
+        <div className="p-6 text-center">
+          <p className="text-sm text-slate-400">No attendance records yet.</p>
+          <p className="text-xs text-slate-300 mt-1">Select a subcontractor above and click "Load from Master"</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[750px]">
-            <thead>
-              <tr className="bg-slate-700 text-white">
-                {["S.No","ID No","Name","Designation","Team","A.M","P.M","O.T","Description of Work",""].map(h=>(
-                  <th key={h} className="px-2 py-2.5 text-left text-xs font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r,idx)=>{
-                const rid = r.rowId||r.id;
-                const isAbsent = r.am==="A" && r.pm==="A";
-                return (
-                  <tr key={rid} className={`border-b border-slate-100 transition-colors ${isAbsent?"bg-red-50":"hover:bg-amber-50/30"}`}>
-                    <td className="px-2 py-2 text-slate-400 font-mono w-10 text-center">{idx+1}</td>
-                    <td className="px-2 py-2 w-16">
-                      {r.mpId
-                        ? <span className="font-mono font-bold text-blue-700">{r.empId||"—"}</span>
-                        : <Inp value={r.empId} onChange={e=>setCell(rid,"empId",e.target.value)} placeholder="ID" className="w-14"/>}
-                    </td>
-                    <td className="px-2 py-2 min-w-[120px]">
-                      {r.mpId
-                        ? <span className="font-semibold text-slate-800">{r.name}</span>
-                        : <Inp value={r.name} onChange={e=>setCell(rid,"name",e.target.value)} placeholder="Full name"/>}
-                    </td>
-                    <td className="px-2 py-2 min-w-[110px]">
-                      {r.mpId
-                        ? <span className="text-slate-500">{r.designation||"—"}</span>
-                        : <Inp value={r.designation} onChange={e=>setCell(rid,"designation",e.target.value)} placeholder="Trade"/>}
-                    </td>
-                    <td className="px-2 py-2 w-20">
-                      <Inp value={r.teamNo||""} onChange={e=>{
-                        const t=e.target.value;
-                        setCell(rid,"teamNo",t);
-                      }} onBlur={e=>{
-                        const t=e.target.value.trim();
-                        if(!t) return;
-                        // Auto-fill description for same team
-                        setRows(prev=>{
-                          const teamDesc = prev.find(x=>(x.rowId!==rid&&x.id!==rid)&&x.teamNo===t&&x.description)?
-                            prev.find(x=>(x.rowId!==rid&&x.id!==rid)&&x.teamNo===t&&x.description).description : null;
-                          if(!teamDesc) return prev;
-                          return prev.map(x=>x.teamNo===t&&!(x.description)?{...x,description:teamDesc}:x);
-                        });
-                      }} placeholder="T-1" className="w-16 text-center font-semibold text-purple-700"/>
-                    </td>
-                    <td className="px-2 py-2 w-12 text-center">
-                      <PABtn val={r.am||"P"} onClick={()=>toggle(rid,"am")}/>
-                    </td>
-                    <td className="px-2 py-2 w-12 text-center">
-                      <PABtn val={r.pm||"P"} onClick={()=>toggle(rid,"pm")}/>
-                    </td>
-                    <td className="px-2 py-2 w-16">
-                      <Inp value={r.ot||""} onChange={e=>setCell(rid,"ot",e.target.value)}
-                        placeholder="0" className="w-12 text-center text-amber-700 font-semibold"/>
-                    </td>
-                    <td className="px-2 py-2 min-w-[160px]">
-                      <Inp value={r.description||""} onChange={e=>{
-                        const v=e.target.value;
-                        setCell(rid,"description",v);
-                        // Auto-fill all same-team rows
-                        if(r.teamNo&&r.teamNo.trim()){
-                          setRows(prev=>prev.map(x=>(x.rowId!==rid&&x.id!==rid)&&x.teamNo===r.teamNo?{...x,description:v}:x));
-                        }
-                      }} placeholder="Formwork, rebar, concrete pour..."/>
-                    </td>
-                    <td className="px-2 py-2 w-8 text-center">
-                      <button onClick={()=>delRow(rid)}
-                        className="w-6 h-6 rounded-full bg-red-100 hover:bg-red-200 text-red-600 font-bold text-xs transition-colors">
-                        &#215;
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-
-            {/* ── Summary Footer ── */}
-            <tfoot>
-              <tr className="bg-slate-700 text-white">
-                <td colSpan={4} className="px-3 py-2 font-bold text-xs">TOTAL PRESENT</td>
-                <td className="px-2 py-2 text-center font-black text-green-300 text-sm">{presentAM}</td>
-                <td className="px-2 py-2 text-center font-black text-blue-300 text-sm">{presentPM}</td>
-                <td colSpan={3} className="px-3 py-2 text-xs text-slate-300">
-                  Absent: {absentAM} &nbsp;|&nbsp; OT: {rows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)} hrs
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {/* ── Subcontractor Summary Card ── */}
-          <div className="bg-slate-50 border-t-2 border-slate-200 px-4 py-3">
-            <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Manpower Summary by Category</div>
-            <div className="flex flex-wrap gap-3">
-              {[...new Set(rows.map(r=>r.subId||"manual"))].map(sid=>{
-                const grp = rows.filter(r=>(r.subId||"manual")===sid);
-                const present = grp.filter(r=>r.am==="P"||r.pm==="P").length;
-                const nm = sid==="manual" ? "Manual Entry" : subName(sid);
-                return (
-                  <div key={sid} className="bg-white border border-slate-200 rounded-lg px-3 py-2 min-w-[120px]">
-                    <div className="text-xs text-slate-500 font-semibold truncate max-w-[130px]">{nm}</div>
-                    <div className="text-xl font-black text-slate-800 mt-0.5">{present}<span className="text-xs font-normal text-slate-400">/{grp.length}</span></div>
-                    <div className="text-xs text-slate-400">present</div>
-                  </div>
-                );
-              })}
-              <div className="bg-amber-500 border border-amber-400 rounded-lg px-3 py-2 min-w-[120px]">
-                <div className="text-xs text-white font-semibold">TOTAL</div>
-                <div className="text-xl font-black text-white mt-0.5">
-                  {rows.filter(r=>r.am==="P"||r.pm==="P").length}
-                  <span className="text-xs font-normal text-amber-200">/{rows.length}</span>
+          {Object.entries(grouped).map(([gSubId, gRows]) => (
+            <div key={gSubId}>
+              {gSubId !== "unknown" && (
+                <div className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 border-b border-slate-200">
+                  {subName(gSubId)} — {gRows.filter(r=>parseInt(r.am)>0||parseInt(r.pm)>0).length}/{gRows.length} present
                 </div>
-                <div className="text-xs text-amber-200">present</div>
-              </div>
+              )}
+              <table className="w-full text-xs min-w-[900px]">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    {["S.No","Emp ID","Name","Designation","A.M","P.M","O.T Hrs","Description of Work","Team No","Remarks",""].map(h=>(
+                      <th key={h} className="text-left px-2 py-2 font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {gRows.map((r, idx) => (
+                    <tr key={r.rowId||r.id} className="hover:bg-slate-50">
+                      <td className="px-2 py-1.5 text-slate-400 w-8">{idx+1}</td>
+                      <td className="px-2 py-1.5 w-20">
+                        {r.mpId ? <span className="font-mono text-blue-700 font-semibold">{r.empId||"—"}</span>
+                          : <Inp value={r.empId} onChange={e=>setCell(r.rowId||r.id,"empId",e.target.value)} placeholder="ID"/>}
+                      </td>
+                      <td className="px-2 py-1.5 w-32">
+                        {r.mpId ? <span className="font-semibold text-slate-800">{r.name}</span>
+                          : <Inp value={r.name} onChange={e=>setCell(r.rowId||r.id,"name",e.target.value)} placeholder="Name"/>}
+                      </td>
+                      <td className="px-2 py-1.5 w-28">
+                        {r.mpId ? <span className="text-slate-500">{r.designation||"—"}</span>
+                          : <Inp value={r.designation} onChange={e=>setCell(r.rowId||r.id,"designation",e.target.value)} placeholder="Trade"/>}
+                      </td>
+                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.am} onChange={e=>setCell(r.rowId||r.id,"am",e.target.value)} className="text-center font-bold text-green-700"/></td>
+                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.pm} onChange={e=>setCell(r.rowId||r.id,"pm",e.target.value)} className="text-center font-bold text-blue-700"/></td>
+                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" step="0.5" value={r.ot} onChange={e=>setCell(r.rowId||r.id,"ot",e.target.value)} className="text-center text-amber-700"/></td>
+                      <td className="px-2 py-1.5 min-w-[150px]"><Inp value={r.description} onChange={e=>setCell(r.rowId||r.id,"description",e.target.value)} placeholder="Formwork, Rebar, Concrete..."/></td>
+                      <td className="px-2 py-1.5 w-20"><Inp value={r.teamNo} onChange={e=>setCell(r.rowId||r.id,"teamNo",e.target.value)} placeholder="T-1"/></td>
+                      <td className="px-2 py-1.5 min-w-[120px]"><Inp value={r.remarks} onChange={e=>setCell(r.rowId||r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+                      <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow(r.rowId||r.id)} className="text-red-400 hover:text-red-600 text-base transition-colors">&#215;</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                  <tr>
+                    <td colSpan={4} className="px-2 py-1.5 font-bold text-xs text-blue-700">SUBTOTAL</td>
+                    <td className="px-2 py-1.5 font-black text-green-700">{gRows.reduce((s,r)=>s+(parseInt(r.am)||0),0)}</td>
+                    <td className="px-2 py-1.5 font-black text-blue-700">{gRows.reduce((s,r)=>s+(parseInt(r.pm)||0),0)}</td>
+                    <td className="px-2 py-1.5 font-black text-amber-700">{gRows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)}</td>
+                    <td colSpan={4}></td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
-          </div>
-
-          {!dprId && (
-            <div className="px-4 py-2 text-center text-xs text-amber-700 bg-amber-50 border-t border-amber-200">
-              &#9888; Save the DPR first, then click "Save Attendance" to store records
-            </div>
-          )}
+          ))}
+          {!dprId && <div className="p-2 text-center text-xs text-amber-600 bg-amber-50 border-t border-amber-100">Save the DPR first to persist attendance records</div>}
         </div>
       )}
     </div>
@@ -3561,7 +3320,7 @@ const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAtte
 };
 // ── End DprAttendancePanel ────────────────────────────────────────────
 
-const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [], onReload }) => {
+const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
@@ -3577,17 +3336,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   const [saving, setSaving]     = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
-  const attRowsRef = useRef([]);
   const [mpAttDprId, setMpAttDprId] = useState(null);
-  const [printData, setPrintData] = useState(null);
-  const [showPrint, setShowPrint] = useState(null);
-  const [printRptId, setPrintRptId] = useState(null);
-  useEffect(() => {
-    if (!printRptId || !printData) return;
-    loadAttendance(printData.rpt.id).then(att => {
-      setPrintData(p => p ? {...p, att: att||[]} : p);
-    });
-  }, [printRptId]);
   const [activeSection, setActiveSection] = useState("header");
 
   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
@@ -3614,7 +3363,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       safety:r.safety?.length?r.safety.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_SAF()],
     });
     setActiveSection("header"); setMode("form");
-      loadAttendance((rpt&&rpt.id)||"").then(att => { if(att&&att.length) attRowsRef.current=att; });
   };
   const openView = r => { setSel(r); setMode("view"); };
 
@@ -3631,20 +3379,15 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       materials:form.materials.filter(r=>r.material),
       inspections:form.inspections.filter(r=>r.location||r.type),
       safety:form.safety.filter(r=>r.obs),
-      manpowerTotal: (attRowsRef.current||[]).filter(r=>r.am==="P"||r.pm==="P").length || totalMP,
+      manpowerTotal: totalMP,
       issues:form.issues, visitors:form.visitors, remarks:form.remarks,
       status: submitStatus || form.status,
     };
     const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
     setSaving(false);
-    // Auto-save attendance with DPR
-    if (!res.ok) { showToast(res.error||"Save failed","error"); setSaving(false); return; }
-    const _dprId = res.id || res.dprId || (sel && sel.id);
-    const _attRows = attRowsRef.current || [];
-    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).then(()=>{ setTimeout(()=>{ if(onReload) onReload(); },500); }).catch(()=>{}); }
-    // error already checked above
+    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
         if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
-    showToast(sel?"Report updated!":"Report created: "+res.reportNum); setTimeout(()=>goList(),1200);
+    showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
   };
 
   const handleDelete = async id => {
@@ -3663,7 +3406,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
 
   const SECTIONS = [
     {id:"header",label:"📋 Report Info"},
-    {id:"manpower",label:`👷 Manpower (${(attRowsRef.current||[]).length})`},
+    {id:"manpower",label:`👷 Manpower (${(form.manpower||[]).filter(r=>r.trade||r.count).length})`},
     {id:"equipment",label:`🚜 Equipment (${(form.equipment||[]).filter(r=>r.name).length})`},
     {id:"activities",label:`🔨 Activities (${(form.activities||[]).filter(r=>r.activity).length})`},
     {id:"materials",label:`📦 Materials (${(form.materials||[]).filter(r=>r.material).length})`},
@@ -3675,56 +3418,9 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   // ── VIEW ────────────────────────────────────────────────────────────────────
   if (mode==="view"&&sel) {
     const proj = projects.find(p=>p.id===sel.pid);
-    const totalMP = sel.manpowerTotal || (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
     return (
       <div className="p-6 max-w-4xl space-y-4">
-            {/* Print Overlay - needed in view mode */}
-            {printData&&<div id="dpr-print-overlay" style={{fontFamily:"Arial,sans-serif",fontSize:"12px",color:"#1e293b",padding:"16px"}}>
-              <div style={{textAlign:"center",borderBottom:"3px double #1e293b",paddingBottom:"8px",marginBottom:"10px"}}>
-                <div style={{fontSize:"16px",fontWeight:"900"}}>AL GHAITH BUILDING CONSTRUCTION LLC</div>
-                <div style={{fontSize:"12px",fontWeight:"700",color:"#d97706"}}>SITE DAILY REPORT</div>
-              </div>
-              <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"10px",border:"1px solid #e2e8f0"}}><tbody>
-                <tr style={{background:"#f8fafc"}}>
-                  <td style={{padding:"4px 8px"}}><b>Site No:</b> {printData.proj?.number||"--"}</td>
-                  <td style={{padding:"4px 8px"}}><b>Project:</b> {printData.proj?.name||"--"}</td>
-                  <td style={{padding:"4px 8px"}}><b>Date:</b> {printData.rpt.date||"--"}</td>
-                  <td style={{padding:"4px 8px"}}><b>Report No:</b> {printData.rpt.reportNum||"--"}</td>
-                </tr><tr>
-                  <td style={{padding:"4px 8px"}}><b>Prepared By:</b> {printData.rpt.preparedBy||"--"}</td>
-                  <td style={{padding:"4px 8px"}}><b>Weather:</b> {printData.rpt.weather||"--"}</td>
-                  <td style={{padding:"4px 8px"}}><b>Work Hours:</b> {printData.rpt.workHours||"8"}h</td>
-                  <td style={{padding:"4px 8px"}}><b>Status:</b> {printData.rpt.status||"--"}</td>
-                </tr>
-              </tbody></table>
-              {printData.att&&printData.att.length>0&&<div style={{marginBottom:"12px"}}>
-                <div style={{background:"#1e293b",color:"white",padding:"5px 10px",fontWeight:"700",fontSize:"11px"}}>MANPOWER ATTENDANCE | Total: {printData.att.length} | AM Present: {printData.att.filter(r=>r.am==="P").length} | PM Present: {printData.att.filter(r=>r.pm==="P").length}</div>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:"10px"}}><thead><tr style={{background:"#f1f5f9"}}>
-                  {["S.No","ID","Name","Designation","Team","A.M","P.M","O.T","Description"].map(h=><th key={h} style={{padding:"4px 6px",textAlign:"left",fontWeight:"700",color:"#475569",borderBottom:"2px solid #e2e8f0"}}>{h}</th>)}
-                </tr></thead><tbody>
-                  {printData.att.map((r,i)=><tr key={i} style={{borderBottom:"1px solid #e2e8f0",background:r.am==="A"&&r.pm==="A"?"#fff5f5":""}}>
-                    <td style={{padding:"3px 6px",textAlign:"center",color:"#94a3b8"}}>{i+1}</td>
-                    <td style={{padding:"3px 6px",fontWeight:"700",color:"#1d4ed8"}}>{r.empId||"--"}</td>
-                    <td style={{padding:"3px 6px",fontWeight:"600"}}>{r.name||"--"}</td>
-                    <td style={{padding:"3px 6px",color:"#64748b"}}>{r.designation||"--"}</td>
-                    <td style={{padding:"3px 6px",textAlign:"center",color:"#7c3aed",fontWeight:"700"}}>{r.teamNo||"--"}</td>
-                    <td style={{padding:"3px 6px",textAlign:"center",fontWeight:"900",color:r.am==="P"?"#15803d":"#b91c1c"}}>{r.am}</td>
-                    <td style={{padding:"3px 6px",textAlign:"center",fontWeight:"900",color:r.pm==="P"?"#15803d":"#b91c1c"}}>{r.pm}</td>
-                    <td style={{padding:"3px 6px",textAlign:"center",color:"#d97706"}}>{r.ot&&r.ot!=="0"?r.ot:"--"}</td>
-                    <td style={{padding:"3px 6px",color:"#475569"}}>{r.description||"--"}</td>
-                  </tr>)}
-                </tbody><tfoot><tr style={{background:"#1e293b",color:"white"}}>
-                  <td colSpan={5} style={{padding:"4px 8px",fontWeight:"700",fontSize:"10px"}}>TOTAL PRESENT</td>
-                  <td style={{padding:"4px 6px",fontWeight:"900",color:"#86efac",textAlign:"center"}}>{printData.att.filter(r=>r.am==="P").length}</td>
-                  <td style={{padding:"4px 6px",fontWeight:"900",color:"#93c5fd",textAlign:"center"}}>{printData.att.filter(r=>r.pm==="P").length}</td>
-                  <td colSpan={2} style={{padding:"4px 8px",color:"#cbd5e1",fontSize:"10px"}}>Absent: {printData.att.filter(r=>r.am==="A"&&r.pm==="A").length}</td>
-                </tr></tfoot></table>
-              </div>}
-              <div style={{marginTop:"28px",display:"flex",justifyContent:"space-between",borderTop:"1px solid #e2e8f0",paddingTop:"10px"}}>
-                <div style={{width:"180px",textAlign:"center"}}><div style={{borderTop:"1px solid #374151",paddingTop:"3px",fontSize:"10px"}}>Signature Site Engineer</div></div>
-                <div style={{width:"180px",textAlign:"center"}}><div style={{borderTop:"1px solid #374151",paddingTop:"3px",fontSize:"10px"}}>Signature Site Incharge</div></div>
-              </div>
-            </div>}
         {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
         <BackBtn onClick={goList}/>
         {/* Header banner */}
@@ -3777,13 +3473,9 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             </table></div>
           </div>
         ))}
-            {/* Attendance Register */}
-            <DprAttendanceViewPanel dprId={sel.id} loadAttendance={loadAttendance} subcontractors={subcontractors}/>
-            {/* Attendance Register */}
         {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
         {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
         <div className="flex flex-wrap gap-3">
-              <button onClick={()=>handlePrintDPR(sel)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold transition-colors">Print DPR</button>
           <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
           {sel.status==="Draft"&&<button onClick={async()=>{setSaving(true);const r=await onUpdate(sel.id,{...sel,status:"Submitted"});setSaving(false);if(r.ok){setSel(p=>({...p,status:"Submitted"}));showToast("Report submitted!");}}} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">Submit Final</button>}
           <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
@@ -3824,7 +3516,16 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {activeSection==="manpower"&&<div style={{display:"none"}} className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+      {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
+      {activeSection==="manpower"&&<DprAttendancePanel
+        dprId={mpAttDprId||(sel?sel.id:null)}
+        subcontractors={subcontractors}
+        masters={mpMasters}
+        loadAttendance={loadAttendance}
+        saveAttendance={saveAttendance}
+        showToast={showToast}
+      />}
+      {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
           rows={form.manpower||[]} renderRow={r=>(
@@ -3841,18 +3542,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
           Total Workers: <span className="text-blue-600">{(form.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0)}</span>
         </div>
       </div>}
-      {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
-      {activeSection==="manpower"&&<DprAttendancePanel
-        dprId={mpAttDprId||(sel?sel.id:null)}
-        subcontractors={subcontractors}
-        masters={mpMasters}
-        loadAttendance={loadAttendance}
-        saveAttendance={saveAttendance}
-        showToast={showToast}
-        allReports={reports}
-
-        onRowsChange={r=>{ attRowsRef.current=r; }}
-      />}
 
       {/* EQUIPMENT section */}
       {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
@@ -3958,7 +3647,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     ...r,
     projectNum:(projects.find(p=>p.id===r.pid)||{}).number||"—",
     projectName:(projects.find(p=>p.id===r.pid)||{}).name||"—",
-    manpowerTotal: r.manpowerTotal || 0,
+    manpowerTotal:(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0),
   }));
   const RPT_COLS = [
     {header:"Report No.",key:"reportNum",width:14},{header:"Date",key:"date",width:14,type:"date"},
@@ -3966,13 +3655,6 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     {header:"Prepared By",key:"preparedBy",width:20},{header:"Weather",key:"weather",width:14},
     {header:"Manpower",key:"manpowerTotal",width:12},{header:"Status",key:"status",width:14},
   ];
-
-
-      const handlePrintDPR = (rpt) => {
-        const proj = projects.find(p => p.id === rpt.pid);
-        setPrintData({ rpt, proj, att: [] });
-        setPrintRptId(String(rpt.id || '') + '_' + Date.now());
-      };
 
   return (
     <div className="p-6">
@@ -3993,7 +3675,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             <tbody className="divide-y divide-slate-100">
               {filtered.map(r=>{
                 const proj=projects.find(p=>p.id===r.pid);
-                const mp = r.manpowerTotal || 0;
+                const mp=(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
@@ -4055,69 +3737,6 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
 
   const filtered = inspections.filter(i => (fStatus === "All" || i.status === fStatus) && (fProject === "All" || i.pid === fProject));
 
-      {/* CSS Print Overlay */}
-      <style dangerouslySetInnerHTML={{__html:`
-        @media print {
-          * { visibility: hidden !important; }
-          #dpr-print-overlay { display: block !important; } #dpr-print-overlay, #dpr-print-overlay * { visibility: visible !important; } #dpr-print-overlay { position:fixed;top:0;left:0;width:100%;background:white; }
-        }
-        #dpr-print-overlay { display: none; }
-        @page { size: A4 landscape; margin: 12mm; }
-      `}}/>
-      {printData && (
-        <div id="dpr-print-overlay" style={{fontFamily:'Arial,sans-serif',fontSize:'12px',color:'#1e293b',padding:'16px'}}>
-          <div style={{textAlign:'center',borderBottom:'3px double #1e293b',paddingBottom:'8px',marginBottom:'10px'}}>
-            <div style={{fontSize:'16px',fontWeight:'900'}}>AL GHAITH BUILDING CONSTRUCTION LLC</div>
-            <div style={{fontSize:'12px',fontWeight:'700',color:'#d97706'}}>SITE DAILY REPORT</div>
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'10px',border:'1px solid #e2e8f0'}}><tbody>
-            <tr style={{background:'#f8fafc'}}>
-              <td style={{padding:'4px 8px'}}><b>Site No:</b> {printData.proj?.number||'--'}</td>
-              <td style={{padding:'4px 8px'}}><b>Project:</b> {printData.proj?.name||'--'}</td>
-              <td style={{padding:'4px 8px'}}><b>Date:</b> {printData.rpt.date||'--'}</td>
-              <td style={{padding:'4px 8px'}}><b>Report No:</b> {printData.rpt.reportNum||'--'}</td>
-            </tr><tr>
-              <td style={{padding:'4px 8px'}}><b>Prepared By:</b> {printData.rpt.preparedBy||'--'}</td>
-              <td style={{padding:'4px 8px'}}><b>Weather:</b> {printData.rpt.weather||'--'} {printData.rpt.temp?printData.rpt.temp+'C':''}</td>
-              <td style={{padding:'4px 8px'}}><b>Work Hours:</b> {printData.rpt.workHours||'8'}h</td>
-              <td style={{padding:'4px 8px'}}><b>Status:</b> {printData.rpt.status||'--'}</td>
-            </tr>
-          </tbody></table>
-          {printData.att.length>0&&(
-            <div style={{marginBottom:'12px'}}>
-              <div style={{background:'#1e293b',color:'white',padding:'5px 10px',fontWeight:'700',fontSize:'11px'}}>
-                MANPOWER ATTENDANCE | Total: {printData.att.length} | AM Present: {printData.att.filter(r=>r.am==='P').length} | PM Present: {printData.att.filter(r=>r.pm==='P').length}
-              </div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'10px'}}><thead>
-                <tr style={{background:'#f1f5f9'}}>{['S.No','ID No','Name','Designation','Team','A.M','P.M','O.T','Description of Work'].map(h=>(<th key={h} style={{padding:'4px 6px',textAlign:'left',fontWeight:'700',color:'#475569',borderBottom:'2px solid #e2e8f0'}}>{h}</th>))}</tr>
-              </thead><tbody>
-                {printData.att.map((r,i)=>(
-                  <tr key={i} style={{borderBottom:'1px solid #e2e8f0',background:r.am==='A'&&r.pm==='A'?'#fff5f5':''}}>
-                    <td style={{padding:'3px 6px',textAlign:'center',color:'#94a3b8'}}>{i+1}</td>
-                    <td style={{padding:'3px 6px',fontWeight:'700',color:'#1d4ed8'}}>{r.empId||'--'}</td>
-                    <td style={{padding:'3px 6px',fontWeight:'600'}}>{r.name||'--'}</td>
-                    <td style={{padding:'3px 6px',color:'#64748b'}}>{r.designation||'--'}</td>
-                    <td style={{padding:'3px 6px',textAlign:'center',color:'#7c3aed',fontWeight:'700'}}>{r.teamNo||'--'}</td>
-                    <td style={{padding:'3px 6px',textAlign:'center',fontWeight:'900',color:r.am==='P'?'#15803d':'#b91c1c'}}>{r.am}</td>
-                    <td style={{padding:'3px 6px',textAlign:'center',fontWeight:'900',color:r.pm==='P'?'#15803d':'#b91c1c'}}>{r.pm}</td>
-                    <td style={{padding:'3px 6px',textAlign:'center',color:'#d97706'}}>{r.ot&&r.ot!=='0'?r.ot:'--'}</td>
-                    <td style={{padding:'3px 6px',color:'#475569'}}>{r.description||'--'}</td>
-                  </tr>
-                ))}
-              </tbody><tfoot><tr style={{background:'#1e293b',color:'white'}}>
-                <td colSpan={5} style={{padding:'4px 8px',fontWeight:'700',fontSize:'10px'}}>TOTAL PRESENT</td>
-                <td style={{padding:'4px 6px',fontWeight:'900',color:'#86efac',textAlign:'center'}}>{printData.att.filter(r=>r.am==='P').length}</td>
-                <td style={{padding:'4px 6px',fontWeight:'900',color:'#93c5fd',textAlign:'center'}}>{printData.att.filter(r=>r.pm==='P').length}</td>
-                <td colSpan={2} style={{padding:'4px 8px',color:'#cbd5e1',fontSize:'10px'}}>Absent: {printData.att.filter(r=>r.am==='A'&&r.pm==='A').length}</td>
-              </tr></tfoot></table>
-            </div>
-          )}
-          <div style={{marginTop:'30px',display:'flex',justifyContent:'space-between',borderTop:'1px solid #e2e8f0',paddingTop:'12px'}}>
-            <div style={{width:'180px',textAlign:'center'}}><div style={{borderTop:'1px solid #374151',paddingTop:'3px',fontSize:'10px'}}>Signature Site Engineer</div></div>
-            <div style={{width:'180px',textAlign:'center'}}><div style={{borderTop:'1px solid #374151',paddingTop:'3px',fontSize:'10px'}}>Signature Site Incharge</div></div>
-          </div>
-        </div>
-      )}
   if (mode === "view" && sel) return (
     <div className="p-6 max-w-2xl">
       {confirmId && <ConfirmDialog message="Delete this inspection request?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
@@ -12009,6 +11628,9 @@ const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToa
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${NOC_ST_COLOR[n.status]||NOC_ST_COLOR.Draft}`}>{n.status}</span>
                     </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${NOC_PRI_COLOR[n.priority]||""}`}>{n.priority}</span>
+                    </td>
                     <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(n.submissionDate)||"—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {n.expiryDate ? (
@@ -12103,8 +11725,8 @@ function useManpowerMaster() {
     if (error) return [];
     return (data || []).map(a => ({
       id: a.id, dprId: a.dpr_id, subId: a.subcontractor_id || "",
-      mpId: a.manpower_id || "", empId: a.employee_id || "", name: a.emp_name || "", designation: a.designation || "", am: a.am_count===1?"P":"A",
-      pm: a.pm_count===1?"P":"A", ot: String(a.ot_hours || 0),
+      mpId: a.manpower_id || "", am: String(a.am_count || 0),
+      pm: String(a.pm_count || 0), ot: String(a.ot_hours || 0),
       description: a.description_of_work || "", teamNo: a.team_no || "", remarks: a.daily_remarks || "",
     }));
   };
@@ -12112,17 +11734,15 @@ function useManpowerMaster() {
   const saveAttendance = async (dprId, rows) => {
     if (!dprId) return { ok: false, error: "No DPR ID" };
     await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
-    const valid = rows.filter(r => r.name && r.name.trim());
+    const valid = rows.filter(r => r.mpId);
     if (!valid.length) return { ok: true };
     const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
-      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null, employee_id: r.empId || "", emp_name: r.name || "", designation: r.designation || "",
-      am_count: r.am==="P"?1:0, pm_count: r.pm==="P"?1:0,
+      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null,
+      am_count: parseInt(r.am) || 0, pm_count: parseInt(r.pm) || 0,
       ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
       team_no: r.teamNo || "", daily_remarks: r.remarks || "",
     })));
     if (error) return { ok: false, error: error.message };
-      const presentCount = valid.filter(r => r.am==="P" || r.pm==="P").length;
-      await supabase.from("daily_reports").update({ manpower_total: presentCount }).eq("id", dprId);
     return { ok: true };
   };
 
@@ -12571,7 +12191,7 @@ export default function App() {
   const { projects, loading: plLoad, add: addP, update: updP, remove: delP } = useProjects();
   const { tasks, loading: tlLoad, add: addT, update: updT, remove: delT } = useTasks();
   const { snags, loading: slLoad, add: addS, update: updS, remove: delS } = useSnags();
-  const { reports, loading: rlLoad, add: addR, update: updR, remove: delR, reload: reloadDpr } = useDailyReports();
+  const { reports, loading: rlLoad, add: addR, update: updR, remove: delR } = useDailyReports();
   const { inspections, loading: ilLoad, add: addI, update: updI, remove: delI } = useInspections();
   const { drawings, loading: dlLoad, add: addD, update: updD, remove: delD } = useDrawings();
   const { subs, loading: sbLoad, add: addSub, update: updSub, remove: delSub } = useSubcontractors();
@@ -12623,7 +12243,7 @@ export default function App() {
       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} tasks={tasks} snags={snags} inspections={inspections} photos={photos} reports={reports} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
-      case "reports":        return <DailyReports {...pp} subcontractors={subs} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} onReload={reloadDpr} />;
+      case "reports":        return <DailyReports subcontractors={subs} {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} onUpdate={updPh} onDelete={delPh} />;
