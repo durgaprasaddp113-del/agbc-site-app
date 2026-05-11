@@ -680,7 +680,7 @@ function useProjectProgress() {
 
   const add = async (f) => {
     const { error } = await supabase.from("project_progress_items").insert([{
-      project_id: f.pid, activity_name: f.activity,
+      project_id: f.pid, activity_name: f.activity, record_date: f.recordDate || null,
       planned_start_date: f.plannedStart || null, planned_finish_date: f.plannedEnd || null,
       actual_start_date: f.actualStart || null, actual_finish_date: f.actualEnd || null,
       progress_percentage: Math.min(100, Math.max(0, Number(f.pct) || 0)),
@@ -691,7 +691,7 @@ function useProjectProgress() {
   };
   const update = async (id, f) => {
     const { error } = await supabase.from("project_progress_items").update({
-      activity_name: f.activity,
+      activity_name: f.activity, record_date: f.recordDate || null,
       planned_start_date: f.plannedStart || null, planned_finish_date: f.plannedEnd || null,
       actual_start_date: f.actualStart || null, actual_finish_date: f.actualEnd || null,
       progress_percentage: Math.min(100, Math.max(0, Number(f.pct) || 0)),
@@ -2048,7 +2048,7 @@ const PROJ_STATUS = ["Active", "Tender", "On Hold", "Completed", "Cancelled"];
 const PROG_STATUS = ["Not Started", "In Progress", "On Hold", "Completed"];
 const ACTIVITIES = ["Excavation","Shoring","Piling","Concrete","Steel Reinforcement","Block Work","Plaster","MEP First Fix","MEP Second Fix","Waterproofing","Tiling","Painting","Doors & Windows","Lift Installation","Garbage Chute Installation","External Works","Landscaping","Testing & Commissioning","Other (Custom)"];
 const EMPTY_PROJ = { number:"",name:"",plot:"",location:"",plotArea:"",bua:"",duration:"",consultant:"",consultantContact:"",status:"Active",mapUrl:"" };
-const EMPTY_PG = { pid:"",activity:"",plannedStart:"",plannedEnd:"",actualStart:"",actualEnd:"",pct:0,status:"Not Started",remarks:"" };
+const EMPTY_PG = { pid:"",activity:"",recordDate:"",plannedStart:"",plannedEnd:"",actualStart:"",actualEnd:"",pct:0,status:"Not Started",remarks:"" };
 
 // Progress bar component
 const PctBar = ({ pct, showLabel = true, height = "h-2.5" }) => {
@@ -2123,7 +2123,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
 
   // Progress CRUD
   const openAddPg = () => { setSelPg(null); setPgForm({...EMPTY_PG,pid:sel.id}); setProgTab("form"); };
-  const openEditPg = pg => { setSelPg(pg); setPgForm({pid:pg.pid,activity:pg.activity,plannedStart:pg.plannedStart,plannedEnd:pg.plannedEnd,actualStart:pg.actualStart,actualEnd:pg.actualEnd,pct:pg.pct,status:pg.status,remarks:pg.remarks}); setProgTab("form"); };
+  const openEditPg = pg => { setSelPg(pg); setPgForm({pid:pg.pid,activity:pg.activity,recordDate:pg.recordDate||'',plannedStart:pg.plannedStart,plannedEnd:pg.plannedEnd,actualStart:pg.actualStart,actualEnd:pg.actualEnd,pct:pg.pct,status:pg.status,remarks:pg.remarks}); setProgTab("form"); };
 
   const handleSavePg = async () => {
     if (!pgForm.activity) { showToast("Activity name required","error"); return; }
@@ -2268,6 +2268,10 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
             <div className="p-5 border-b border-slate-100 bg-amber-50/40">
               <h4 className="font-semibold text-slate-800 mb-4">{selPg?"Edit Activity":"Add New Activity"}</h4>
               <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Lbl t="Record / Entry Date"/><Inp type="date" value={pgForm.recordDate||""} onChange={e=>setPgForm(p=>({...p,recordDate:e.target.value}))}/></div>
+                  <div></div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><Lbl t="Activity Name" req/>
                     <Sel value={pgForm.activity.startsWith("Other:")||(!ACTIVITIES.includes(pgForm.activity)&&pgForm.activity)?"Other (Custom)":pgForm.activity} onChange={pg=>{const v=pg.target.value;if(v==="Other (Custom)"){setPgForm(p=>({...p,activity:"Other: "}))}else{setPgForm(p=>({...p,activity:v}))}}}>
@@ -2430,7 +2434,7 @@ const TASK_STATUS = ["Open", "In Progress", "On Hold", "Completed", "Closed"];
 const TRADES = ["Civil / Structural", "Civil / Masonry", "Civil / Waterproofing", "MEP / HVAC", "MEP / Electrical", "MEP / Plumbing", "Finishing", "Aluminum / Glazing", "Aluminum / Cladding", "Safety", "Other"];
 const EMPTY_TASK = { pid: "", title: "", desc: "", location: "", trade: "", assignee: "", subName: "", priority: "Medium", status: "Open", due: "" };
 
-const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
+const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, onNavigate }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_TASK);
@@ -2556,7 +2560,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
               {filtered.map(t => (
                 <tr key={t.id} className="hover:bg-amber-50 transition-colors">
                   <td className="px-4 py-3"><div className="font-medium text-slate-800 max-w-[160px] truncate">{t.title}</div><div className="text-xs text-slate-400">{t.location}</div></td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{projects.find(p => p.id === t.pid)?.number || "—"}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-amber-700 cursor-pointer hover:underline" onClick={()=>onNavigate&&onNavigate("projects",{projectId:t.pid})}>{projects.find(p => p.id === t.pid)?.number || "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-700">{t.assignee || "—"}</td>
                   <td className="px-4 py-3"><Badge text={t.priority} cls={PC[t.priority]} /></td>
                   <td className="px-4 py-3 text-xs"><span className={isOverdue(t.due, t.status) ? "text-red-600 font-bold" : "text-slate-600"}>{fmtDate(t.due)}</span></td>
@@ -2579,7 +2583,7 @@ const SNAG_STATUS = ["Open", "Under Rectification", "Ready for Review", "Closed"
 const SNAG_CATS = ["Architectural", "Structural", "MEP", "Finishing", "Civil", "Aluminum", "Safety", "Other"];
 const EMPTY_SNAG = { pid: "", title: "", desc: "", location: "", category: "", sub: "", engineer: "", due: "", status: "Open", remarks: "", consultant: "", beforeUrl: "", afterUrl: "", beforeFile: null, afterFile: null };
 
-const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
+const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, onNavigate }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_SNAG);
@@ -2772,7 +2776,7 @@ const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast,
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <span className="text-xs font-mono font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">{s.num}</span>
                     {s.category && <Badge text={s.category} cls="bg-slate-100 text-slate-600 border-slate-200" />}
-                    <span className="text-xs text-slate-400">{projects.find(p => p.id === s.pid)?.number || ""}</span>
+                    <span className="text-xs font-bold text-amber-700 cursor-pointer hover:underline" onClick={()=>onNavigate&&onNavigate("projects",{projectId:s.pid})}>{projects.find(p => p.id === s.pid)?.number || ""}</span>
                   </div>
                   <h3 className="font-semibold text-slate-800 mb-2 leading-tight">{s.title}</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-xs text-slate-600">
@@ -2853,7 +2857,7 @@ const DynTable = ({ heads, rows, renderRow }) => (
   </div>
 );
 
-const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [], mpMasters = [], loadAttendance, saveAttendance }) => {
+const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, onNavigate, subcontractors = [], mpMasters = [], loadAttendance, saveAttendance }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_DR());
@@ -3006,6 +3010,8 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
         {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
         <div className="flex flex-wrap gap-3">
+          <button onClick={()=>exportDailyReportPDF(sel, projects.find(p=>p.id===sel.pid)?.name)} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">📄 Export PDF</button>
+          <button onClick={()=>{const proj=projects.find(p=>p.id===sel.pid);const mp=(sel.manpower||[]);const data=[{Report_No:sel.reportNum,Date:sel.date,Project:proj?.number||"",Project_Name:proj?.name||"",Prepared_By:sel.preparedBy,Weather:sel.weather,Temperature:sel.temp+"°C",Work_Hours:sel.workHours,Total_Manpower:mp.reduce((s,r)=>s+(Number(r.count)||0),0),Issues:sel.issues,Remarks:sel.remarks,Status:sel.status}];exportToExcel(data,[{header:"Report No",key:"Report_No",width:14},{header:"Date",key:"Date",width:14},{header:"Project",key:"Project",width:12},{header:"Project Name",key:"Project_Name",width:30},{header:"Prepared By",key:"Prepared_By",width:20},{header:"Weather",key:"Weather",width:12},{header:"Temp",key:"Temperature",width:10},{header:"Work Hours",key:"Work_Hours",width:12},{header:"Manpower",key:"Total_Manpower",width:12},{header:"Issues",key:"Issues",width:30},{header:"Remarks",key:"Remarks",width:30},{header:"Status",key:"Status",width:12}],"DPR_"+sel.reportNum);}} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">📊 Export Excel</button>
           <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
           {sel.status==="Draft"&&<button onClick={async()=>{setSaving(true);const r=await onUpdate(sel.id,{...sel,status:"Submitted"});setSaving(false);if(r.ok){setSel(p=>({...p,status:"Submitted"}));showToast("Report submitted!");}}} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">Submit Final</button>}
           <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
@@ -3226,7 +3232,7 @@ const IR_STATUS = ["Draft", "Submitted", "Approved", "Rejected", "Resubmitted"];
 const IR_TYPES = ["WIR", "MIR", "IR", "MSIR"];
 const EMPTY_IR = { pid: "", type: "WIR", desc: "", location: "", trade: "", submitted: "", inspection: "", status: "Draft", remarks: "", submittedBy: "" };
 
-const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
+const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, onNavigate }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_IR);
@@ -3348,7 +3354,7 @@ const Inspections = ({ projects, inspections, loading, onAdd, onUpdate, onDelete
                   <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{i.num}</td>
                   <td className="px-4 py-3"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${TC[i.type] || "bg-slate-100 text-slate-600"}`}>{i.type}</span></td>
                   <td className="px-4 py-3 text-xs text-slate-700 max-w-[200px] truncate">{i.desc}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p => p.id === i.pid)?.number || "—"}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-amber-700 cursor-pointer hover:underline" onClick={()=>onNavigate&&onNavigate("projects",{projectId:i.pid})}>{projects.find(p => p.id === i.pid)?.number || "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(i.submitted)}</td>
                   <td className="px-4 py-3"><Badge text={i.status} /></td>
                   <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={() => openView(i)} label="View" color="view" /><ActBtn onClick={() => openEdit(i)} label="Edit" color="edit" /><ActBtn onClick={() => setConfirmId(i.id)} label="Del" color="del" /></div></td>
@@ -3875,7 +3881,7 @@ const DrawingViewer = ({ drawing, project, onClose, showToast }) => {
 };
 
 
-const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, showToast }) => {
+const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, showToast, onNavigate }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [viewerDrawing, setViewerDrawing] = useState(null);
@@ -4017,7 +4023,7 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
                   <td className="px-4 py-3 text-sm font-medium text-slate-800 max-w-[180px] truncate">{d.title}</td>
                   <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${DC[d.discipline] || "bg-slate-100 text-slate-600"}`}>{d.discipline || "—"}</span></td>
                   <td className="px-4 py-3"><span className="font-mono text-xs font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">Rev {d.rev}</span></td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{projects.find(p => p.id === d.pid)?.number || "—"}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-amber-700 cursor-pointer hover:underline" onClick={()=>onNavigate&&onNavigate("projects",{projectId:d.pid})}>{projects.find(p => p.id === d.pid)?.number || "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-600">{fmtDate(d.received)}</td>
                   <td className="px-4 py-3">{d.fileUrl ? <a href={d.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 font-semibold hover:underline flex items-center gap-1"><Icon name="eye" cls="w-3.5 h-3.5" />View</a> : <span className="text-xs text-slate-300">No file</span>}</td>
                   <td className="px-4 py-3"><div className="flex gap-1.5"><ActBtn onClick={() => openView(d)} label="View" color="view" />
@@ -5421,7 +5427,7 @@ const EMPTY_MR = () => ({ pid:"", requestedBy:"", dept:"Civil", date: new Date()
 // ─────────────────────────────────────────────────────────────────────────────
 // MATERIAL REQUEST MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo, navFilter = {}, lpos = [] }) => {
+const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo, navFilter = {}, lpos = [], onNavigate }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_MR());
@@ -5632,7 +5638,7 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
                 return (
                   <tr key={m.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{m.mrNum}</td>
-                    <td className="px-4 py-3"><div className="text-xs font-bold text-slate-800">{proj?.number||"—"}</div><div className="text-xs text-slate-400 max-w-[120px] truncate">{proj?.name}</div></td>
+                    <td className="px-4 py-3"><div className="text-xs font-bold text-amber-700 cursor-pointer hover:underline" onClick={()=>onNavigate&&onNavigate("projects",{projectId:m.pid})}>{proj?.number||"—"}</div><div className="text-xs text-slate-400 max-w-[120px] truncate">{proj?.name}</div></td>
                     <td className="px-4 py-3 text-xs"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">{m.dept}</span></td>
                     <td className="px-4 py-3 text-xs text-slate-700">{m.requestedBy||"—"}</td>
                     <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(m.date)}</td>
@@ -5676,7 +5682,7 @@ const EMPTY_LPO = (mrObj) => ({
 // ─────────────────────────────────────────────────────────────────────────────
 // LPO MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill, navFilter = {} }) => {
+const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill, navFilter = {}, onNavigate }) => {
   const [mode, setMode] = useState(prefillMr ? "form" : "list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(() => EMPTY_LPO(prefillMr));
@@ -5976,7 +5982,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
                 return (
                   <tr key={l.id} className="hover:bg-blue-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{l.lpoNum}</td>
-                    <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"—"}</td>
+                    <td className="px-4 py-3 text-xs font-bold text-amber-700 cursor-pointer hover:underline" onClick={()=>onNavigate&&onNavigate("projects",{projectId:l.pid})}>{proj?.number||"—"}</td>
                     <td className="px-4 py-3"><div className="font-medium text-slate-800 max-w-[140px] truncate">{l.supplierName}</div><div className="text-xs text-slate-400 truncate">TRN: {l.supplierTrn||"—"}</div></td>
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{l.mrNum||"—"}</td>
                     <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(l.date)}</td>
@@ -11056,7 +11062,7 @@ const isExpired = (expiryDate, status) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // NOC MODULE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToast, navFilter = {} }) => {
+const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToast, navFilter = {}, onNavigate }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(EMPTY_NOC());
@@ -11798,7 +11804,7 @@ export default function App() {
 
   if (!user) return <Login onLogin={() => {}} />;
 
-  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter };
+  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter, onNavigate: navigate };
 
   const renderPage = () => {
     switch (page) {
