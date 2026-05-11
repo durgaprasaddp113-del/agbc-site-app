@@ -685,7 +685,7 @@ function useProjectProgress() {
   const add = async (f) => {
     const { error } = await supabase.from("project_progress_items").insert([{
       project_id: f.pid,
-      activity_name: f.unit==="Other (Custom)"&&f.customActivity ? f.customActivity : f.activity,
+      activity_name: f.activity==="Other (Custom)"&&f.customActivity ? f.customActivity : f.activity,
       custom_activity: f.customActivity || null,
       unit: f.unit || "NOS",
       actual_qty: f.unit==="Lumpsum" ? null : (Number(f.actualQty)||0),
@@ -702,7 +702,7 @@ function useProjectProgress() {
   };
   const update = async (id, f) => {
     const { error } = await supabase.from("project_progress_items").update({
-      activity_name: f.unit==="Other (Custom)"&&f.customActivity ? f.customActivity : f.activity,
+      activity_name: f.activity==="Other (Custom)"&&f.customActivity ? f.customActivity : f.activity,
       custom_activity: f.customActivity || null,
       unit: f.unit || "NOS",
       actual_qty: f.unit==="Lumpsum" ? null : (Number(f.actualQty)||0),
@@ -2093,6 +2093,14 @@ const PROG_STATUS_COLOR = {
 // ─────────────────────────────────────────────────────────────────────────────
 // PROGRESS DASHBOARD COMPONENT — Charts + Summary Table
 // ─────────────────────────────────────────────────────────────────────────────
+// Helper: returns display name for an activity item
+const getActivityLabel = (item) => {
+  if (!item) return "";
+  if (item.activity === "Other (Custom)" && item.customActivity) return item.customActivity;
+  if (item.customActivity && item.activity === item.customActivity) return item.customActivity;
+  return item.activity || item.customActivity || "";
+};
+
 const ProgressDashboard = ({ items, projectName, overallPct }) => {
   if (!items || items.length === 0) return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-400 text-sm">
@@ -2107,8 +2115,9 @@ const ProgressDashboard = ({ items, projectName, overallPct }) => {
     const done     = isLump ? (Number(i.pct)||0) : (Number(i.workDoneQty)||0);
     const balance  = Math.max(0, actual - done);
     const pct      = isLump ? (Number(i.pct)||0) : (actual > 0 ? Math.min(100,Math.round((done/actual)*100)) : (Number(i.pct)||0));
-    const shortName = (i.activity||"").length > 11 ? (i.activity||"").slice(0,11)+"…" : (i.activity||"");
-    return { name: shortName, fullName: i.activity||"", actual, done, balance, pct, remaining: 100-pct, unit: i.unit||"NOS", status: i.status, isLump };
+    const label = getActivityLabel(i);
+    const shortName = label.length > 11 ? label.slice(0,11)+"…" : label;
+    return { name: shortName, fullName: label, actual, done, balance, pct, remaining: 100-pct, unit: i.unit||"NOS", status: i.status, isLump };
   }).filter(d => d.actual > 0 || d.pct > 0);
 
   if (chartData.length === 0) return (
@@ -2329,7 +2338,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
 
   // Progress CRUD
   const openAddPg = () => { setSelPg(null); setPgForm({...EMPTY_PG,pid:sel.id}); setProgTab("form"); };
-  const openEditPg = pg => { setSelPg(pg); setPgForm({pid:pg.pid,activity:pg.activity,customActivity:pg.customActivity||'',unit:pg.unit||'NOS',actualQty:String(pg.actualQty||''),workDoneQty:String(pg.workDoneQty||''),balanceQty:String(pg.balanceQty||''),recordDate:pg.recordDate||'',plannedStart:pg.plannedStart,plannedEnd:pg.plannedEnd,actualStart:pg.actualStart,actualEnd:pg.actualEnd,pct:pg.pct,status:pg.status,remarks:pg.remarks}); setProgTab("form"); };
+  const openEditPg = pg => { setSelPg(pg); const _isCustom=pg.activity&&!['Mobilization','Excavation','Shoring / Piling','Concrete Works','Steel Reinforcement','Block Work / Masonry','Waterproofing','Plaster Work','Electrical Work','Plumbing Work','HVAC Work','Fire Fighting','Tiles','False Ceiling','Painting','Joinery / Carpentry','Doors & Windows','Aluminum & Glazing','External Works','Landscaping','Lift Installation','Testing & Commissioning','Other (Custom)'].includes(pg.activity); setPgForm({pid:pg.pid,activity:_isCustom?'Other (Custom)':pg.activity,customActivity:_isCustom?pg.activity:(pg.customActivity||''),unit:pg.unit||'NOS',actualQty:String(pg.actualQty||''),workDoneQty:String(pg.workDoneQty||''),balanceQty:String(pg.balanceQty||''),recordDate:pg.recordDate||'',plannedStart:pg.plannedStart,plannedEnd:pg.plannedEnd,actualStart:pg.actualStart,actualEnd:pg.actualEnd,pct:pg.pct,status:pg.status,remarks:pg.remarks}); setProgTab("form"); };
 
   const handleSavePg = async () => {
     if (!pgForm.activity) { showToast("Activity name required","error"); return; }
