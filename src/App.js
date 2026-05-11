@@ -675,7 +675,7 @@ function useProjectProgress() {
       recordDate: p.record_date || "",
       plannedStart: p.planned_start_date || "", plannedEnd: p.planned_finish_date || "",
       actualStart: p.actual_start_date || "", actualEnd: p.actual_finish_date || "",
-      pct: Number(p.progress_percentage) || 0, status: p.status || "Not Started",
+      pct: (()=>{ const u=p.unit||"NOS"; const a=Number(p.actual_qty)||0; const d=Number(p.work_done_qty)||0; return (u!=="Lumpsum"&&a>0) ? Math.min(100,Math.round((d/a)*100)) : Number(p.progress_percentage)||0; })(), status: p.status || "Not Started",
       remarks: p.remarks || "",
     })));
     setLoading(false);
