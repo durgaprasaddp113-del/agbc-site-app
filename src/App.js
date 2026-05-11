@@ -12045,6 +12045,26 @@ export default function App() {
   const { drawings, loading: dlLoad, add: addD, update: updD, remove: delD } = useDrawings();
   const { subs, loading: sbLoad, add: addSub, update: updSub, remove: delSub } = useSubcontractors();
   const { progressItems, add: addPg, update: updPg, remove: delPg } = useProjectProgress();
+
+  // App-level overall progress calculator — used by Dashboard + Projects card
+  const getOverallPct = (pid) => {
+    const items = progressItems.filter(p => p.pid === pid);
+    if (!items.length) return 0;
+    const withQty = items.filter(i => i.unit !== "Lumpsum" && (Number(i.actualQty)||0) > 0);
+    if (withQty.length > 0) {
+      const totalActual = withQty.reduce((s,i) => s + (Number(i.actualQty)||0), 0);
+      const totalDone   = withQty.reduce((s,i) => s + (Number(i.workDoneQty)||0), 0);
+      const qtyPct      = totalActual > 0 ? Math.round((totalDone / totalActual) * 100) : 0;
+      const lumpItems   = items.filter(i => i.unit === "Lumpsum" || (Number(i.actualQty)||0) === 0);
+      const lumpAvg     = lumpItems.length > 0 ? lumpItems.reduce((s,i) => s + (Number(i.pct)||0), 0) / lumpItems.length : null;
+      if (lumpAvg !== null) return Math.round((qtyPct + lumpAvg) / 2);
+      return Math.min(100, qtyPct);
+    }
+    return Math.round(items.reduce((a,i) => a + (Number(i.pct)||0), 0) / items.length);
+  };
+
+  // Enrich projects array with live overallPct — auto-updates when progressItems changes
+  const projectsWithPct = projects.map(p => ({ ...p, overallPct: getOverallPct(p.id) }));
   const { photos, loading: phLoad, add: addPh, update: updPh, remove: delPh } = usePhotos();
   const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
   const { mrs, loading: mrLoad, add: addMr, update: updMr, remove: delMr, updateStatus: updMrStatus } = useMatReqs();
@@ -12085,12 +12105,12 @@ export default function App() {
 
   if (!user) return <Login onLogin={() => {}} />;
 
-  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter, onNavigate: navigate };
+  const pp = { projects: projectsWithPct, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter, onNavigate: navigate };
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs} onNavigate={navigate}/>;
-      case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
+      case "dashboard":      return <Dashboard projects={projectsWithPct} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs} onNavigate={navigate}/>;
+      case "projects":       return <Projects {...pp} projects={projectsWithPct} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} />;
       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
       case "reports":        return <DailyReports subcontractors={subs} mpMasters={mpMasters} loadAttendance={loadAttendance} saveAttendance={saveAttendance} {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
