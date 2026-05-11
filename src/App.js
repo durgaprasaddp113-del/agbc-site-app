@@ -3010,7 +3010,21 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
         {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
         <div className="flex flex-wrap gap-3">
-          <button onClick={()=>exportDailyReportPDF(sel, projects.find(p=>p.id===sel.pid)?.name)} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">📄 Export PDF</button>
+          <button onClick={()=>{
+            const proj=projects.find(p=>p.id===sel.pid);
+            const toStr=(arr,fn)=>Array.isArray(arr)?arr.filter(Boolean).map(fn).join("\n"):(arr||"");
+            const rpt={
+              ...sel,
+              activities: toStr(sel.activities, a=>`${a.location||""}: ${a.activity||""} (${a.trade||""}) ${a.progress||""}%`),
+              materials:  toStr(sel.materials,  m=>`${m.material||""} — ${m.qty||0} ${m.unit||""} | ${m.supplier||""} | DN: ${m.dn||""}`),
+              safety:     toStr(sel.safety,     s=>`[${s.severity||""}] ${s.obs||""} → ${s.action||""}`),
+              completed:  toStr(sel.equipment,  e=>`${e.name||""} (${e.status||""}) — Op: ${e.operator||""}`),
+              issues:     sel.issues||"",
+              visitors:   sel.visitors||"",
+              remarks:    sel.remarks||"",
+            };
+            exportDailyReportPDF(rpt, proj?.name||"");
+          }} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">📄 Export PDF</button>
           <button onClick={()=>{const proj=projects.find(p=>p.id===sel.pid);const mp=(sel.manpower||[]);const data=[{Report_No:sel.reportNum,Date:sel.date,Project:proj?.number||"",Project_Name:proj?.name||"",Prepared_By:sel.preparedBy,Weather:sel.weather,Temperature:sel.temp+"°C",Work_Hours:sel.workHours,Total_Manpower:mp.reduce((s,r)=>s+(Number(r.count)||0),0),Issues:sel.issues,Remarks:sel.remarks,Status:sel.status}];exportToExcel(data,[{header:"Report No",key:"Report_No",width:14},{header:"Date",key:"Date",width:14},{header:"Project",key:"Project",width:12},{header:"Project Name",key:"Project_Name",width:30},{header:"Prepared By",key:"Prepared_By",width:20},{header:"Weather",key:"Weather",width:12},{header:"Temp",key:"Temperature",width:10},{header:"Work Hours",key:"Work_Hours",width:12},{header:"Manpower",key:"Total_Manpower",width:12},{header:"Issues",key:"Issues",width:30},{header:"Remarks",key:"Remarks",width:30},{header:"Status",key:"Status",width:12}],"DPR_"+sel.reportNum);}} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">📊 Export Excel</button>
           <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
           {sel.status==="Draft"&&<button onClick={async()=>{setSaving(true);const r=await onUpdate(sel.id,{...sel,status:"Submitted"});setSaving(false);if(r.ok){setSel(p=>({...p,status:"Submitted"}));showToast("Report submitted!");}}} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">Submit Final</button>}
