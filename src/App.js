@@ -669,7 +669,10 @@ function useProjectProgress() {
     const { data, error } = await supabase.from("project_progress_items").select("*").order("created_at");
     if (error) { console.error("Progress:", error.message); setLoading(false); return; }
     if (data) setProgressItems(data.map(p => ({
-      id: p.id, pid: p.project_id, activity: p.activity_name || "",
+      id: p.id, pid: p.project_id, activity: p.activity_name || "", customActivity: p.custom_activity || "",
+      unit: p.unit || "NOS",
+      actualQty: Number(p.actual_qty)||0, workDoneQty: Number(p.work_done_qty)||0, balanceQty: Number(p.balance_qty)||0,
+      recordDate: p.record_date || "",
       plannedStart: p.planned_start_date || "", plannedEnd: p.planned_finish_date || "",
       actualStart: p.actual_start_date || "", actualEnd: p.actual_finish_date || "",
       pct: Number(p.progress_percentage) || 0, status: p.status || "Not Started",
