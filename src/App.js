@@ -538,11 +538,14 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       let pcol=0,prow=0;
       const _WRKR=(process.env.REACT_APP_R2_WORKER_URL||"").replace(/\/$/,"");
 
-      // Get image as base64 data URL via Worker proxy
+      // Get image as base64 data URL
+      // Supabase Storage URLs: fetch directly (CORS supported)
+      // R2 URLs: use Worker proxy
       const toB64=async(url)=>{
         try{
+          const isSupabase=url.includes("supabase.co/storage");
           const _fn=url.split("/").pop().split("?")[0];
-          const proxyUrl=_WRKR?`${_WRKR}/file/${encodeURIComponent(_fn)}`:url;
+          const proxyUrl=isSupabase?url:(_WRKR?`${_WRKR}/file/${encodeURIComponent(_fn)}`:url);
           const resp=await fetch(proxyUrl,{mode:"cors"});
           if(!resp.ok) throw new Error("HTTP "+resp.status);
           const blob=await resp.blob();
