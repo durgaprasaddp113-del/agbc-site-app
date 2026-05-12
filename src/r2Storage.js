@@ -12,22 +12,22 @@ export const validateImageFile = (file, maxMB = 5) => {
   return { ok: true, error: null };
 };
 
-// Generate unique filename
-export const generateFileName = (file) => {
+// Generate unique flat filename (folder prefix + timestamp + random + ext)
+export const generateFileName = (file, folder = 'file') => {
   const ts  = Date.now();
   const rnd = Math.random().toString(36).substring(2, 8);
-  const ext = file.name.split('.').pop().toLowerCase();
-  return `${ts}-${rnd}.${ext}`;
+  const ext = file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'') || 'bin';
+  return `${folder}_${ts}_${rnd}.${ext}`;
 };
 
 // Upload any file to R2 — returns Promise<{ ok, url, error }>
-// Supports progress callback via XHR
+// Uses XHR so onProgress callback works
 export const uploadToR2 = (file, folder = 'uploads', onProgress = null) => {
   return new Promise((resolve) => {
     try {
-      const fileName = generateFileName(file);
-      const key      = `${folder}/${fileName}`;
-      const endpoint = `${WORKER_URL}/upload/${folder}/${fileName}`;
+      // Flat filename — no slashes in URL path (Worker requirement)
+      const fileName = generateFileName(file, folder);
+      const endpoint = `${WORKER_URL}/upload/${fileName}`;
 
       const xhr = new XMLHttpRequest();
 
@@ -41,17 +41,17 @@ export const uploadToR2 = (file, folder = 'uploads', onProgress = null) => {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           if (onProgress) onProgress(100);
-          resolve({ ok: true, url: `${PUBLIC_BASE}/${key}` });
+          resolve({ ok: true, url: `${PUBLIC_BASE}/${fileName}` });
         } else {
-          resolve({ ok: false, error: `Upload failed (${xhr.status}): ${xhr.statusText}` });
+          resolve({ ok: false, error: `Upload failed (${xhr.status}): ${xhr.statusText || 'Server rejected request'}` });
         }
       });
 
       xhr.addEventListener('error', () =>
-        resolve({ ok: false, error: 'Network error during upload — check R2 Worker URL.' })
+        resolve({ ok: false, error: 'Network error — check R2 Worker URL in .env' })
       );
       xhr.addEventListener('abort', () =>
-        resolve({ ok: false, error: 'Upload was cancelled.' })
+        resolve({ ok: false, error: 'Upload cancelled.' })
       );
 
       xhr.open('PUT', endpoint);
@@ -65,13 +65,13 @@ export const uploadToR2 = (file, folder = 'uploads', onProgress = null) => {
   });
 };
 
-// Delete file from R2 by full URL or key
+// Delete file from R2
 export const deleteFromR2 = async (fileUrlOrKey) => {
   try {
-    const key = fileUrlOrKey.startsWith('http')
-      ? fileUrlOrKey.replace(PUBLIC_BASE + '/', '')
+    const fileName = fileUrlOrKey.includes('/')
+      ? fileUrlOrKey.split('/').pop()
       : fileUrlOrKey;
-    const res = await fetch(`${WORKER_URL}/delete/${encodeURIComponent(key)}`, {
+    const res = await fetch(`${WORKER_URL}/delete/${fileName}`, {
       method: 'DELETE',
       headers: { 'X-Auth-Token': AUTH_TOKEN },
     });
