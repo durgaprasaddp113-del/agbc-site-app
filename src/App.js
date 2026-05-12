@@ -359,7 +359,8 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
     }
 
     // ── CHART 2: Vertical grouped bars — Actual vs Done vs Balance (qty items only) ──
-    const qtyPg=pgItems.filter(i=>i.unit!=="Lumpsum"&&(Number(i.actualQty)||0)>0);
+    // Show chart for ALL activities — qty-based or pct-based
+    const qtyPg=pgItems; // Show ALL activities in chart
     if(qtyPg.length>0){
       const CHART_H=50;
       if(y+CHART_H+26>pageH-16){ doc.addPage(); drawHeader(); y=HDR_H+8; }
@@ -370,7 +371,8 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       doc.line(MARGIN,y+5.5,MARGIN+80,y+5.5);
       y+=10;
 
-      const maxQty=Math.max(...qtyPg.map(i=>Number(i.actualQty)||0),1);
+      const hasAnyQty=qtyPg.some(i=>(Number(i.actualQty)||0)>0);
+      const maxQty=hasAnyQty?Math.max(...qtyPg.map(i=>Number(i.actualQty)||0),1):100;
       const actW=usableW/qtyPg.length;
       const barW=Math.min(Math.max((actW-6)/3,2),10);
       const chartTop=y;
@@ -392,12 +394,15 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
 
       qtyPg.forEach((pg,i)=>{
         const cx=MARGIN+i*actW+actW/2;
-        const actual=Number(pg.actualQty)||0;
-        const done  =Number(pg.workDoneQty)||0;
-        const bal   =Number(pg.balanceQty)||0;
-        const actualH=(actual/maxQty)*CHART_H;
-        const doneH  =(done/maxQty)*CHART_H;
-        const balH   =(bal/maxQty)*CHART_H;
+        const hasQty=(Number(pg.actualQty)||0)>0;
+        // Use qty if available, else use pct-based (100 = full bar)
+        const actual=hasQty?Number(pg.actualQty):100;
+        const done  =hasQty?Number(pg.workDoneQty):(Number(pg.pct)||0);
+        const bal   =hasQty?Number(pg.balanceQty):(100-(Number(pg.pct)||0));
+        const _max  =hasQty?maxQty:100;
+        const actualH=(actual/_max)*CHART_H;
+        const doneH  =(done/_max)*CHART_H;
+        const balH   =(bal/_max)*CHART_H;
 
         // Actual (blue)
         if(actualH>0){ doc.setFillColor(59,130,246); doc.rect(cx-barW*1.6,chartTop+CHART_H-actualH,barW,actualH,"F"); }
@@ -408,9 +413,12 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
 
         // Value labels above bars
         doc.setFontSize(4.5); doc.setFont("helvetica","bold");
-        if(actualH>5){ doc.setTextColor(59,130,246);  doc.text(String(actual),cx-barW*1.6+barW/2,chartTop+CHART_H-actualH-1,{align:"center"}); }
-        if(doneH>5){   doc.setTextColor(16,185,129);  doc.text(String(done),  cx-barW*0.5+barW/2,chartTop+CHART_H-doneH-1,{align:"center"}); }
-        if(balH>5){    doc.setTextColor(239,68,68);   doc.text(String(bal),   cx+barW*0.6+barW/2,chartTop+CHART_H-balH-1, {align:"center"}); }
+        const aLbl=hasQty?String(actual):actual+"%";
+        const dLbl=hasQty?String(done):done+"%";
+        const bLbl=hasQty?String(bal):bal+"%";
+        if(actualH>5){ doc.setTextColor(59,130,246); doc.text(aLbl,cx-barW*1.6+barW/2,chartTop+CHART_H-actualH-1,{align:"center"}); }
+        if(doneH>5){   doc.setTextColor(16,185,129); doc.text(dLbl,cx-barW*0.5+barW/2,chartTop+CHART_H-doneH-1,{align:"center"}); }
+        if(balH>5){    doc.setTextColor(239,68,68);  doc.text(bLbl,cx+barW*0.6+barW/2,chartTop+CHART_H-balH-1,{align:"center"}); }
 
         // Activity name + unit below axis
         const lbl=(pg.activity==="Other (Custom)"&&pg.customActivity)?pg.customActivity:(pg.activity||"—");
@@ -418,7 +426,7 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
         doc.setFontSize(5); doc.setFont("helvetica","normal"); doc.setTextColor(100,116,139);
         doc.text(shortLbl,cx,chartTop+CHART_H+5,{align:"center"});
         doc.setFontSize(4.5); doc.setTextColor(180,180,180);
-        doc.text(pg.unit||"",cx,chartTop+CHART_H+9.5,{align:"center"});
+        doc.text(pg.unit||"NOS",cx,chartTop+CHART_H+9.5,{align:"center"});
       });
 
       // Legend
@@ -528,21 +536,31 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       py+=12;
       const IMG_W=(usableW-6)/2, IMG_H=52;
       let pcol=0,prow=0;
-      // Proxy through Worker to bypass R2 CORS restriction
       const _WRKR=process.env.REACT_APP_R2_WORKER_URL||"";
-      const toB64=(url)=>{
-        // Extract filename from R2 public URL and fetch via Worker
+      const toB64=async(url)=>{
+        // Try 1: direct R2 URL with CORS mode
+        // Try 2: worker proxy /file/ route
+        // Try 3: return null (show placeholder)
         const _fn=url.split("/").pop().split("?")[0];
-        const _proxy=_WRKR?`${_WRKR}/file/${_fn}`:url;
-        return fetch(_proxy)
-          .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();})
-          .then(b=>new Promise((res,rej)=>{
-            const rd=new FileReader();
-            rd.onload=()=>res(rd.result);
-            rd.onerror=rej;
-            rd.readAsDataURL(b);
-          }))
-          .catch(()=>null);
+        const urls=[
+          url,                                          // direct R2 CDN
+          _WRKR?`${_WRKR}/file/${_fn}`:null,           // worker proxy
+        ].filter(Boolean);
+        for(const fetchUrl of urls){
+          try{
+            const r=await fetch(fetchUrl,{mode:"cors",cache:"no-cache"});
+            if(r.ok){
+              const b=await r.blob();
+              return await new Promise((res,rej)=>{
+                const rd=new FileReader();
+                rd.onload=()=>res(rd.result);
+                rd.onerror=rej;
+                rd.readAsDataURL(b);
+              });
+            }
+          }catch(e){ continue; }
+        }
+        return null;
       };
       for(const ph of projPhotos.slice(0,12)){
         const checkY=py+prow*(IMG_H+18);
