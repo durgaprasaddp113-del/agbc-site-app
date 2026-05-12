@@ -1,0 +1,78 @@
+Total lines: 12567
+
+### 1. DPR LIST manpower count ###
+
+### 2. totalMP calculation ###
+L3602:     const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+L3612:       manpowerTotal: totalMP,
+L3651:     const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+L3677:           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><div className="text-2xl font-bl
+
+### 3. saveAttendance function ###
+=== saveAttendance ===
+11965	  const saveAttendance = async (dprId, rows) => {
+11966	    if (!dprId) return { ok: false, error: "No DPR ID" };
+11967	    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
+11968	    const valid = rows.filter(r => r.name && r.name.trim());
+11969	    if (!valid.length) return { ok: true };
+11970	    const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
+11971	      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null, employee_id: r.empId || "", emp_name: r.name || "", designation: r.designation || "",
+11972	      am_count: r.am==="P"?1:0, pm_count: r.pm==="P"?1:0,
+11973	      ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
+11974	      team_no: r.teamNo || "", daily_remarks: r.remarks || "",
+11975	    })));
+11976	    if (error) return { ok: false, error: error.message };
+11977	    return { ok: true };
+11978	  };
+11979	
+11980	  return { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus, loadAttendance, saveAttendance };
+11981	}
+11982	
+11983	
+11984	  const updateMaster = async (id, f) => {
+
+### 4. DprAttendancePanel toolbar buttons ###
+L3269:   const [loading, setLoading] = useState(false);
+L3273:   // Load saved attendance when opening existing DPR
+L3276:     setLoading(true);
+L3279:       setLoading(false);
+L3296:   // ?? Load from Manpower Master ?????????????????????????????????????
+L3297:   const loadFromMaster = () => {
+L3314:   // ?? Copy from Last DPR ????????????????????????????????????????????
+L3322:     setLoading(true);
+L3324:     setLoading(false);
+L3326:     // Copy employees, reset daily values
+L3338:   // ?? Save Attendance ???????????????????????????????????????????????
+L3339:   const handleSave = async () => {
+L3340:     if (!dprId) { showToast("Save the DPR first, then save attendance","error"); return; }
+L3344:     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+
+### 5. DPR VIEW action buttons ###
+=== view buttons ===
+3710	        {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
+3711	        <div className="flex flex-wrap gap-3">
+3712	          <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
+3713	          {sel.status==="Draft"&&<button onClick={async()=>{setSaving(true);const r=await onUpdate(sel.id,{...sel,status:"Submitted"});setSaving(false);if(r.ok){setSel(p=>({...p,status:"Submitted"}));showToast("Report submitted!");}}} className="bg-green-600 hover:bg-green-700 text-white font-semibold text-sm px-4 py-2 rounded-lg">Submit Final</button>}
+3714	          <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+
+### 6. useDailyReports add fn ###
+L861:         manpowerTotal: r.manpower_total || 0,
+L888:       manpower_total: f.manpowerTotal || 0,
+L908:       manpower_total: f.manpowerTotal || 0,
+
+### 7. handlePrintDPR exists? ###
+NOT FOUND
+
+### 8. DprAttendanceViewPanel in view ###
+L3172: const DprAttendanceViewPanel = ({ dprId, loadAttendance, subcontractors = [] }) => {
+L3265: // ?? End DprAttendanceViewPanel ????????????????????????????????????????
+L3707:             <DprAttendanceViewPanel dprId={sel.id} loadAttendance={loadAttendance} subcontractors={subcontractors}/>
+
+### 9. form manpowerTotal ###
+L3602:     const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+L3612:       manpowerTotal: totalMP,
+L3651:     const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+L3677:           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><div className="text-2xl font-bl
+
+=== DONE ===
+Press Enter...

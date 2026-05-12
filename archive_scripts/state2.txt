@@ -1,0 +1,24 @@
+1. printData/printRptId states:
+L3582:   const [printData, setPrintData] = useState(null);
+L3583:   const [printRptId, setPrintRptId] = useState(null);
+
+2. useEffect with printRptId:
+
+3. handlePrintDPR (first 6 lines):
+L4035:       const handlePrintDPR = (rpt) => {
+L4036:         const proj = projects.find(p => p.id === rpt.pid);
+L4037:         setPrintData({ rpt, proj, att: [] }); setPrintRptId(String(rpt.id||'')+'_'+Date.now());
+L4038:         setPrintRptId(String(rpt.id||'')+'_'+Date.now());
+L4039:       };
+L4040: 
+
+4. Manpower tab label (search for 'Manpower' near 'label'):
+L3671:     {id:"manpower",label:`? Manpower (${(attRowsRef.current||[]).length}).length})`},
+
+5. DprAttendancePanel usage (show/hide):
+L3909:       <div style={{display:activeSection==="manpower"?"block":"none"}}><DprAttendancePanel
+
+6. Print modal in view:
+L3802:                       <button onClick={()=>{setPrintData(null);setPrintRptId(null);}} style={{padding:'7px 14px',backgro
+
+Press Enter...

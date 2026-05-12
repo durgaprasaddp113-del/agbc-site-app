@@ -1,0 +1,61 @@
+### MR DROPDOWN (full) ###
+=== MR dropdown ===
+5922	        </div>
+5923	        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
+5924	        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} ? {p.name}</option>)}</Sel>
+5925	      </div>
+5926	      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
+5927	        {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
+
+### LPO DROPDOWN (full) ###
+=== LPO Sel found ===
+6271	        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} ? {p.name}</option>)}</Sel>
+6272	      </div>
+6273	      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">{["All",...LPO_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?lpos.length:lpos.filter(l=>l.status===s).length})</button>)}</div>
+6274	      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No LPOs found" onCreate={openCreate}/>:(
+6275	        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+6276	          <table className="w-full text-sm min-w-[900px]">
+6277	            <thead className="bg-slate-50 border-b border-slate-200">
+6278	              <tr>{["LPO No.","Project","Supplier","MR No.","Date","Del. Date","Status","Delivery","Total","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
+
+### NOC DROPDOWN (full) ###
+=== NOC Sel found ===
+11397	          <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
+11398	            <option value="all">All Projects</option>
+11399	            {(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} ? {p.name}</option>)}
+11400	          </Sel>
+11401	          <Sel value={fAuth} onChange={e=>setFAuth(e.target.value)} className="w-auto">
+11402	            <option value="All">All Authorities</option>
+11403	            {NOC_AUTHORITIES.map(a=><option key={a}>{a}</option>)}
+11404	          </Sel>
+11405	          <Sel value={fExpiry} onChange={e=>setFExpiry(e.target.value)} className="w-auto">
+11406	            <option value="All">All Dates</option>
+
+### OPTION VALUE ATTRS in MR/LPO/NOC dropdowns ###
+MR L5924:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(projects||[]).map(p=><option key={p.id} valu
+LPO L6271:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(projects||[]).map(p=><option key={p.id} valu
+NOC L11398:             <option value="all">All Projects</option>
+NOC L11399:             {(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} ? {p.name}</option>)}
+
+### HOOK PID STORAGE ###
+function useMatReqs L5490:       pid: String(r.project_id||"").toLowerCase(),
+
+function useLPOs L5588:       id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
+
+function useNOCs L10870:       pid: String(n.project_id||"").toLowerCase(),
+
+### ALL setFProject onChange calls ###
+L2852 [lc=False]:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option
+L3054 [lc=False]:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option
+L3493 [lc=False]:         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><option key
+L3640 [lc=False]:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option
+L4308 [lc=False]:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option
+L4511 [lc=False]:       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{proje
+L5024 [lc=False]:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{(projects||[]).map(p => <
+L5924 [lc=True]:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(proj
+L6271 [lc=True]:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(proj
+L10671 [lc=False]:               <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p=><opti
+L11397 [lc=True]:           <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
+
+=== DONE ===
+Press Enter...

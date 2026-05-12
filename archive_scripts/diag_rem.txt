@@ -1,0 +1,58 @@
+### 1. DPR list workers display ###
+L3683:           { title:"? Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+L3755:         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
+L3767:           Total Workers: <span className="text-blue-600">{(form.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0)}</span>
+L4011:                     <td className="px-4 py-3"><span className="text-sm font-bold text-blue-700">{mp}</span><span className="text-xs text-slate-400 ml-1">workers
+
+### 2. handlePrintDPR location ###
+=== handlePrintDPR start ===
+3895	      const handlePrintDPR = async (rpt) => {
+3896	        const proj = projects.find(p => p.id === rpt.pid);
+3897	        const att  = await loadAttendance(rpt.id);
+3898	        const presentAM = att.filter(r => r.am === "P").length;
+3899	        const presentPM = att.filter(r => r.pm === "P").length;
+
+### 3. Print button ###
+L3712:               <button onClick={()=>handlePrintDPR(sel)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:
+
+### 4. Old manpower summary ###
+=== old mp summary ===
+3754	        <SectionHead icon="?" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
+3755	        <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
+3756	          rows={form.manpower||[]} renderRow={r=>(
+3757	          <tr key={r.id} className="border-t border-slate-100">
+
+### 5. saveAttendance update ###
+=== saveAttendance ===
+12057	  const saveAttendance = async (dprId, rows) => {
+12058	    if (!dprId) return { ok: false, error: "No DPR ID" };
+12059	    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
+12060	    const valid = rows.filter(r => r.name && r.name.trim());
+12061	    if (!valid.length) return { ok: true };
+12062	    const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
+12063	      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null, employee_id: r.empId || "", emp_name: r.name || "", designation: r.designation || "",
+12064	      am_count: r.am==="P"?1:0, pm_count: r.pm==="P"?1:0,
+12065	      ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
+12066	      team_no: r.teamNo || "", daily_remarks: r.remarks || "",
+12067	    })));
+12068	    if (error) return { ok: false, error: error.message };
+12069	      const presentCount = valid.filter(r => r.am==="P" || r.pm==="P").length;
+12070	      await supabase.from("daily_reports").update({ manpower_total: presentCount }).eq("id", dprId);
+12071	    return { ok: true };
+12072	  };
+12073	
+12074	  return { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus, loadAttendance, saveAttendance };
+
+### 6. Load Master button ###
+L3296:   // ?? Load from Manpower Master ?????????????????????????????????????
+L3387:           <label className="block text-xs font-semibold text-slate-600 mb-1">Load from Manpower Master</label>
+L3395:           &#8635; Load Master
+
+### 7. useDailyReports manpower_total ###
+L855:         manpower: parse("manpower_json"),
+L861:         manpowerTotal: r.manpower_total || 0,
+L888:       manpower_total: f.manpowerTotal || 0,
+L889:       manpower_json: JSON.stringify(f.manpower || []),
+
+=== DONE ===
+Press Enter...

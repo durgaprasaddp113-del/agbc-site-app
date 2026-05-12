@@ -1,0 +1,65 @@
+Total lines: 12144
+
+### HOOK LOCATIONS ###
+function useMRs NOT FOUND
+function useLPOs at line 5578
+function useNOCs at line 10857
+
+### PID MAPPING IN HOOKS ###
+function useMRs: NOT FOUND
+function useLPOs L5587:     if (data) setLpos(data.map(l => ({
+function useLPOs L5588:       id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
+function useLPOs L5601:       items: (l.lpo_items || []).map(i => ({
+function useLPOs L5625:       lpo_number: lpoNum, project_id: f.pid,
+function useLPOs L5640:       const itemRows = f.items.filter(i => i.desc.trim()).map(i => ({
+
+function useNOCs L10867:     if (data) setNocs(data.map(n => ({
+function useNOCs L10870:       pid: String(n.project_id||"").toLowerCase(),
+function useNOCs L10920:       noc_number: nocNum, project_id: f.pid || null,
+
+### FPROJECT FILTER LINES ###
+MR L5735:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+MR L5738:     setFProject(navFilter.projectId || "All");
+MR L5780:     const _fpid = String(fProject || "").toLowerCase();
+MR L5781:     if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+MR L5924:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option
+MR L5991:   const [fProject, setFProject] = useState("All");
+MR L5996:       setFProject(navFilter.projectId || "All");
+
+LPO L5991:   const [fProject, setFProject] = useState("All");
+LPO L5996:       setFProject(navFilter.projectId || "All");
+LPO L6053:     const _fpid = String(fProject || "").toLowerCase();
+LPO L6054:     if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+LPO L6271:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option
+
+NOC L11030:   const [fProject, setFProject] = useState("All");
+NOC L11035:     setFProject(navFilter.projectId || "All");
+NOC L11079:     const _fpid = String(fProject || "").toLowerCase();
+NOC L11080:     if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+
+### FULL FILTERED BLOCKS ###
+=== MR filtered block (lines 5778-5798) ===
+5778	  const filtered = mrs.filter(m => {
+5779	    const _pid  = String(m.pid  || "").toLowerCase();
+5780	    const _fpid = String(fProject || "").toLowerCase();
+5781	    if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+5782	    if (fStatus !== "All" && (m.status||"") !== fStatus) return false;
+5783	    if (search) {
+5784	      const q = search.toLowerCase();
+5785	      const hay = `${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase();
+5786	      if (!hay.includes(q)) return false;
+5787	    }
+5788	    return true;
+5789	  })
+5790	
+5791	  const DEL_BADGE = { "Pending":"bg-slate-100 text-slate-500 border-slate-200", "Partially Delivered":"bg-amber-100 text-amber-700 border-amber-200", "Fully Delivered":"bg-green-100 text-green-700 border-green-200" };
+5792	
+Traceback (most recent call last):
+  File "C:\Apps\agbc-site-app\deep_diag.py", line 68, in <module>
+    show_lines(module + " filtered block", fi, min(fi+20, total-1))
+  File "C:\Apps\agbc-site-app\deep_diag.py", line 15, in show_lines
+    print(str(i+1) + "\t" + lines[i].rstrip())
+  File "C:\Users\Tender\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 10-11: character maps to <undefined>

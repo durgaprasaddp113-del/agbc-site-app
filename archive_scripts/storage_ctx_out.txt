@@ -1,0 +1,284 @@
+=== L790-815 (L800 supabase.storage context) ===
+L790:       beforeUrl: s.before_photo_url || "", afterUrl: s.after_photo_url || "",
+L791:       consultant: s.consultant_comment || "", remarks: s.remarks || "",
+L792:     })));
+L793:     setLoading(false);
+L794:   }, []);
+L795:   useEffect(() => { loadData(); }, [loadData]);
+L796: 
+L797:   const uploadPhoto = async (file, folder) => {
+L798:     const ext = file.name.split(".").pop();
+L799:     const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+L800:     const { error } = await supabase.storage.from("site-photos").upload(fileName, file);
+L801:     if (error) { console.error("Photo upload:", error.message); return null; }
+L802:     const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(fileName);
+L803:     return publicUrl;
+L804:   };
+L805: 
+L806:   const getNextNum = async () => {
+L807:     const { data } = await supabase.from("snag_items").select("snag_number").order("created_at", { ascending: false }).limit(1);
+L808:     const last = data?.[0]?.snag_number || "SNF-000";
+L809:     const num = parseInt(last.replace("SNF-", "")) || 0;
+L810:     return `SNF-${String(num + 1).padStart(3, "0")}`;
+L811:   };
+L812: 
+L813:   const add = async (f) => {
+L814:     const num = await getNextNum();
+L815:     let beforeUrl = null, afterUrl = null;
+
+=== L1015-1040 (L1027 drawings upload) ===
+L1015:       id: d.id, pid: d.project_id, num: d.drawing_number || "",
+L1016:       title: d.drawing_title || "", rev: d.revision || "A",
+L1017:       discipline: d.discipline || "", received: d.date_received || "",
+L1018:       latest: d.is_latest !== false, fileUrl: d.file_url || "", remarks: d.remarks || "",
+L1019:     })));
+L1020:     setLoading(false);
+L1021:   }, []);
+L1022:   useEffect(() => { loadData(); }, [loadData]);
+L1023: 
+L1024:   const uploadFile = async (file) => {
+L1025:     const ext = file.name.split(".").pop();
+L1026:     const name = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+L1027:     const { error } = await supabase.storage.from("drawings").upload(name, file);
+L1028:     if (error) { console.error("File upload:", error.message); return null; }
+L1029:     const { data: { publicUrl } } = supabase.storage.from("drawings").getPublicUrl(name);
+L1030:     return publicUrl;
+L1031:   };
+L1032: 
+L1033:   const add = async (f) => {
+L1034:     let fileUrl = null;
+L1035:     if (f.file) fileUrl = await uploadFile(f.file);
+L1036:     const { error } = await supabase.from("drawings").insert([{
+L1037:       project_id: f.pid, drawing_number: f.num, drawing_title: f.title,
+L1038:       revision: f.rev, discipline: f.discipline, date_received: f.received || null,
+L1039:       is_latest: true, remarks: f.remarks, file_url: fileUrl,
+L1040:     }]);
+L1041:     if (error) return { ok: false, error: error.message };
+L1042:     await loadData(); return { ok: true };
+
+=== L11280-11300 (L11291 NOC upload) ===
+L11280:       .like("noc_number", `NOC-${y}-%`)
+L11281:       .order("created_at", { ascending: false })
+L11282:       .limit(1);
+L11283:     const last = data?.[0]?.noc_number || `NOC-${y}-000`;
+L11284:     const n = parseInt(last.split("-")[2] || "0") || 0;
+L11285:     return `NOC-${y}-${String(n + 1).padStart(3, "0")}`;
+L11286:   };
+L11287: 
+L11288:   const uploadFile = async (file) => {
+L11289:     const ext = file.name.split(".").pop();
+L11290:     const name = `noc_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+L11291:     const { error } = await supabase.storage.from("site-photos").upload(name, file);
+L11292:     if (error) { console.error("Upload:", error.message); return null; }
+L11293:     const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(name);
+L11294:     return publicUrl;
+L11295:   };
+L11296: 
+L11297:   const add = async (f) => {
+L11298:     const nocNum = await getNextNum();
+L11299:     let fileUrl = null;
+L11300:     if (f.file) fileUrl = await uploadFile(f.file);
+L11301:     const { error } = await supabase.from("authority_nocs").insert([{
+L11302:       noc_number: nocNum, project_id: f.pid || null,
+
+=== exportToPDF function L43-190 ===
+L43: const exportToPDF = (data, columns, fileName, title, orientation = "landscape") => {
+L44:   if (!data || data.length === 0) { alert("No data to export."); return; }
+L45:   try {
+L46:     const { jsPDF } = window.jspdf;
+L47:     if (!jsPDF) { alert("PDF library not loaded. Refresh page and try again."); return; }
+L48:     const fullName = `${fileName}_${todayExport()}.pdf`;
+L49:     const now = new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+L50:     const doc = new jsPDF({ orientation, format: "a4", compress: true });
+L51:     const pageW = doc.internal.pageSize.getWidth();
+L52:     const pageH = doc.internal.pageSize.getHeight();
+L53:     const isPortrait = pageW < pageH;
+L54:     const MARGIN = 10;
+L55: 
+L56:     // ── LOGO DIMENSIONS ────────────────────────────────────────────────────
+L57:     // Logo aspect ratio = width:height ≈ 4.7:1 (wide banner)
+L58:     // Portrait A4 usable = 190mm, Landscape = 277mm
+L59:     // Logo takes left ~60%, title on right ~38%
+L60:     const LOGO_ASPECT = 4.7;
+L61:     const HDR_H = isPortrait ? 36 : 40;           // header bar height
+L62:     const LOGO_H = HDR_H - 8;                     // logo height with 4mm top/bottom padding
+L63:     const LOGO_MAX_W = (pageW - MARGIN * 2) * 0.58; // max 58% of usable width
+L64:     const LOGO_W = Math.min(LOGO_H * LOGO_ASPECT, LOGO_MAX_W);
+L65:     const LOGO_X = MARGIN;
+L66:     const LOGO_Y = (HDR_H - LOGO_H) / 2;          // vertically centred
+L67:     const TITLE_X = LOGO_X + LOGO_W + 5;           // title starts after logo
+L68:     const TITLE_W = pageW - MARGIN - TITLE_X;      // remaining width for title
+L69: 
+L70:     // ── DRAW HEADER (called on every page) ─────────────────────────────────
+L71:     const drawHeader = () => {
+L72:       // Dark background
+L73:       doc.setFillColor(...DARK_COLOR);
+L74:       doc.rect(0, 0, pageW, HDR_H, "F");
+L75:       // Amber accent bar
+L76:       doc.setFillColor(...AMBER_COLOR);
+L77:       doc.rect(0, HDR_H, pageW, 2.5, "F");
+L78: 
+L79:       // Company logo (left side)
+L80:       try {
+L81:         doc.addImage(
+L82:           "data:image/jpeg;base64," + AGBC_LOGO_B64,
+L83:           "JPEG", LOGO_X, LOGO_Y, LOGO_W, LOGO_H
+L84:         );
+L85:       } catch(e) {
+L86:         doc.setTextColor(245, 158, 11);
+L87:         doc.setFontSize(12);
+L88:         doc.setFont("helvetica", "bold");
+L89:         doc.text("AGBC", LOGO_X + 2, HDR_H / 2 + 4);
+L90:       }
+L91: 
+L92:       // Report title — right-aligned in remaining space, vertically centred
+L93:       const titleFontSize = isPortrait ? 10 : 12;
+L94:       const subFontSize = 6.5;
+L95:       const titleLines = doc.splitTextToSize(title, TITLE_W);
+L96:       const titleY = titleLines.length > 1
+L97:         ? HDR_H / 2 - (titleLines.length * titleFontSize * 0.3528 / 2)
+L98:         : HDR_H / 2 - 1;
+L99: 
+L100:       doc.setTextColor(255, 255, 255);
+L101:       doc.setFontSize(titleFontSize);
+L102:       doc.setFont("helvetica", "bold");
+L103:       titleLines.forEach((line, i) => {
+L104:         doc.text(line, pageW - MARGIN, titleY + i * (titleFontSize * 0.4), { align: "right" });
+L105:       });
+L106: 
+L107:       // Date & count (subtle, small)
+L108:       doc.setFontSize(subFontSize);
+L109:       doc.setFont("helvetica", "normal");
+L110:       doc.setTextColor(160, 160, 160);
+L111:       doc.text(`${now}  ·  ${data.length} records`, pageW - MARGIN, HDR_H - 5, { align: "right" });
+L112:     };
+L113: 
+L114:     drawHeader();
+L115: 
+L116:     // ── TABLE SETUP ────────────────────────────────────────────────────────
+L117:     const heads = [columns.map(c => c.header)];
+L118:     const rows = data.map(row => columns.map(c => {
+L119:       const v = row[c.key];
+L120:       if (v === null || v === undefined || v === "") return "—";
+L121:       if (c.type === "date") {
+L122:         try { return new Date(v).toLocaleDateString("en-GB"); } catch { return String(v); }
+L123:       }
+L124:       if (c.type === "array") return Array.isArray(v) ? v.join(", ") : String(v);
+L125:       return String(v);
+L126:     }));
+L127: 
+L128:     // Auto-scale: more columns → smaller font on portrait
+L129:     const colCount = columns.length;
+L130:     const autoFont = isPortrait
+L131:       ? (colCount > 8 ? 6 : colCount > 5 ? 6.5 : 7.5)
+L132:       : (colCount > 10 ? 6.5 : colCount > 7 ? 7 : 7.5);
+L133:     const autoPad = autoFont < 7 ? 2 : 3;
+L134: 
+L135:     // If pdfWidth columns defined → use them, else let autoTable distribute evenly
+L136:     const hasPdfWidths = columns.some(c => c.pdfWidth);
+L137:     const colStyles = columns.reduce((acc, c, i) => {
+L138:       if (hasPdfWidths && c.pdfWidth) acc[i] = { cellWidth: c.pdfWidth };
+L139:       if (c.align) acc[i] = { ...(acc[i] || {}), halign: c.align };
+L140:       return acc;
+L141:     }, {});
+L142: 
+L143:     doc.autoTable({
+L144:       startY: HDR_H + 5,
+L145:       margin: { left: MARGIN, right: MARGIN, bottom: 14 },
+L146:       head: heads,
+L147:       body: rows,
+L148:       theme: "grid",
+L149:       // "auto" = shrink to content; "wrap" = fill full table width
+L150:       tableWidth: hasPdfWidths ? "auto" : "wrap",
+L151:       styles: {
+L152:         fontSize: autoFont,
+L153:         cellPadding: { top: autoPad, bottom: autoPad, left: 3, right: 3 },
+L154:         overflow: "linebreak",
+L155:         valign: "middle",
+L156:         textColor: [30, 41, 59],
+L157:         lineColor: [220, 220, 220],
+L158:         lineWidth: 0.2,
+L159:         minCellWidth: 10,
+L160:       },
+L161:       headStyles: {
+L162:         fillColor: AMBER_COLOR,
+L163:         textColor: [255, 255, 255],
+L164:         fontStyle: "bold",
+L165:         fontSize: autoFont,
+L166:         halign: "center",
+L167:         cellPadding: { top: autoPad + 1, bottom: autoPad + 1, left: 3, right: 3 },
+L168:       },
+L169:       alternateRowStyles: { fillColor: [248, 250, 252] },
+L170:       columnStyles: colStyles,
+L171:       didDrawPage: ({ pageNumber }) => {
+L172:         if (pageNumber > 1) drawHeader();
+L173:         // Footer — page numbers only
+L174:         const total = doc.internal.getNumberOfPages();
+L175:         doc.setFontSize(7);
+L176:         doc.setTextColor(160);
+L177:         doc.setFont("helvetica", "normal");
+L178:         doc.text(`${pageNumber} / ${total}`, pageW / 2, pageH - 5, { align: "center" });
+L179:       },
+L180:     });
+L181: 
+L182:     doc.save(fullName);
+L183:   } catch(e) { console.error("PDF export error:", e); alert("PDF export failed: " + e.message); }
+L184: };
+L185: 
+L186: const exportLpoPDF = (lpo, projects) => {
+L187:   const { jsPDF } = window.jspdf;
+L188:   if (!jsPDF) { alert("PDF library not loaded."); return; }
+L189:   const proj = projects?.find(p=>p.id===lpo.pid);
+L190:   const doc = new jsPDF({ orientation:"portrait", format:"a4" });
+L191:   const aw = 190; const lm = 10;
+
+=== Project VIEW header L2395-2442 ===
+L2395:   if (mode==="view"&&sel) {
+L2396:     const projPgItems = progressItems.filter(p => p.pid===sel.id);
+L2397:     const overallPct  = getOverall(sel.id);
+L2398:     const filteredPg  = projPgItems.filter(p => pgFilter==="All"||p.status===pgFilter);
+L2399: 
+L2400:     return (
+L2401:       <div className="p-6 max-w-5xl space-y-4">
+L2402:         {confirmId&&<ConfirmDialog message={`Delete project "${sel.name}"?`} onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+L2403:         {confirmPgId&&<ConfirmDialog message="Delete this progress activity?" onConfirm={()=>handleDeletePg(confirmPgId)} onCancel={()=>setConfirmPgId(null)}/>}
+L2404:         <BackBtn onClick={goList}/>
+L2405: 
+L2406:         {/* Header */}
+L2407:         <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-5 text-white">
+L2408:           <div className="flex items-start justify-between gap-4">
+L2409:             <div>
+L2410:               <div className="text-amber-400 text-xs font-mono font-bold mb-1">{sel.number}</div>
+L2411:               <h2 className="text-xl font-bold">{sel.name}</h2>
+L2412:               <p className="text-slate-300 text-sm mt-1">{sel.location} {sel.consultant?`· ${sel.consultant}`:""}</p>
+L2413:             </div>
+L2414:             <Badge text={sel.status} cls="bg-amber-500/20 text-amber-300 border-amber-500/30"/>
+L2415:           </div>
+L2416:           <div className="mt-4 space-y-1">
+L2417:             <div className="flex items-center justify-between text-xs text-slate-300">
+L2418:               <span>Overall Project Progress</span>
+L2419:               <span className="font-bold text-white text-base">{overallPct}%</span>
+L2420:             </div>
+L2421:             <PctBar pct={overallPct} showLabel={false} height="h-3"/>
+L2422:             <div className="flex items-center gap-4 text-xs text-slate-400 mt-1">
+L2423:               <span>{projPgItems.filter(p=>p.status==="Completed").length} completed</span>
+L2424:               <span>{projPgItems.filter(p=>p.status==="In Progress").length} in progress</span>
+L2425:               <span>{projPgItems.filter(p=>p.status==="Not Started").length} not started</span>
+L2426:             </div>
+L2427:           </div>
+L2428:         </div>
+L2429: 
+L2430:         {/* Project Info */}
+L2431:         <div className="bg-white rounded-xl border border-slate-200 p-5">
+L2432:           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+L2433:             {[["Duration",sel.duration?`${sel.duration} Months`:"—"],["Plot Area",sel.plotArea?`${sel.plotArea} sqft`:"—"],["BUA",sel.bua?`${sel.bua} sqft`:"—"]
+L2434:               <div key={k}><div className="text-xs text-slate-400">{k}</div><div className="font-semibold text-slate-800 mt-0.5">{v}</div></div>
+L2435:             ))}
+L2436:           </div>
+L2437:           {sel.mapUrl&&<a href={sel.mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-3 text-blue-600 text-sm font-medium ho
+L2438:           <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+L2439:             <button onClick={()=>{
+L2440:               const pgRows = progressItems.filter(pg=>pg.pid===sel.id);
+L2441:               const data = pgRows.length>0 ? pgRows.map(pg=>({
+L2442:                 Activity: getActivityLabel(pg)||pg.activity,
+L2443:                 Unit: pg.unit||"NOS",

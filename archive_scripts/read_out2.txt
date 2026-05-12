@@ -1,0 +1,55 @@
+Total lines: 11899
+
+=== Key functions/hooks ===
+L337: function useToast() {
+L365: function useAuth() {
+L398: function usePermRequests() {
+L563: function useUserProfile(authUser) {
+L613: function useProjects() {
+L664: function useProjectProgress() {
+L714: function useTasks() {
+L761: function useSnags() {
+L840: function useDailyReports() {
+L933: function useInspections() {
+L991: function useDrawings() {
+L1049: function useSubcontractors() {
+L1113: function usePhotos() {
+L1162: function useUsers() {
+L1478: function useNotifications() {
+L1732: const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [], stock = [], 
+L2074: const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onA
+L2433: const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) =
+L2582: const Snags = ({ projects, snags, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) =
+L2856: const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter 
+L3374: function useMarkups(drawingId) {
+L4281: const Subcontractors = ({ subs, loading, onAdd, onUpdate, onDelete, showToast, tasks, snags, project
+L4817: const Users = ({ users, usersLoading, onAddUser, onUpdateUser, onDeleteUser, projects, showToast, us
+L5174: function useMatReqs() {
+L5274: function useLPOs() {
+L5424: const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showT
+L5679: const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, 
+L6017: function useStore() {
+L6437: const MaterialStore = ({
+L10552: function useManpowerMaster() {
+L10643: const ManpowerMaster = ({ subcontractors = [], showToast }) => {
+L10769: const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendance, saveAttendance, 
+L10891: function useNOCs() {
+L11059: const NOCModule = ({ nocs, loading, onAdd, onUpdate, onDelete, projects, showToast, navFilter = {} }
+L11772:   const userCanEdit = canEdit(userProfile);
+L11773:   const userIsAdmin = isAdmin(userProfile);
+L11803:   const renderPage = () => {
+L11805:       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspe
+L11806:       case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} 
+L11807:       case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpd
+L11808:       case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpd
+L11809:       case "reports":        return <DailyReports subcontractors={subs} mpMasters={mpMasters} loadAt
+L11810:       case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} 
+L11811:       case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={ad
+L11812:       case "photos":         return <Photos {...pp} photos={photos} loading={phLoad} onAdd={addPh} o
+L11813:       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUp
+L11814:       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUp
+L11815:       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr}
+L11816:       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} o
+L11817:       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading=
+L11818:       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc}
+L11819:       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showT

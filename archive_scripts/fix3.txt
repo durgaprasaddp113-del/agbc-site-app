@@ -1,0 +1,60 @@
+L5186 before:       pid: r.project_id || "",
+L5186 after:        pid: String(r.project_id||"").toLowerCase(),
+
+L11425 before:             <option value="All">All Projects</option>
+L11425 after:              <option value="all">All Projects</option>
+
+MR filter context:
+L5474:   const filtered = mrs.filter(m => {
+L5475:     if (fStatus!=="All" && m.status!==fStatus) return false;
+L5476:         const _pid  = String(m.pid || "").toLowerCase().trim();
+L5477:         const _fpid = String(fProject || "").toLowerCase().trim();
+L5478:         if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+L5479:     if (search && !`${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase().includes(search.toLowerCase())) retur
+L5480:         if (fLpoStatus==="LPO Raised" && !lpos.some(l=>l.mrId===m.id)) return false;
+L5481:     if (fLpoStatus==="Pending LPO" && lpos.some(l=>l.mrId===m.id)) return false;
+L5482:     return true;
+L5483:   });
+
+LPO filter context:
+L5745:   const filtered = lpos.filter(l => {
+L5746:     if (fStatus!=="All" && l.status!==fStatus) return false;
+L5747:         const _pid  = String(l.pid || "").toLowerCase().trim();
+L5748:         const _fpid = String(fProject || "").toLowerCase().trim();
+L5749:         if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+L5750:     if (fDelivery==="overdue") {
+L5751:       if (l.deliveryStatus==="Fully Delivered" || !l.deliveryDate || new Date(l.deliveryDate) >= new Date()) r
+L5752:     }
+L5753:     if (search && !`${l.lpoNum} ${l.supplierName} ${l.mrNum}`.toLowerCase().includes(search.toLowerCase())) re
+L5754:     return true;
+
+NOC filter context:
+L11110: 
+L11111:   const filtered = nocs.filter(n => {
+L11112:         const _pid  = String(n.pid || "").toLowerCase().trim();
+L11113:         const _fpid = String(fProject || "").toLowerCase().trim();
+L11114:         if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+L11115:     if (fAuth!=="All" && n.authority!==fAuth) return false;
+L11116:     if (fStatus!=="All" && n.status!==fStatus) return false;
+L11117:     if (fExpiry==="expiring" && !isExpiringSoon(n.expiryDate,n.status)) return false;
+L11118:     if (fExpiry==="expired" && !isExpired(n.expiryDate,n.status)) return false;
+L11119:     if (search && !`${n.nocNum} ${n.authority} ${n.nocType} ${n.responsible}`.toLowerCase().includes(search.to
+
+=== fProject useState in MR/LPO/NOC ===
+MR L5431:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+LPO L5685:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+NOC L11064:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+
+=== navFilter useEffect in MR/LPO/NOC ===
+MR L5431:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+MR L5434:     setFProject(navFilter.projectId || "All");
+LPO L5685:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+LPO L5690:       setFProject(navFilter.projectId || "All");
+NOC L11064:   const [fProject, setFProject] = useState(navFilter.projectId || "All");
+NOC L11069:     setFProject(navFilter.projectId || "All");
+
+Saved. Changes: 2
+RUN: set CI=false && npm run build
+     git add src/App.js && git commit -m 'fix: filters' && git push
+
+Press Enter...

@@ -1,0 +1,256 @@
+=== r2Storage.js FULL ===
+L1: const WORKER_URL = process.env.REACT_APP_R2_WORKER_URL;
+L2: const AUTH_TOKEN = process.env.REACT_APP_R2_AUTH_TOKEN;
+L3: const PUBLIC_BASE = process.env.REACT_APP_R2_PUBLIC_BASE;
+L4: 
+L5: // Validate image file type and size
+L6: export const validateImageFile = (file) => {
+L7:   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+L8:   const maxSize = 5 * 1024 * 1024; // 5MB
+L9: 
+L10:   if (!allowedTypes.includes(file.type)) {
+L11:     return {
+L12:       valid: false,
+L13:       error: 'Invalid file type. Only JPEG, PNG, WebP, and GIF are allowed.'
+L14:     };
+L15:   }
+L16: 
+L17:   if (file.size > maxSize) {
+L18:     return {
+L19:       valid: false,
+L20:       error: 'File size too large. Maximum size is 5MB.'
+L21:     };
+L22:   }
+L23: 
+L24:   return { valid: true, error: null };
+L25: };
+L26: 
+L27: // Upload file to R2
+L28: export const uploadToR2 = async (file, fileName) => {
+L29:   const response = await fetch(`${WORKER_URL}/upload/${fileName}`, {
+L30:     method: 'PUT',
+L31:     headers: {
+L32:       'Content-Type': file.type,
+L33:       'X-Auth-Token': AUTH_TOKEN,
+L34:     },
+L35:     body: file,
+L36:   });
+L37: 
+L38:   if (!response.ok) {
+L39:     throw new Error('Upload failed');
+L40:   }
+L41: 
+L42:   return `${PUBLIC_BASE}/${fileName}`;
+L43: };
+L44: 
+L45: // Delete file from R2
+L46: export const deleteFromR2 = async (fileName) => {
+L47:   const response = await fetch(`${WORKER_URL}/delete/${fileName}`, {
+L48:     method: 'DELETE',
+L49:     headers: {
+L50:       'X-Auth-Token': AUTH_TOKEN,
+L51:     },
+L52:   });
+L53: 
+L54:   if (!response.ok) {
+L55:     throw new Error('Delete failed');
+L56:   }
+L57: 
+L58:   return true;
+L59: };
+L60: 
+L61: // Generate unique filename
+L62: export const generateFileName = (file) => {
+L63:   const timestamp = Date.now();
+L64:   const randomStr = Math.random().toString(36).substring(2, 8);
+L65:   const extension = file.name.split('.').pop();
+L66:   return `${timestamp}-${randomStr}.${extension}`;
+L67: };
+L68: 
+L69: // Convert file size to readable label
+L70: export const fileSizeLabel = (bytes) => {
+L71:   if (bytes === 0) return '0 Bytes';
+L72:   const k = 1024;
+L73:   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+L74:   const i = Math.floor(Math.log(bytes) / Math.log(k));
+L75:   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+L76: };
+
+=== uploadToR2 calls in App.js ===
+L3: import { uploadToR2, validateImageFile, fileSizeLabel } from "./r2Storage";
+L13: const AGBC_LOGO_B64 = "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQM
+L1146:     // ── Upload to Cloudflare R2 ────────────────────────────────────────────
+L1147:     const r2Result = await uploadToR2(f.file, "progress-photos", onProgress);
+L1153:       file_url:   r2Result.url,   // ← R2 CDN URL stored here
+L4411:     showToast("Photo uploaded to R2 successfully!"); setMode("list"); setUploadForm(EMPTY_PHOTO_UPLOAD);
+L4477:                 <span>Uploading to R2...</span>
+L4496:         <FormActions saving={saving} onSave={handleUpload} onCancel={goList} label={saving?"Uploading...":"Upload to R2"}/>
+
+=== Photos upload form L4384-4445 ===
+L4384: const EMPTY_PHOTO_UPLOAD = { pid: "", caption: "", area: "", photo_date: "", file: null };
+L4385: const EMPTY_PHOTO_EDIT = { pid: "", caption: "", area: "", photo_date: "" };
+L4386: 
+L4387: const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToast }) => {
+L4388:   const [mode, setMode] = useState("list"); // list | upload | edit
+L4389:   const [sel, setSel] = useState(null);
+L4390:   const [lightbox, setLightbox] = useState(null);
+L4391:   const [uploadForm, setUploadForm] = useState(EMPTY_PHOTO_UPLOAD);
+L4392:   const [editForm, setEditForm] = useState(EMPTY_PHOTO_EDIT);
+L4393:   const [fProject, setFProject] = useState("All");
+L4394:   const [saving, setSaving] = useState(false);
+L4395:   const [confirmId, setConfirmId] = useState(null);
+L4396: 
+L4397:   const openEdit = p => { setSel(p); setEditForm({ pid: p.project_id, caption: p.caption || "", area: p.area || "", photo_date: p.photo_date || "" });
+L4398:   const goList = () => { setMode("list"); setSel(null); };
+L4399: 
+L4400:   const [uploadProgress, setUploadProgress] = useState(0);
+L4401: 
+L4402:   const handleUpload = async () => {
+L4403:     if (!uploadForm.file || !uploadForm.pid) { showToast("Please select a project and photo", "error"); return; }
+L4404:     if (!uploadForm.photo_date) { showToast("Please enter the photo date", "error"); return; }
+L4405:     setUploadProgress(0);
+L4406:     setSaving(true);
+L4407:     const res = await onAdd(uploadForm, (pct) => setUploadProgress(pct));
+L4408:     setSaving(false);
+L4409:     setUploadProgress(0);
+L4410:     if (!res.ok) { showToast(res.error || "Upload failed", "error"); return; }
+L4411:     showToast("Photo uploaded to R2 successfully!"); setMode("list"); setUploadForm(EMPTY_PHOTO_UPLOAD);
+L4412:   };
+L4413: 
+L4414:   const handleUpdate = async () => {
+L4415:     setSaving(true);
+L4416:     const res = await onUpdate(sel.id, editForm);
+L4417:     setSaving(false);
+L4418:     if (!res.ok) { showToast(res.error || "Update failed", "error"); return; }
+L4419:     showToast("Photo details updated!"); goList();
+L4420:   };
+L4421: 
+L4422:   const handleDelete = async id => {
+L4423:     const res = await onDelete(id);
+L4424:     if (!res.ok) { showToast(res.error || "Delete failed", "error"); return; }
+L4425:     showToast("Photo deleted!"); setConfirmId(null);
+L4426:   };
+L4427: 
+L4428:   const filtered = photos.filter(p => fProject === "All" || p.project_id === fProject);
+L4429: 
+L4430:   // Lightbox
+L4431:   if (lightbox) return (
+L4432:     <div className="fixed inset-0 bg-black/90 z-[999] flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
+L4433:       <div className="max-w-5xl w-full space-y-3" onClick={e => e.stopPropagation()}>
+L4434:         <div className="flex items-center justify-between">
+L4435:           <div><p className="text-white font-semibold">{lightbox.caption || "No caption"}</p><p className="text-slate-400 text-sm">{lightbox.photo_dat
+L4436:           <button onClick={() => setLightbox(null)} className="text-white text-4xl leading-none hover:text-red-400 transition-colors">×</button>
+L4437:         </div>
+L4438:         <img src={lightbox.file_url} alt={lightbox.caption} className="max-h-[80vh] max-w-full mx-auto rounded-xl object-contain" />
+L4439:       </div>
+L4440:     </div>
+L4441:   );
+L4442: 
+L4443:   // Upload form
+L4444:   if (mode === "upload") return (
+L4445:     <div className="p-6 max-w-lg">
+
+=== export functions definition ===
+L10: // EXPORT UTILITIES — Excel (SheetJS) + PDF (jsPDF)
+L19: const exportToExcel = (data, columns, fileName) => {
+L35:     const ws = XLSX.utils.aoa_to_sheet(wsData);
+L37:     const wb = XLSX.utils.book_new();
+L38:     XLSX.utils.book_append_sheet(wb, ws, fileName.replace(/_/g, " ").substring(0, 31));
+L43: const exportToPDF = (data, columns, fileName, title, orientation = "landscape") => {
+L46:     const { jsPDF } = window.jspdf;
+L47:     if (!jsPDF) { alert("PDF library not loaded. Refresh page and try again."); return; }
+L50:     const doc = new jsPDF({ orientation, format: "a4", compress: true });
+L135:     // If pdfWidth columns defined → use them, else let autoTable distribute evenly
+L143:     doc.autoTable({
+L187:   const { jsPDF } = window.jspdf;
+L188:   if (!jsPDF) { alert("PDF library not loaded."); return; }
+L190:   const doc = new jsPDF({ orientation:"portrait", format:"a4" });
+L216:   doc.autoTable({head:heads,body:rows,startY:y,margin:{left:lm,right:lm},styles:{fontSize:8},headStyles:{fillColor:[37,99,235]},
+L230:     const { jsPDF } = window.jspdf;
+L231:     if (!jsPDF) { alert("PDF library not loaded."); return; }
+L233:     const doc = new jsPDF({ orientation: "portrait", format: "a4" });
+L3817:     const { jsPDF } = window.jspdf;
+L3818:     if (!jsPDF) { alert("PDF library not loaded."); return; }
+L3819:     const doc = new jsPDF({ orientation:"landscape", format:"a4", compress:true });
+L3859:     doc.autoTable({
+
+=== Photos grid/card L4460-4530 ===
+L4460:               if (!v.ok) { showToast(v.error, "error"); e.target.value = ""; return; }
+L4461:               setUploadForm(p => ({ ...p, file }));
+L4462:             }}
+L4463:             className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 bg-white outline-none focus:border-amber-400 focus:r
+L4464:           />
+L4465:           {uploadForm.file && (
+L4466:             <div className="mt-2 flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+L4467:               <span className="text-green-600 text-sm">📷</span>
+L4468:               <div className="flex-1 min-w-0">
+L4469:                 <p className="text-xs font-semibold text-green-700 truncate">{uploadForm.file.name}</p>
+L4470:                 <p className="text-xs text-green-600">{fileSizeLabel(uploadForm.file.size)}</p>
+L4471:               </div>
+L4472:             </div>
+L4473:           )}
+L4474:           {saving && uploadProgress > 0 && (
+L4475:             <div className="mt-2">
+L4476:               <div className="flex justify-between text-xs text-slate-500 mb-1">
+L4477:                 <span>Uploading to R2...</span>
+L4478:                 <span className="font-bold">{uploadProgress}%</span>
+L4479:               </div>
+L4480:               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+L4481:                 <div className="h-2 bg-amber-500 rounded-full transition-all duration-300"
+L4482:                   style={{ width: `${uploadProgress}%` }}/>
+L4483:               </div>
+L4484:             </div>
+L4485:           )}
+L4486:           {saving && uploadProgress === 0 && (
+L4487:             <div className="mt-2 text-xs text-slate-400 flex items-center gap-1.5">
+L4488:               <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+L4489:                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+L4490:                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+L4491:               </svg>
+L4492:               Preparing upload...
+L4493:             </div>
+L4494:           )}
+L4495:         </div>
+L4496:         <FormActions saving={saving} onSave={handleUpload} onCancel={goList} label={saving?"Uploading...":"Upload to R2"}/>
+L4497:       </FormCard>
+L4498:     </div>
+L4499:   );
+L4500: 
+L4501:   // Edit form
+L4502:   if (mode === "edit" && sel) return (
+L4503:     <div className="p-6 max-w-lg">
+L4504:       <BackBtn onClick={goList} />
+L4505:       <h2 className="text-xl font-bold text-slate-800 mb-4">Edit Photo Details</h2>
+L4506:       <FormCard>
+L4507:         <div className="h-52 bg-slate-100 rounded-xl overflow-hidden">
+L4508:           <img src={sel.file_url} alt="" className="w-full h-full object-cover" />
+L4509:         </div>
+L4510:         <div><Lbl t="Project" /><Sel value={editForm.pid} onChange={e => setEditForm(p => ({ ...p, pid: e.target.value }))}><option value="">Select...
+L4511:         <div><Lbl t="Photo Date" /><Inp type="date" value={editForm.photo_date||""} onChange={e => setEditForm(p => ({ ...p, photo_date: e.target.valu
+L4512:         <div><Lbl t="Caption" /><Inp value={editForm.caption} onChange={e => setEditForm(p => ({ ...p, caption: e.target.value }))} placeholder="e.g. 
+L4513:         <div><Lbl t="Area / Location" /><Inp value={editForm.area} onChange={e => setEditForm(p => ({ ...p, area: e.target.value }))} placeholder="e.g
+L4514:         <FormActions saving={saving} onSave={handleUpdate} onCancel={goList} label="Update Photo" />
+L4515:       </FormCard>
+L4516:     </div>
+L4517:   );
+L4518: 
+L4519:   // List
+L4520:   return (
+L4521:     <div className="p-6">
+L4522:       {confirmId && <ConfirmDialog message="Delete this photo permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(nul
+L4523:       {(() => {
+L4524:         const exportData = filtered.map(p => ({
+L4525:           caption: p.caption || "No caption",
+L4526:           area: p.area || "—",
+L4527:           projectNum: (projects.find(pr => pr.id === p.project_id) || {}).number || "—",
+L4528:           projectName: (projects.find(pr => pr.id === p.project_id) || {}).name || "—",
+L4529:           uploaded: p.uploaded_at ? p.uploaded_at.split("T")[0] : "—",
+L4530:           fileUrl: p.file_url || "—",
+
+=== NOC/Drawings file upload ===
+L800:     const { error } = await supabase.storage.from("site-photos").upload(fileName, file);
+L802:     const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(fileName);
+L1027:     const { error } = await supabase.storage.from("drawings").upload(name, file);
+L1029:     const { data: { publicUrl } } = supabase.storage.from("drawings").getPublicUrl(name);
+L11291:     const { error } = await supabase.storage.from("site-photos").upload(name, file);
+L11293:     const { data: { publicUrl } } = supabase.storage.from("site-photos").getPublicUrl(name);

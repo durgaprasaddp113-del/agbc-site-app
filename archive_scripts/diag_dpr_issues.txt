@@ -1,0 +1,55 @@
+### DPR LIST ROW - manpower column ###
+### handleSave - manpowerTotal ###
+=== manpowerTotal ===
+3612	      manpowerTotal: totalMP,
+3613	      issues:form.issues, visitors:form.visitors, remarks:form.remarks,
+3614	      status: submitStatus || form.status,
+3615	    };
+3616	    const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
+
+### Save Attendance button ###
+L3338:   // ?? Save Attendance ???????????????????????????????????????????????
+L3408:             {saving?"Saving...":"&#128190; Save Attendance"}
+
+### Old Manpower Summary section ###
+=== manpower summary ===
+3753	        <SectionHead icon="?" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
+3754	        <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
+3755	          rows={form.manpower||[]} renderRow={r=>(
+3756	          <tr key={r.id} className="border-t border-slate-100">
+3757	            <td className="px-2 py-1.5"><Inp value={r.trade} onChange={e=>setRow("manpower",r.id,"trade",e.target.value)} placeholder="Concretor / HVAC..."/></td>
+
+### useDailyReports add function ###
+L861:         manpowerTotal: r.manpower_total || 0,
+L888:       manpower_total: f.manpowerTotal || 0,
+L908:       manpower_total: f.manpowerTotal || 0,
+
+### useManpowerMaster return ###
+=== useManpowerMaster return ===
+11925	    if (error) return { ok: false, error: error.message };
+11926	    await loadData(); return { ok: true };
+11927	  };
+11928	
+11929	  const updateMaster = async (id, f) => {
+
+### DailyReports component signature ###
+=== DR signature ===
+3553	const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {}, subcontractors = [] }) => {
+3554	  const [mode, setMode] = useState("list");
+3555	  const [sel, setSel] = useState(null);
+
+### View mode action buttons ###
+=== action buttons ===
+4646	        <div className="flex flex-wrap gap-3 pt-2">
+4647	          <button onClick={()=>openViewer(sel)}
+4648	            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+4649	            ? Open Viewer + Markup
+4650	          </button>
+4651	          {sel.fileUrl && <a href={sel.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"><Icon name="eye" cls="w-4 h-4" />Open File</a>}
+4652	          <Btn onClick={() => openEdit(sel)} label="Edit Drawing" />
+4653	          <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+4654	        </div>
+4655	      </FormCard>
+
+=== DONE ===
+Press Enter...

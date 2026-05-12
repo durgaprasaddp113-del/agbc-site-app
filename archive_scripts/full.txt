@@ -1,0 +1,111 @@
+Lines: 12650
+
+### handleSave ###
+=== handleSave ===
+3602	  const handleSave = async (submitStatus) => {
+3603	    if (!form.pid || !form.date) { showToast("Project and Date are required","error"); return; }
+3604	    setSaving(true);
+3605	    const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+3606	    const payload = {
+3607	      pid:form.pid, date:form.date, reportNum:form.reportNum, preparedBy:form.preparedBy,
+3608	      weather:form.weather, temp:form.temp, workHours:form.workHours,
+3609	      manpower:form.manpower.filter(r=>r.trade||r.count),
+3610	      equipment:form.equipment.filter(r=>r.name),
+3611	      activities:form.activities.filter(r=>r.activity),
+3612	      materials:form.materials.filter(r=>r.material),
+3613	      inspections:form.inspections.filter(r=>r.location||r.type),
+3614	      safety:form.safety.filter(r=>r.obs),
+3615	      manpowerTotal: (attRowsRef.current||[]).filter(r=>r.am==="P"||r.pm==="P").length || totalMP,
+3616	      issues:form.issues, visitors:form.visitors, remarks:form.remarks,
+3617	      status: submitStatus || form.status,
+3618	    };
+3619	    const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
+3620	    setSaving(false);
+3621	    // Auto-save attendance with DPR
+3622	    const _dprId = res.id || (sel && sel.id);
+3623	    const _attRows = attRowsRef.current || [];
+3624	    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).catch(()=>{}); }
+3625	    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+3626	        if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
+3627	    showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
+3628	  };
+3629	
+3630	  const handleDelete = async id => {
+3631	    const res = await onDelete(id);
+3632	    if (!res.ok) { showToast(res.error,"error"); return; }
+3633	    showToast("Report deleted!"); setConfirmId(null); if(mode!=="list") goList();
+3634	  };
+3635	
+3636	  const filtered = reports.filter(r => {
+
+### printData state ###
+L3572:   const [printData, setPrintData] = useState(null);
+
+### handlePrintDPR ###
+=== handlePrintDPR ===
+3904	      const handlePrintDPR = async (rpt) => {
+3905	        const proj = projects.find(p => p.id === rpt.pid);
+3906	        const att = await loadAttendance(rpt.id);
+3907	        setPrintData({ rpt, proj, att });
+3908	        setTimeout(() => window.print(), 300);
+3909	      };
+3910	
+3911	  return (
+3912	    <div className="p-6">
+3913	      {confirmId&&<ConfirmDialog message="Delete this report permanently?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+
+### attRowsRef ###
+L3570:   const attRowsRef = useRef([]);
+L3615:       manpowerTotal: (attRowsRef.current||[]).filter(r=>r.am==="P"||r.pm==="P").length || totalMP,
+L3623:     const _attRows = attRowsRef.current || [];
+L3787:         onRowsChange={r=>{ attRowsRef.current=r; }}
+
+### Print overlay ###
+L3996:           #dpr-print-overlay { display: block !important; }
+L3998:         #dpr-print-overlay { display: none; }
+L4002:         <div id="dpr-print-overlay" style={{fontFamily:'Arial,sans-serif',fontSize:'12px',color:'#1e
+L4011:               <td style={{padding:'4px 8px'}}><b>Date:</b> {printData.rpt.date||'--'}</td>
+L4012:               <td style={{padding:'4px 8px'}}><b>Report No:</b> {printData.rpt.reportNum||'--'}</td>
+L4014:               <td style={{padding:'4px 8px'}}><b>Prepared By:</b> {printData.rpt.preparedBy||'--'}</
+L4015:               <td style={{padding:'4px 8px'}}><b>Weather:</b> {printData.rpt.weather||'--'} {printDa
+L4016:               <td style={{padding:'4px 8px'}}><b>Work Hours:</b> {printData.rpt.workHours||'8'}h</td
+L4017:               <td style={{padding:'4px 8px'}}><b>Status:</b> {printData.rpt.status||'--'}</td>
+
+### DprAttendancePanel usage ###
+=== panel usage ===
+3777	      {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
+3778	      {activeSection==="manpower"&&<DprAttendancePanel
+3779	        dprId={mpAttDprId||(sel?sel.id:null)}
+3780	        subcontractors={subcontractors}
+3781	        masters={mpMasters}
+3782	        loadAttendance={loadAttendance}
+3783	        saveAttendance={saveAttendance}
+3784	        showToast={showToast}
+3785	        allReports={reports}
+3786	
+3787	        onRowsChange={r=>{ attRowsRef.current=r; }}
+3788	      />}
+3789	
+3790	      {/* EQUIPMENT section */}
+3791	      {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+3792	        <SectionHead icon="?" title="Equipment Summary" count={(form.equipment||[]).filter(r=>r.name).length} onAdd={addRow("equipment")}/>
+3793	        <DynTable heads={["Equipment Name","Qty","Status","Operator","Remarks",""]}
+3794	          rows={form.equipment||[]} renderRow={r=>(
+3795	          <tr key={r.id} className="border-t border-slate-100">
+3796	            <td className="px-2 py-1.5"><Inp value={r.name} onChange={e=>setRow("equipment",r.id,"name",e.target.value)} placeholder="Tower Crane, Pump..."/></td>
+3797	            <td className="px-2 py-1.5 w-20"><Inp type="number" value={r.qty} onChange={e=>setRow("equipment",r.id,"qty",e.target.value)} placeholder="1"/></td>
+3798	            <td className="px-2 py-1.5 w-32"><Sel value={r.status} onChange={e=>setRow("equipment",r.id,"status",e.target.value)}>{["Working","Idle","Under Repair","Off Hire"].map(s=><option key={s}>{s}</option>)}</Sel></td>
+3799	            <td className="px-2 py-1.5"><Inp value={r.operator} onChange={e=>setRow("equipment",r.id,"operator",e.target.value)} placeholder="Operator"/></td>
+3800	            <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("equipment",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+
+
+### autoSave in handleSave ###
+L3624:     if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).catch(()=>{}); }
+
+### manpower_master loadData ###
+L11983:   const [masters, setMasters] = useState([]);
+L11986:     const { data, error } = await supabase.from("manpower_master").select("*").order("created_at", { ascending: true });
+L11988:     if (data) setMasters(data.map(m => ({
+
+=== DONE ===
+Press Enter...

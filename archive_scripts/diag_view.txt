@@ -1,0 +1,148 @@
+### DPR VIEW MODE - manpower section ###
+=== View mode start ===
+3531	  if (mode==="view"&&sel) {
+3532	    const proj = projects.find(p=>p.id===sel.pid);
+3533	    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+3534	    return (
+3535	      <div className="p-6 max-w-4xl space-y-4">
+
+=== sel.manpower in view ===
+3533	    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+3534	    return (
+3535	      <div className="p-6 max-w-4xl space-y-4">
+3536	        {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+3537	        <BackBtn onClick={goList}/>
+
+=== sel.manpower in view ===
+3565	          { title:"? Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+3566	            cols:["trade","count","foreman","area","remarks"] },
+3567	          { title:"? Equipment", rows:sel.equipment||[], heads:["Equipment","Qty","Status","Operator","Remarks"],
+3568	            cols:["name","qty","status","operator","remarks"] },
+3569	          { title:"? Work Activities", rows:sel.activities||[], heads:["Location","Activity","Trade","Progress%","Remarks"],
+
+### attendance / DprAttendancePanel in view ###
+L3450:   const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
+L3451:   const [mpAttDprId, setMpAttDprId] = useState(null);
+L3648:       {/* DETAILED ATTENDANCE PANEL - Manpower Master Integration */}
+L3649:       {activeSection==="manpower"&&<DprAttendancePanel
+L3650:         dprId={mpAttDprId||(sel?sel.id:null)}
+L3653:         loadAttendance={loadAttendance}
+L3654:         saveAttendance={saveAttendance}
+
+### saveAttendance function ###
+=== saveAttendance ===
+11844	  const saveAttendance = async (dprId, rows) => {
+11845	    if (!dprId) return { ok: false, error: "No DPR ID" };
+11846	    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
+11847	    const valid = rows.filter(r => r.mpId);
+11848	    if (!valid.length) return { ok: true };
+11849	    const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
+11850	      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null,
+11851	      am_count: r.am==="P"?1:0, pm_count: r.pm==="P"?1:0,
+11852	      ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
+11853	      team_no: r.teamNo || "", daily_remarks: r.remarks || "",
+11854	    })));
+11855	    if (error) return { ok: false, error: error.message };
+11856	    return { ok: true };
+11857	  };
+11858	
+11859	  return { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus, loadAttendance, saveAttendance };
+11860	}
+11861	
+11862	
+11863	  const updateMaster = async (id, f) => {
+
+### loadAttendance function ###
+=== loadAttendance ===
+11832	  const loadAttendance = async (dprId) => {
+11833	    if (!dprId) return [];
+11834	    const { data, error } = await supabase.from("dpr_attendance").select("*").eq("dpr_id", dprId).order("created_at");
+11835	    if (error) return [];
+11836	    return (data || []).map(a => ({
+11837	      id: a.id, dprId: a.dpr_id, subId: a.subcontractor_id || "",
+11838	      mpId: a.manpower_id || "", am: a.am_count===1?"P":"A",
+11839	      pm: a.pm_count===1?"P":"A", ot: String(a.ot_hours || 0),
+11840	      description: a.description_of_work || "", teamNo: a.team_no || "", remarks: a.daily_remarks || "",
+11841	    }));
+11842	  };
+11843	
+11844	  const saveAttendance = async (dprId, rows) => {
+11845	    if (!dprId) return { ok: false, error: "No DPR ID" };
+11846	    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
+
+### DPR view render sections ###
+=== Manpower view section def ===
+3565	          { title:"? Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+3566	            cols:["trade","count","foreman","area","remarks"] },
+3567	          { title:"? Equipment", rows:sel.equipment||[], heads:["Equipment","Qty","Status","Operator","Remarks"],
+3568	            cols:["name","qty","status","operator","remarks"] },
+3569	          { title:"? Work Activities", rows:sel.activities||[], heads:["Location","Activity","Trade","Progress%","Remarks"],
+3570	            cols:["location","activity","trade","progress","remarks"] },
+3571	          { title:"? Materials Received", rows:sel.materials||[], heads:["Material","Qty","Unit","Supplier","DN No.","Remarks"],
+3572	            cols:["material","qty","unit","supplier","dn","remarks"] },
+
+### DPR view block start ###
+=== View block ===
+3531	  if (mode==="view"&&sel) {
+3532	    const proj = projects.find(p=>p.id===sel.pid);
+3533	    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+3534	    return (
+3535	      <div className="p-6 max-w-4xl space-y-4">
+3536	        {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
+3537	        <BackBtn onClick={goList}/>
+3538	        {/* Header banner */}
+3539	        <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-5 text-white">
+3540	          <div className="flex items-start justify-between">
+3541	            <div>
+3542	              <div className="text-amber-400 text-xs font-mono font-bold">{sel.reportNum||"DAILY REPORT"}</div>
+3543	              <h2 className="text-xl font-bold mt-1">Daily Site Report</h2>
+3544	              <p className="text-slate-300 text-sm mt-1">{proj?.number} ? {proj?.name}</p>
+3545	            </div>
+3546	            <Badge text={sel.status}/>
+3547	          </div>
+3548	          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+3549	            {[{l:"Date",v:fmtDate(sel.date)},{l:"Prepared By",v:sel.preparedBy||"?"},{l:"Weather",v:sel.weather||"?"},{l:"Work Hours",v:sel.workHours?sel.workHours+"h":"?"}].map(c=>(
+3550	              <div key={c.l} className="bg-white/10 rounded-lg p-2.5 text-center">
+3551	                <div className="text-xs text-slate-300">{c.l}</div>
+3552	                <div className="text-sm font-bold mt-0.5">{c.v}</div>
+3553	              </div>
+3554	            ))}
+3555	          </div>
+3556	        </div>
+3557	        {/* Summary cards */}
+3558	        <div className="grid grid-cols-3 gap-3">
+3559	          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-blue-700">{totalMP}</div><div className="text-xs text-blue-600 font-semibold">Total Manpower</div></div>
+3560	          <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-green-700">{(sel.equipment||[]).filter(e=>e.status==="Working").length}</div><div className="text-xs text-green-600 font-semibold">Equipment Working</div></div>
+3561	          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-amber-700">{(sel.activities||[]).filter(a=>a.activity).length}</div><div className="text-xs text-amber-600 font-semibold">Activities</div></div>
+3562	        </div>
+3563	        {/* Sections */}
+3564	        {[
+3565	          { title:"? Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+3566	            cols:["trade","count","foreman","area","remarks"] },
+3567	          { title:"? Equipment", rows:sel.equipment||[], heads:["Equipment","Qty","Status","Operator","Remarks"],
+3568	            cols:["name","qty","status","operator","remarks"] },
+3569	          { title:"? Work Activities", rows:sel.activities||[], heads:["Location","Activity","Trade","Progress%","Remarks"],
+3570	            cols:["location","activity","trade","progress","remarks"] },
+3571	          { title:"? Materials Received", rows:sel.materials||[], heads:["Material","Qty","Unit","Supplier","DN No.","Remarks"],
+3572	            cols:["material","qty","unit","supplier","dn","remarks"] },
+3573	          { title:"? Inspections", rows:sel.inspections||[], heads:["Type","Location","Consultant","Status","Remarks"],
+3574	            cols:["type","location","consultant","status","remarks"] },
+3575	          { title:"?? Safety Observations", rows:sel.safety||[], heads:["Observation","Severity","Action","Responsible","Status"],
+3576	            cols:["obs","severity","action","responsible","status"] },
+3577	        ].filter(s=>s.rows.length>0).map(sec=>(
+3578	          <div key={sec.title} className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+3579	            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 font-semibold text-slate-700 text-sm">{sec.title}</div>
+3580	            <div className="overflow-x-auto"><table className="w-full text-sm">
+3581	              <thead className="bg-slate-50"><tr>{sec.heads.map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500">{h}</th>)}</tr></thead>
+3582	              <tbody className="divide-y divide-slate-100">{sec.rows.map((r,i)=>(
+3583	                <tr key={i} className="hover:bg-slate-50">{sec.cols.map(c=><td key={c} className="px-3 py-2 text-xs text-slate-700">{r[c]||"?"}</td>)}</tr>
+3584	              ))}</tbody>
+3585	            </table></div>
+3586	          </div>
+3587	        ))}
+3588	        {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
+3589	        {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
+3590	        <div className="flex flex-wrap gap-3">
+
+=== DONE ===
+Press Enter...

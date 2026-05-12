@@ -1,0 +1,25 @@
+Searching for edit button variants...
+L2406:             <Btn onClick={()=>openEdit(sel)} label="Edit Project"/>
+L2793:         <div className="flex gap-3 pt-1"><Btn onClick={() => openEdit(sel)} label="Edit Task" /><Btn onClick={() => setC
+L2967:           <div className="flex gap-3 pt-2 border-t border-slate-100"><Btn onClick={() => openEdit(sel)} label="Edit Snag
+L3712:           <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
+L4080:         <div className="flex gap-3 pt-2"><Btn onClick={() => openEdit(sel)} label="Edit IR" /><Btn onClick={() => setCon
+L4743:           <Btn onClick={() => openEdit(sel)} label="Edit Drawing" />
+L5296:             <div className="flex gap-3"><Btn onClick={() => openEdit(sel)} label="Edit Subcontractor" /><Btn onClick={()
+L5379:             <Btn onClick={() => openEdit(sel)} label="Update Ratings" />
+L5829:             <Btn onClick={()=>openEdit(sel)} label="Edit User"/>
+L6346:         <Btn onClick={()=>openEdit(sel)} label="Edit MR"/>
+L6654:         <Btn onClick={()=>openEdit(sel)} label="Edit LPO"/>
+L11750:           <Btn onClick={()=>openEdit(sel)} label="Edit NOC"/>
+
+Searching for view mode buttons block...
+L4737:         <div className="flex flex-wrap gap-3 pt-2">
+L4738:           <button onClick={()=>openViewer(sel)}
+L4739:             className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm px-4 py-
+L4740:             ? Open Viewer + Markup
+L4741:           </button>
+L4742:           {sel.fileUrl && <a href={sel.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap
+L4743:           <Btn onClick={() => openEdit(sel)} label="Edit Drawing" />
+L4744:           <Btn onClick={() => setConfirmId(sel.id)} label="Delete" color="red" />
+
+Press Enter...

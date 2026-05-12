@@ -1,0 +1,58 @@
+=== getOverall function L2295-2340 ===
+L2295:     }
+L2296:   }, [navFilter, projects]);
+L2297:   const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
+L2298:   const setPg = k => e => setPgForm(p => ({...p,[k]:e.target.value}));
+L2299: 
+L2300:   // Compute overall progress for a project
+L2301:   const getOverall = (pid) => {
+L2302:     const items = progressItems.filter(p => p.pid === pid);
+L2303:     if (!items.length) return 0;
+L2304:     // Use qty-based calculation when actual qty exists
+L2305:     const withQty = items.filter(i => i.unit !== "Lumpsum" && (Number(i.actualQty)||0) > 0);
+L2306:     if (withQty.length > 0) {
+L2307:       const totalActual = withQty.reduce((s,i) => s + (Number(i.actualQty)||0), 0);
+L2308:       const totalDone   = withQty.reduce((s,i) => s + (Number(i.workDoneQty)||0), 0);
+L2309:       const qtyPct      = totalActual > 0 ? Math.round((totalDone/totalActual)*100) : 0;
+L2310:       // Also include lumpsum items
+L2311:       const lumpItems = items.filter(i => i.unit === "Lumpsum" || (Number(i.actualQty)||0) === 0);
+L2312:       const lumpAvg   = lumpItems.length > 0 ? lumpItems.reduce((s,i) => s+(Number(i.pct)||0), 0)/lumpItems.length : null;
+L2313:       if (lumpAvg !== null) return Math.round((qtyPct + lumpAvg) / 2);
+L2314:       return Math.min(100, qtyPct);
+L2315:     }
+L2316:     return Math.round(items.reduce((a,i) => a + (Number(i.pct)||0), 0) / items.length);
+L2317:   };
+L2318: 
+L2319:   const openCreate = () => { setForm(EMPTY_PROJ); setSel(null); setMode("form"); };
+L2320:   const openEdit   = p => { setSel(p); setForm({number:p.number,name:p.name,plot:p.plot,location:p.location,plotArea:String(p.plot
+L2321:   const openView   = p => { setSel(p); setProgTab("list"); setSelPg(null); setPgForm({...EMPTY_PG,pid:p.id}); setMode("view"); };
+L2322:   const goList     = () => { setMode("list"); setSel(null); };
+L2323: 
+L2324:   const handleSave = async () => {
+L2325:     if (!form.number.trim()||!form.name.trim()) { showToast("Project Number and Name required","error"); return; }
+L2326:     setSaving(true);
+L2327:     const res = sel ? await onUpdate(sel.id,form) : await onAdd(form);
+L2328:     setSaving(false);
+L2329:     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+L2330:     showToast(sel?"Project updated!":"Project created!"); goList();
+L2331:   };
+L2332: 
+L2333:   const handleDelete = async id => {
+L2334:     const res = await onDelete(id);
+L2335:     if (!res.ok) { showToast(res.error||"Delete failed","error"); return; }
+L2336:     showToast("Project deleted!"); setConfirmId(null); if (mode!=="list") goList();
+L2337:   };
+L2338: 
+L2339:   // Progress CRUD
+L2340:   const openAddPg = () => { setSelPg(null); setPgForm({...EMPTY_PG,pid:sel.id}); setProgTab("form"); };
+
+=== Dashboard signature + overallPct usage L1732-1860 ===
+L1749: const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpos = [], stock = [], nocs = [], onNavigate }) => {
+L1842:                 const pct = p.overallPct || 0;
+
+=== renderPage switch ===
+L12090:   const renderPage = () => {
+L12092:       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} l
+
+=== useProjectProgress in App ===
+L12047:   const { progressItems, add: addPg, update: updPg, remove: delPg } = useProjectProgress();

@@ -1,0 +1,56 @@
+### NOC TABLE HEADERS ###
+=== NOC headers area ===
+11205	  const [fAuth, setFAuth] = useState("All");
+11206	  const [fStatus, setFStatus] = useState(navFilter.status || "All");
+11207	  const [fExpiry, setFExpiry] = useState(navFilter.expiry || "All");
+11208	  useEffect(() => {
+11209	    setFProject(navFilter.projectId || "All");
+11210	    setFStatus(navFilter.status || "All");
+11211	    setFExpiry(navFilter.expiry || "All");
+11212	  }, [navFilter.projectId]);
+
+### NOC TABLE ROW CELLS ###
+=== NOC tbody rows ===
+11610	            <tbody className="divide-y divide-slate-100">
+11611	              {filtered.map(n => {
+11612	                const proj = projects.find(p=>p.id===n.pid);
+11613	                const expired = isExpired(n.expiryDate, n.status);
+11614	                const expiring = isExpiringSoon(n.expiryDate, n.status);
+11615	                const days = daysUntilExpiry(n.expiryDate);
+11616	                const authColor = NOC_AUTH_COLOR[n.authority] || "bg-slate-500";
+11617	                return (
+11618	                  <tr key={n.id} className={`hover:bg-amber-50/50 transition-colors ${expired?"bg-red-50/40":expiring?"bg-amber-50/40":""}`}>
+11619	                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{n.nocNum}</td>
+11620	                    <td className="px-4 py-3">
+11621	                      <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full ${authColor}`}>{n.authority}</span>
+11622	                    </td>
+11623	                    <td className="px-4 py-3 text-xs text-slate-700 max-w-[160px]">
+11624	                      <div className="truncate font-semibold">{n.nocType}</div>
+11625	                    </td>
+11626	                    <td className="px-4 py-3 text-xs text-slate-600 max-w-[160px]"><div className="truncate">{n.desc||"?"}</div></td>
+11627	                    <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"?"}</td>
+11628	                    <td className="px-4 py-3">
+11629	                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${NOC_ST_COLOR[n.status]||NOC_ST_COLOR.Draft}`}>{n.status}</span>
+11630	                    </td>
+11631	                    <td className="px-4 py-3">
+11632	                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${NOC_PRI_COLOR[n.priority]||""}`}>{n.priority}</span>
+11633	                    </td>
+11634	                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmtDate(n.submissionDate)||"?"}</td>
+11635	                    <td className="px-4 py-3 whitespace-nowrap">
+11636	                      {n.expiryDate ? (
+11637	                        <div>
+11638	                          <div className={`text-xs font-bold ${expired?"text-red-700":expiring?"text-amber-700":"text-slate-700"}`}>{fmtDate(n.expiryDate)}</div>
+11639	                          {expired&&<div className="text-xs text-red-600 font-bold">EXPIRED</div>}
+11640	                          {!expired&&expiring&&<div className="text-xs text-amber-600 font-semibold">{days}d left</div>}
+11641	                        </div>
+11642	                      ) : <span className="text-slate-300 text-xs">No expiry</span>}
+11643	                    </td>
+11644	                    <td className="px-4 py-3 text-xs text-slate-700">{n.responsible||"?"}</td>
+11645	                    <td className="px-4 py-3">
+11646	                      <div className="flex gap-1.5 flex-wrap">
+11647	                        <ActBtn onClick={()=>openView(n)} label="View" color="view"/>
+11648	                        <ActBtn onClick={()=>openEdit(n)} label="Edit" color="edit"/>
+11649	                        <ActBtn onClick={()=>setConfirmId(n.id)} label="Del" color="del"/>
+
+=== DONE ===
+Press Enter...

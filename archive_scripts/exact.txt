@@ -1,0 +1,203 @@
+Lines: 12753
+
+### useDailyReports loadData ###
+842	function useDailyReports() {
+843	  const [reports, setReports] = useState([]);
+844	  const [loading, setLoading] = useState(true);
+845	  const loadData = useCallback(async () => {
+846	    const { data, error } = await supabase.from("daily_reports").select("*").order("report_date", { ascending: false });
+847	    if (error) console.error("Reports:", error.message);
+848	    if (data) setReports(data.map(r => {
+849	      const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
+850	      return {
+851	        id: r.id, pid: r.project_id, date: r.report_date || "",
+852	        reportNum: r.report_number || "",
+853	        weather: r.weather || "Sunny", temp: r.temperature_high || "",
+854	        workHours: r.work_hours || "8",
+855	        manpower: parse("manpower_json"),
+856	        equipment: parse("equipment_json"),
+857	        activities: parse("activities_json"),
+858	        materials: parse("materials_json"),
+859	        inspections: parse("inspections_json"),
+860	        safety: parse("safety_json"),
+861	        manpowerTotal: r.manpower_total || 0,
+862	        issues: r.issues_delays || "",
+863	        visitors: r.visitors || "",
+864	        remarks: r.remarks || "",
+865	        status: r.status || "Draft",
+866	        preparedBy: r.prepared_by_name || "",
+867	      };
+868	    }));
+869	    const { data: attCounts } = await supabase.from("dpr_attendance")
+870	          .select("dpr_id, am_count, pm_count");
+871	        if (attCounts && attCounts.length && data) {
+872	          const cntMap = {};
+873	          attCounts.forEach(a => {
+874	            if (!cntMap[a.dpr_id]) cntMap[a.dpr_id] = 0;
+875	            if (a.am_count===1 || a.pm_count===1) cntMap[a.dpr_id]++;
+876	          });
+877	          setReports(prev => prev.map(r => ({ ...r, manpowerTotal: cntMap[r.id] || r.manpowerTotal })));
+878	        }
+879	        setLoading(false);
+880	  }, []);
+881	  useEffect(() => { loadData(); }, [loadData]);
+882	
+883	  const getNextNum = async () => {
+884	    const y = new Date().getFullYear();
+885	    const { data } = await supabase.from("daily_reports").select("report_number").like("report_number", `DR-${y}-%`).order("created_at", { ascending: false }).limit(1);
+886	    const last = data?.[0]?.report_number || `DR-${y}-000`;
+887	    const n = parseInt(last.split("-")[2] || "0") || 0;
+888	    return `DR-${y}-${String(n + 1).padStart(3, "0")}`;
+889	  };
+890	
+891	  const add = async (f) => {
+892	    const reportNum = await getNextNum();
+893	    const { data, error } = await supabase.from("daily_reports").insert([{
+894	      report_number: reportNum,
+895	      project_id: f.pid, report_date: f.date || null,
+896	      weather: f.weather, temperature_high: parseInt(f.temp) || null,
+897	      work_hours: f.workHours || "8",
+898	      manpower_total: f.manpowerTotal || 0,
+899	      manpower_json: JSON.stringify(f.manpower || []),
+900	      equipment_json: JSON.stringify(f.equipment || []),
+901	      activities_json: JSON.stringify(f.activities || []),
+
+### saveAttendance ###
+=== saveAttendance ===
+12149	  const saveAttendance = async (dprId, rows) => {
+12150	    if (!dprId) return { ok: false, error: "No DPR ID" };
+12151	    await supabase.from("dpr_attendance").delete().eq("dpr_id", dprId);
+12152	    const valid = rows.filter(r => r.name && r.name.trim());
+12153	    if (!valid.length) return { ok: true };
+12154	    const { error } = await supabase.from("dpr_attendance").insert(valid.map(r => ({
+12155	      dpr_id: dprId, subcontractor_id: r.subId || null, manpower_id: r.mpId || null, employee_id: r.empId || "", emp_name: r.name || "", designation: r.designation || "",
+12156	      am_count: r.am==="P"?1:0, pm_count: r.pm==="P"?1:0,
+12157	      ot_hours: parseFloat(r.ot) || 0, description_of_work: r.description || "",
+12158	      team_no: r.teamNo || "", daily_remarks: r.remarks || "",
+12159	    })));
+12160	    if (error) return { ok: false, error: error.message };
+12161	      const presentCount = valid.filter(r => r.am==="P" || r.pm==="P").length;
+12162	      await supabase.from("daily_reports").update({ manpower_total: presentCount }).eq("id", dprId);
+12163	    return { ok: true };
+12164	  };
+12165	
+12166	  return { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus, loadAttendance, saveAttendance };
+12167	}
+12168	
+12169	
+12170	  const updateMaster = async (id, f) => {
+12171	    const { error } = await supabase.from("manpower_master").update({
+12172	      subcontractor_id: f.subId  || null,
+12173	      project_id:       f.pid    || null,
+
+
+### handleSave ###
+=== handleSave ===
+3615	  const handleSave = async (submitStatus) => {
+3616	    if (!form.pid || !form.date) { showToast("Project and Date are required","error"); return; }
+3617	    setSaving(true);
+3618	    const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+3619	    const payload = {
+3620	      pid:form.pid, date:form.date, reportNum:form.reportNum, preparedBy:form.preparedBy,
+3621	      weather:form.weather, temp:form.temp, workHours:form.workHours,
+3622	      manpower:form.manpower.filter(r=>r.trade||r.count),
+3623	      equipment:form.equipment.filter(r=>r.name),
+3624	      activities:form.activities.filter(r=>r.activity),
+3625	      materials:form.materials.filter(r=>r.material),
+3626	      inspections:form.inspections.filter(r=>r.location||r.type),
+3627	      safety:form.safety.filter(r=>r.obs),
+3628	      manpowerTotal: (attRowsRef.current||[]).filter(r=>r.am==="P"||r.pm==="P").length || totalMP,
+3629	      issues:form.issues, visitors:form.visitors, remarks:form.remarks,
+3630	      status: submitStatus || form.status,
+3631	    };
+3632	    const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
+3633	    setSaving(false);
+3634	    // Auto-save attendance with DPR
+3635	    if (!res.ok) { showToast(res.error||"Save failed","error"); setSaving(false); return; }
+3636	    const _dprId = res.id || res.dprId || (sel && sel.id);
+3637	    const _attRows = attRowsRef.current || [];
+3638	    if (_dprId && _attRows.length > 0) { saveAttendance(_dprId, _attRows).then(()=>{ setTimeout(()=>{ if(onReload) onReload(); },500); }).catch(()=>{}); }
+3639	    // error already checked above
+3640	        if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
+3641	    showToast(sel?"Report updated!":"Report created: "+res.reportNum); setTimeout(()=>goList(),1200);
+3642	  };
+3643	
+3644	  const handleDelete = async id => {
+3645	    const res = await onDelete(id);
+3646	    if (!res.ok) { showToast(res.error,"error"); return; }
+3647	    showToast("Report deleted!"); setConfirmId(null); if(mode!=="list") goList();
+3648	  };
+3649	
+3650	  const filtered = reports.filter(r => {
+3651	    if (fProject!=="All" && r.pid!==fProject) return false;
+3652	    if (fStatus!=="All" && r.status!==fStatus) return false;
+3653	    if (fDate && r.date !== fDate) return false;
+3654	    if (search && !`${r.date} ${r.preparedBy} ${r.reportNum}`.toLowerCase().includes(search.toLowerCase())) return false;
+3655	    return true;
+3656	  });
+3657	
+3658	  const SECTIONS = [
+3659	    {id:"header",label:"? Report Info"},
+
+
+### list row mp ###
+3814	            <div><Lbl t="Temperature (?C)"/><Inp type="number" value={form.temp} onChange={set("temp")} placeholder="38"
+3955	    manpowerTotal:(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0),
+3961	    {header:"Manpower",key:"manpowerTotal",width:12},{header:"Status",key:"status",width:14},
+4033	                const mp=(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+4040	                    <td className="px-4 py-3"><span className="text-sm font-bold text-blue-700">{mp}</span><span classNa
+4041	                    <td className="px-4 py-3 text-xs text-slate-600">{r.weather||"?"}{r.temp?` ? ${r.temp}?C`:""}</td>
+
+### handlePrintDPR ###
+=== handlePrintDPR ===
+3965	      const handlePrintDPR = (rpt) => {
+3966	        const proj = projects.find(p => p.id === rpt.pid);
+3967	        const pw = window.open('','_blank','width=1100,height=800');
+3968	        if (!pw) { showToast('Allow popups to print','error'); return; }
+3969	        pw.document.write('<html><head><title>Loading...</title></head><body style="font-family:Arial;padding:20px">Loading DPR...</body></html>');
+3970	        loadAttendance(rpt.id).then(att => {
+3971	          const presentAM = att.filter(r=>r.am==='P').length;
+3972	          const presentPM = att.filter(r=>r.pm==='P').length;
+3973	          const rows = att.map((r,i) => '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:3px 6px;text-align:center;color:#94a3b8">'+(i+1)+'</td><td style="padding:3px 6px;font-weight:700;color:#1d4ed8">'+(r.empId||'--')+'</td><td style="padding:3px 6px;font-weight:600">'+(r.name||'--')+'</td><td style="padding:3px 6px;color:#64748b">'+(r.designation||'--')+'</td><td style="padding:3px 6px;text-align:center;color:#7c3aed;font-weight:700">'+(r.teamNo||'--')+'</td><td style="padding:3px 6px;text-align:center;font-weight:900;color:'+(r.am==="P"?'#15803d':'#b91c1c')+'">'+(r.am||'P')+'</td><td style="padding:3px 6px;text-align:center;font-weight:900;color:'+(r.pm==="P"?'#15803d':'#b91c1c')+'">'+(r.pm||'P')+'</td><td style="padding:3px 6px;text-align:center;color:#d97706">'+(r.ot&&r.ot!=='0'?r.ot:'--')+'</td><td style="padding:3px 6px;color:#475569">'+(r.description||'--')+'</td></tr>').join('');
+3974	          const html = '<!DOCTYPE html><html><head><title>'+rpt.reportNum+'</title>'
+3975	            +'<style>body{font-family:Arial,sans-serif;font-size:12px;color:#1e293b;margin:0;padding:16px}'
+3976	            +'@page{size:A4 landscape;margin:12mm}table{border-collapse:collapse;width:100%}</style></head><body>'
+3977	            +'<div style="text-align:center;border-bottom:3px double #1e293b;padding-bottom:8px;margin-bottom:10px">'
+3978	            +'<div style="font-size:16px;font-weight:900">AL GHAITH BUILDING CONSTRUCTION LLC</div>'
+3979	            +'<div style="font-size:12px;font-weight:700;color:#d97706">SITE DAILY REPORT</div></div>'
+3980	            +'<table style="margin-bottom:10px;border:1px solid #e2e8f0"><tr style="background:#f8fafc">'
+3981	            +'<td style="padding:4px 8px"><b>Site:</b> '+(proj?proj.number:'--')+'</td>'
+3982	            +'<td style="padding:4px 8px"><b>Project:</b> '+(proj?proj.name:'--')+'</td>'
+3983	            +'<td style="padding:4px 8px"><b>Date:</b> '+(rpt.date||'--')+'</td>'
+3984	            +'<td style="padding:4px 8px"><b>Report No:</b> '+(rpt.reportNum||'--')+'</td>'
+3985	            +'</tr><tr>'
+3986	            +'<td style="padding:4px 8px"><b>Prepared By:</b> '+(rpt.preparedBy||'--')+'</td>'
+3987	            +'<td style="padding:4px 8px"><b>Weather:</b> '+(rpt.weather||'--')+' '+(rpt.temp?rpt.temp+'C':'')+'</td>'
+3988	            +'<td style="padding:4px 8px"><b>Work Hours:</b> '+(rpt.workHours||'8')+'h</td>'
+3989	            +'<td style="padding:4px 8px"><b>Status:</b> '+(rpt.status||'--')+'</td>'
+3990	            +'</tr></table>'
+3991	            +(att.length>0?'<div style="margin-bottom:12px">'
+3992	            +'<div style="background:#1e293b;color:white;padding:5px 10px;font-weight:700;font-size:11px">MANPOWER ATTENDANCE | Total: '+att.length+' | AM Present: '+presentAM+' | PM Present: '+presentPM+'</div>'
+3993	            +'<table style="font-size:10px"><thead><tr style="background:#f1f5f9">'
+3994	            +['S.No','ID No','Name','Designation','Team','A.M','P.M','O.T','Description of Work'].map(h=>'<th style="padding:4px 6px;text-align:left;font-weight:700;color:#475569;border-bottom:2px solid #e2e8f0">'+h+'</th>').join('')
+3995	            +'</tr></thead><tbody>'+rows+'</tbody>'
+3996	            +'<tfoot><tr style="background:#1e293b;color:white">'
+3997	            +'<td colspan="5" style="padding:4px 8px;font-weight:700;font-size:10px">TOTAL PRESENT</td>'
+3998	            +'<td style="padding:4px 6px;font-weight:900;color:#86efac;text-align:center">'+presentAM+'</td>'
+3999	            +'<td style="padding:4px 6px;font-weight:900;color:#93c5fd;text-align:center">'+presentPM+'</td>'
+4000	            +'<td colspan="2" style="padding:4px 8px;color:#cbd5e1;font-size:10px">Absent: '+att.filter(r=>r.am==='A'&&r.pm==='A').length+'</td>'
+4001	            +'</tr></tfoot></table></div>':'')
+4002	            +'<div style="margin-top:28px;display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;padding-top:10px">'
+4003	            +'<div style="width:180px;text-align:center"><div style="border-top:1px solid #374151;padding-top:3px;font-size:10px">Signature Site Engineer</div></div>'
+4004	            +'<div style="width:180px;text-align:center"><div style="border-top:1px solid #374151;padding-top:3px;font-size:10px">Signature Site Incharge</div></div>'
+4005	            +'</div>'
+4006	            +'<div style="text-align:center;margin-top:14px">'
+4007	            +'<button onclick="window.print()" style="padding:8px 24px;background:#1e293b;color:white;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">Print</button>'
+4008	            +'<button onclick="window.close()" style="margin-left:10px;padding:8px 16px;background:#e2e8f0;color:#374151;border:none;border-radius:6px;font-size:13px;cursor:pointer">Close</button>'
+4009	            +'</div></body></html>';
+4010	          pw.document.open(); pw.document.write(html); pw.document.close();
+4011	        });
+4012	      };
+
+=== DONE ===
+Press Enter...

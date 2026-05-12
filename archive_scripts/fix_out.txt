@@ -1,0 +1,38 @@
+Before L3677:     {id:"manpower",label:`? Manpower (${(attRowsRef.current||[]).length}).length})`},
+After  L3677:       {id:"manpower",label:`? Manpower (${(attRowsRef.current||[]).length})`},
+
+Removing duplicate useEffect...
+
+Lines around print modal L3800-3820:
+3800	          <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
+3801	            {printData&&(
+3802	              <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.7
+3803	                <div style={{background:'white',borderRadius:'8px',maxWidth:'1100px',margin:'0 auto'
+3804	                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',mar
+3805	                    <b style={{fontSize:'15px'}}>AL GHAITH BUILDING CONSTRUCTION LLC ? SITE DAILY RE
+3806	                    <div style={{display:'flex',gap:'8px'}}>
+3807	                      <button onClick={()=>window.print()} style={{padding:'7px 18px',background:'#1
+3808	                      <button onClick={()=>{setPrintData(null);setPrintRptId(null);}} style={{paddin
+3809	                    </div>
+3810	                  </div>
+3811	                  <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'10px',border:'
+3812	                    <tr style={{background:'#f8fafc'}}>
+3813	                      <td style={{padding:'4px 8px'}}><b>Site No:</b> {printData.proj?.number||'--'}
+3814	                      <td style={{padding:'4px 8px'}}><b>Project:</b> {printData.proj?.name||'--'}</
+3815	                      <td style={{padding:'4px 8px'}}><b>Date:</b> {printData.rpt.date||'--'}</td>
+3816	                      <td style={{padding:'4px 8px'}}><b>Report No:</b> {printData.rpt.reportNum||'-
+3817	                    </tr><tr>
+3818	                      <td style={{padding:'4px 8px'}}><b>Prepared By:</b> {printData.rpt.preparedBy|
+3819	                      <td style={{padding:'4px 8px'}}><b>Weather:</b> {printData.rpt.weather||'--'} 
+3820	                      <td style={{padding:'4px 8px'}}><b>Work Hours:</b> {printData.rpt.workHours||'
+3821	                      <td style={{padding:'4px 8px'}}><b>Status:</b> {printData.rpt.status||'--'}</t
+3822	                    </tr>
+3823	                  </tbody></table>
+3824	                  {(printData.att||[]).length>0&&(
+3825	                    <div>
+
+Saved OK
+CHANGES: 1
+RUN: set CI=false && npm run build && npx vercel --prod --force
+
+Press Enter...

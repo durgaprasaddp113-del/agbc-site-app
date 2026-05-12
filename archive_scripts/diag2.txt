@@ -1,0 +1,81 @@
+Total lines: 12144
+
+### useMatReqs pid ###
+L5490:       pid: r.project_id || "",
+L5522:       mr_number: mrNum, project_id: f.pid, requested_by: f.requestedBy,
+
+### MR dropdown (L5919-5930) ###
+=== MR dropdown ===
+5920	            </button>
+5921	          ))}
+5922	        </div>
+5923	        <SearchBar value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search MR..."/>
+5924	        <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="All">All Projects</option>{(projects||[]).map(p=><option key={p.id} value={String(p.id).toLowerCase()}>{p.number} ? {p.name}</option>)}</Sel>
+5925	      </div>
+5926	      <div className="flex flex-nowrap sm:flex-wrap gap-1.5 mb-3 overflow-x-auto pb-1">
+5927	        {["All",...MR_STATUS].map(s=><button key={s} onClick={()=>setFStatus(s)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap ${fStatus===s?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200 hover:border-amber-300"}`}>{s} ({s==="All"?mrs.length:mrs.filter(m=>m.status===s).length})</button>)}
+5928	      </div>
+5929	      {loading?<Spinner/>:filtered.length===0?<EmptyState msg="No MRs found" onCreate={openCreate}/>:(
+5930	        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+5931	          <table className="w-full text-sm min-w-[900px]">
+
+
+### MR filter ###
+=== MR filter ===
+5778	  const filtered = mrs.filter(m => {
+5779	    const _pid  = String(m.pid  || "").toLowerCase();
+5780	    const _fpid = String(fProject || "").toLowerCase();
+5781	    if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+5782	    if (fStatus !== "All" && (m.status||"") !== fStatus) return false;
+5783	    if (search) {
+5784	      const q = search.toLowerCase();
+5785	      const hay = `${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase();
+5786	      if (!hay.includes(q)) return false;
+5787	    }
+5788	    return true;
+5789	  })
+5790	
+
+
+### LPO filter ###
+=== LPO filter ===
+6051	  const filtered = lpos.filter(l => {
+6052	    const _pid  = String(l.pid  || "").toLowerCase();
+6053	    const _fpid = String(fProject || "").toLowerCase();
+6054	    if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+6055	    if (fStatus !== "All" && (l.status||"") !== fStatus) return false;
+6056	    if (search) {
+6057	      const q = search.toLowerCase();
+6058	      const hay = `${l.lpoNum} ${l.supplierName} ${l.mrNum}`.toLowerCase();
+6059	      if (!hay.includes(q)) return false;
+6060	    }
+6061	    return true;
+6062	  })
+6063	
+
+
+### LPO fProject dropdown ###
+L6271:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="All">All Projects</option>{(proj
+
+### NOC filter ###
+=== NOC filter ===
+11077	  const filtered = nocs.filter(n => {
+11078	    const _pid  = String(n.pid  || "").toLowerCase();
+11079	    const _fpid = String(fProject || "").toLowerCase();
+11080	    if (fProject !== "All" && _fpid && _pid !== _fpid) return false;
+11081	    if (fAuth !== "All" && (n.authority||"") !== fAuth) return false;
+11082	    if (fStatus !== "All" && (n.status||"") !== fStatus) return false;
+11083	    if (fExpiry === "expiring" && !isExpiringSoon(n.expiryDate, n.status)) return false;
+11084	    if (fExpiry === "expired"  && !isExpired(n.expiryDate, n.status)) return false;
+11085	    if (search) {
+11086	      const q = search.toLowerCase();
+11087	      const hay = `${n.nocNum} ${n.authority} ${n.nocType} ${n.responsible}`.toLowerCase();
+11088	      if (!hay.includes(q)) return false;
+11089	    }
+
+
+### NOC fProject dropdown ###
+L11397:           <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
+
+=== DONE ===
+Press Enter...

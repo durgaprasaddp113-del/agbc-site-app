@@ -1,0 +1,98 @@
+=== Dashboard component props + progress display ===
+
+=== getOverall function ===
+L1842:                 const pct = p.overallPct || 0;
+L2104: const ProgressDashboard = ({ items, projectName, overallPct }) => {
+L2142:           {l:"Overall Progress",  v:overallPct+"%",   c:"from-blue-600 to-blue-500",   icon:"📈"},
+L2160:           <span className="text-2xl font-black text-amber-400">{overallPct}%</span>
+L2164:             style={{width:overallPct+"%", background:"linear-gradient(90deg,#f59e0b,#10b981)"}}/>
+L2167:           <span>0%</span><span>Work Done: {overallPct}%</span><span>Balance: {100-overallPct}%</span><span>100%</span>
+L2265:                 <td className="px-3 py-2"><div className="flex items-center gap-1.5"><div className="flex-1 h-3 bg-amber
+L2266:                 <td className="px-3 py-2"><span className="font-black text-red-500">{100-overallPct}%</span></td>
+L2301:   const getOverall = (pid) => {
+L2362:     overallPct: `${getOverall(p.id)}%`,
+L2376:     { header: "Overall Progress",   key: "overallPct",        width: 16 },
+L2390:     { header: "Progress",      key: "overallPct",   pdfWidth: 16 },
+L2397:     const overallPct  = getOverall(sel.id);
+L2419:               <span className="font-bold text-white text-base">{overallPct}%</span>
+L2421:             <PctBar pct={overallPct} showLabel={false} height="h-3"/>
+L2449:               <p className="text-xs text-slate-400 mt-0.5">{projPgItems.length} activities · Overall: {overallPct}%</p>
+L2572:           {progTab==="list"&&projPgItems.length>0&&<ProgressDashboard items={projPgItems} projectName={sel.name} overall
+L2666:                 const overall = getOverall(p.id);
+
+=== progress_percentage DB save (update) ===
+L678:       pct: (()=>{ const u=p.unit||"NOS"; const a=Number(p.actual_qty)||0; const d=Number(p.work_done_qty)||0; return (u!
+L697:       progress_percentage: Math.min(100, Math.max(0, Number(f.pct) || 0)),
+L714:       progress_percentage: Math.min(100, Math.max(0, Number(f.pct) || 0)),
+
+=== Project card progress bar (L2074-2200) ===
+L2078:         <div className={`${height} rounded-full transition-all duration-500 ${color}`} style={{ width: `${pn}%` }} />
+L2080:       {showLabel && <span className="text-xs font-bold text-slate-600 w-8 shrink-0">{pn}%</span>}
+L2087:   "In Progress": "bg-blue-100 text-blue-700 border-blue-200",
+L2104: const ProgressDashboard = ({ items, projectName, overallPct }) => {
+L2107:       📊 No activities yet. Add activities above to see progress charts.
+L2115:     const done     = isLump ? (Number(i.pct)||0) : (Number(i.workDoneQty)||0);
+L2117:     const pct      = isLump ? (Number(i.pct)||0) : (actual > 0 ? Math.min(100,Math.round((done/actual)*100)) : (Number(i
+L2120:     return { name: shortName, fullName: label, actual, done, balance, pct, remaining: 100-pct, unit: i.unit||"NOS", stat
+L2121:   }).filter(d => d.actual > 0 || d.pct > 0);
+L2129:   const STS_CLR = {"Completed":"#10b981","In Progress":"#3b82f6","On Hold":"#f59e0b","Not Started":"#94a3b8"};
+L2142:           {l:"Overall Progress",  v:overallPct+"%",   c:"from-blue-600 to-blue-500",   icon:"📈"},
+L2144:           {l:"In Progress",       v:items.filter(i=>i.status==="In Progress").length, c:"from-amber-500 to-amber-400", i
+L2156:       {/* Overall progress bar */}
+L2159:           <span className="text-sm font-bold">Overall Project Progress — {projectName}</span>
+L2160:           <span className="text-2xl font-black text-amber-400">{overallPct}%</span>
+L2164:             style={{width:overallPct+"%", background:"linear-gradient(90deg,#f59e0b,#10b981)"}}/>
+L2167:           <span>0%</span><span>Work Done: {overallPct}%</span><span>Balance: {100-overallPct}%</span><span>100%</span>
+L2176:           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">📦 Quantity Progress (Actual vs 
+L2177:           <ResponsiveContainer width="100%" height={240}>
+L2178:             <BarChart data={chartData} margin={{top:5,right:5,left:-10,bottom:40}} barCategoryGap="20%">
+L2184:                 formatter={(v,n,p)=>[`${p.payload.isLump?v+"%":v+" "+p.payload.unit}`,n]}
+L2195:         {/* Horizontal % Bar Chart */}
+L2197:           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">📊 Work Done % vs Remaining % pe
+L2198:           <ResponsiveContainer width="100%" height={240}>
+L2201:               <XAxis type="number" domain={[0,100]} tick={{fontSize:9,fill:"#94a3b8"}} tickFormatter={v=>v+"%"}/>
+L2205:                 formatter={(v,n,p)=>[v+"%",n]}
+L2209:               <Bar dataKey="pct"       name="Work Done %"  stackId="a" radius={[0,0,0,0]}>
+L2210:                 {chartData.map((e,i)=><Cell key={i} fill={PCT_CLR(e.pct)}/>)}
+L2212:               <Bar dataKey="remaining" name="Remaining %" stackId="a" fill="#f1f5f9" radius={[0,3,3,0]}/>
+L2221:           <span className="font-bold text-slate-800 text-sm">📋 Activity Progress Summary</span>
+L2226:             <tr>{["#","Activity","Unit","Actual Qty","Work Done","Balance Qty","Work Done %","Remaining %","Status"].map
+L2232:               <tr key={i} className={`border-t border-slate-100 ${i%2===0?"bg-white":"bg-slate-50/50"}`}>
+L2237:                 <td className="px-3 py-2 text-center font-bold text-green-700">{r.isLump?r.pct+"%":r.done.toLocaleString
+L2238:                 <td className="px-3 py-2 text-center font-bold text-red-600">{r.isLump?(100-r.pct)+"%":r.balance.toLocal
+L2242:                       <div className="h-3 rounded-full transition-all" style={{width:r.pct+"%",backgroundColor:PCT_CLR(r
+L2244:                     <span className="font-black w-8 text-right" style={{color:PCT_CLR(r.pct)}}>{r.pct}%</span>
+L2250:                       <div className="h-3 bg-red-400 rounded-full transition-all" style={{width:(100-r.pct)+"%"}}/>
+
+=== renderPage dashboard props ===
+L11800: };
+L11801: 
+L11802: 
+L11803: // ============================================================
+L11804: // MANPOWER MASTER — Hook + Component
+L11805: // Insert into App.js BEFORE the DailyReports component
+L11806: // ============================================================
+L11807: 
+L11808: // ── useManpowerMaster Hook ────────────────────────────────────────────────────
+L11809: 
+L11810: 
+L11811: // ── DPR Manpower Section — Drop-in replacement for manpower rows in DPR form ──
+L11812: // Use this inside your DPR form where subcontractor manpower is entered
+L11813: 
+L11814: const DPRManpowerSection = ({ subcontractorId, subcontractorName, dprId, reportDate, projectId, showToast }) => {
+L11815:   const [rows,    setRows]    = useState([]);
+L11816:   const [loading, setLoading] = useState(false);
+L11817:   const [saving,  setSaving]  = useState(false);
+L11818:   const [saved,   setSaved]   = useState(false);
+L11819: 
+L11820:   const AM_OPTS = ["P","A","H"];
+L11821:   const PM_OPTS = ["P","A","H"];
+L11822: 
+L11823:   // Load active manpower for this subcontractor
+L11824:   useEffect(() => {
+L11825:     if (!subcontractorId) { setRows([]); return; }
+L11826:     const load = async () => {
+L11827:       setLoading(true);
+L11828: 
+L11829:       // Check if attendance already saved for this DPR+subcontractor
+L11830:       if (dprId) {

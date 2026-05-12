@@ -1,0 +1,83 @@
+### App() state setup (first 60 lines) ###
+=== App state ===
+11997	export default function App() {
+11998	  const { user, loading: authLoading } = useAuth();
+11999	  const { projects, loading: plLoad, add: addP, update: updP, remove: delP } = useProjects();
+12000	  const { tasks, loading: tlLoad, add: addT, update: updT, remove: delT } = useTasks();
+12001	  const { snags, loading: slLoad, add: addS, update: updS, remove: delS } = useSnags();
+12002	  const { reports, loading: rlLoad, add: addR, update: updR, remove: delR } = useDailyReports();
+12003	  const { inspections, loading: ilLoad, add: addI, update: updI, remove: delI } = useInspections();
+12004	  const { drawings, loading: dlLoad, add: addD, update: updD, remove: delD } = useDrawings();
+12005	  const { subs, loading: sbLoad, add: addSub, update: updSub, remove: delSub } = useSubcontractors();
+12006	  const { progressItems, add: addPg, update: updPg, remove: delPg } = useProjectProgress();
+12007	  const { photos, loading: phLoad, add: addPh, update: updPh, remove: delPh } = usePhotos();
+12008	  const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
+12009	  const { mrs, loading: mrLoad, add: addMr, update: updMr, remove: delMr, updateStatus: updMrStatus } = useMatReqs();
+12010	  const { lpos, loading: lpoLoad, add: addLpo, update: updLpo, remove: delLpo } = useLPOs();
+12011	  const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeStock, addReceipt, approveReceipt, removeReceipt, addIssue, removeIssue } = useStore();
+12012	  const { nocs, loading: nocLoad, add: addNoc, update: updNoc, remove: delNoc } = useNOCs();
+12013	  const [prefillMr, setPrefillMr] = useState(null);
+12014	
+12015	  const { profile: userProfile } = useUserProfile(user);
+12016	  const { reqs: permReqs, addReq: addPermReq, updateReq: updatePermReq } = usePermRequests();
+12017	  const userCanEdit = canEdit(userProfile);
+12018	  const userIsAdmin = isAdmin(userProfile);
+12019	  const { notifs, unreadCount, markRead, markAllRead, deleteNotif, generateNotifs } = useNotifications();
+12020	  const { toast, showToast, hideToast } = useToast();
+12021	  const [page, setPage] = useState("dashboard");
+12022	  const [navFilter, setNavFilter] = useState({});
+12023	  // navigate(page, filterObj) ? used by dashboard cards and alerts
+12024	  const navigate = (pg, filter = {}) => { setPage(pg); setNavFilter(filter); };
+12025	
+12026	  // Auto-generate notifications whenever live data changes (lengths used intentionally)
+12027	  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
+12028	    if (tasks.length || snags.length || mrs.length || lpos.length || nocs.length) {
+12029	      generateNotifs({ tasks, snags, inspections, mrs, lpos, drawings, nocs });
+12030	    }
+12031	  }, [tasks.length, snags.length, inspections.length, mrs.length, lpos.length, drawings.length, nocs.length]); // eslint-disable-line
+12032	  const [collapsed, setCollapsed] = useState(false);
+12033	  const [mobileOpen, setMobileOpen] = useState(false);
+12034	
+12035	  if (authLoading) return (
+12036	    <div className="flex h-screen items-center justify-center bg-slate-50">
+12037	      <div className="text-center space-y-3">
+12038	        <div className="w-12 h-12 border-4 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+12039	        <p className="text-sm text-slate-500 font-medium">Loading AGBC...</p>
+12040	      </div>
+12041	    </div>
+12042	  );
+12043	
+12044	  if (!user) return <Login onLogin={() => {}} />;
+12045	
+12046	  const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter };
+12047	
+12048	  const renderPage = () => {
+12049	    switch (page) {
+12050	      case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos} stock={stock} nocs={nocs} onNavigate={navigate}/>;
+12051	      case "projects":       return <Projects {...pp} loading={plLoad} onAdd={addP} onUpdate={updP} onDelete={delP} progressItems={progressItems} onAddPg={addPg} onUpdatePg={updPg} onDeletePg={delPg} tasks={tasks} snags={snags} inspections={inspections} photos={photos} reports={reports} />;
+12052	      case "tasks":          return <Tasks {...pp} tasks={tasks} loading={tlLoad} onAdd={addT} onUpdate={updT} onDelete={delT} />;
+12053	      case "snags":          return <Snags {...pp} snags={snags} loading={slLoad} onAdd={addS} onUpdate={updS} onDelete={delS} />;
+12054	      case "reports":        return <DailyReports {...pp} reports={reports} loading={rlLoad} onAdd={addR} onUpdate={updR} onDelete={delR} />;
+12055	      case "inspections":    return <Inspections {...pp} inspections={inspections} loading={ilLoad} onAdd={addI} onUpdate={updI} onDelete={delI} />;
+12056	      case "drawings":       return <Drawings {...pp} drawings={drawings} loading={dlLoad} onAdd={addD} onUpdate={updD} onDelete={delD} />;
+
+### navFilter definition in App ###
+L12022:   const [navFilter, setNavFilter] = useState({});
+L12046:   const pp = { projects, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter };
+
+### navigate / setNav / onNavigate in App ###
+L12022:   const [navFilter, setNavFilter] = useState({});
+L12023:   // navigate(page, filterObj) ? used by dashboard cards and alerts
+L12024:   const navigate = (pg, filter = {}) => { setPage(pg); setNavFilter(filter); };
+L12050:       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos}
+L12060:       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={pro
+L12126:       <Sidebar active={page} onNav={(pg) => navigate(pg, {})} collapsed={collapsed} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} user={use
+L12138:           onNavigate={navigate}
+
+### How MR/LPO/NOC case returns component (full line) ###
+L12060:       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateL
+L12061:       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPr
+L12063:       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
+
+=== DONE ===
+Press Enter...

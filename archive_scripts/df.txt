@@ -1,0 +1,30 @@
+Lines: 12700
+=== handlePrintDPR ===
+3955	      const handlePrintDPR = (rpt) => {
+3956	        const proj = projects.find(p => p.id === rpt.pid);
+3957	        setPrintData({ rpt, proj, att: [] });
+3958	        setPrintRptId(rpt.id + '_' + Date.now());
+3959	      };
+
+### printRptId ###
+L3573:   const [printRptId, setPrintRptId] = useState(null);
+L3574:   useEffect(() => { if (!printRptId || !printData) return; loadAttendance(printData.rpt.id).then(att => { setPrintData(p
+
+### printData/printRptId useEffect ###
+L3574:   useEffect(() => { if (!printRptId || !printData) return; loadAttendance(printData.rpt.id).then(att => { setPrintData(p
+
+### goList in handleSave ###
+L3631:     showToast(sel?"Report updated!":"Report created: "+res.reportNum); setTimeout(()=>goList(),1200);
+L3637:     showToast("Report deleted!"); setConfirmId(null); if(mode!=="list") goList();
+
+### useDailyReports return ###
+=== useDailyReports return ===
+850	      return {
+851	        id: r.id, pid: r.project_id, date: r.report_date || "",
+852	        reportNum: r.report_number || "",
+
+### List row manpower ###
+L3987:                     <td className="px-4 py-3"><span className="text-sm font-bold text-blue-700">{mp}</span><span classNa
+
+=== DONE ===
+Press Enter...

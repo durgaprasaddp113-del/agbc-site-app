@@ -1,0 +1,17 @@
+Total lines: 11899
+
+=== TOP 50 lines ===
+L1: /* eslint-disable */
+L2: import { useState, useEffect, useCallback, useRef } from "react";
+L3: import { uploadToR2, validateImageFile, fileSizeLabel } from "./r2Storage";
+L4: import { supabase } from "./supabase";
+L5: import Login from "./Login";
+L6: 
+L7: 
+Traceback (most recent call last):
+  File "C:\Apps\agbc-site-app\read_appjs.py", line 7, in <module>
+    print(f"L{i+1}: {l.rstrip()[:120]}")
+  File "C:\Users\Tender\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 7-83: character maps to <undefined>

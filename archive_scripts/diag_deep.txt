@@ -1,0 +1,108 @@
+### useProjects FULL HOOK ###
+=== useProjects (L613-653) ===
+613	function useProjects() {
+614	  const [projects, setProjects] = useState([]);
+615	  const [loading, setLoading] = useState(true);
+616	  const loadData = useCallback(async () => {
+617	    const { data, error } = await supabase.from("projects").select("*").order("project_number");
+618	    if (error) { console.error("Projects:", error.message); }
+619	    if (data) setProjects(data.map(p => ({
+620	      id: p.id, number: p.project_number || "", name: p.project_name || "",
+621	      plot: p.plot_number || "", location: p.location || "",
+622	      plotArea: p.plot_area_sqft || "", bua: p.bua_sqft || "",
+623	      duration: p.duration_months || "", consultant: p.consultant_name || "",
+624	      consultantContact: p.consultant_contact || "",
+625	      status: p.status || "Active", mapUrl: p.map_url || "",
+626	    })));
+627	    setLoading(false);
+628	  }, []);
+629	  useEffect(() => { loadData(); }, [loadData]);
+630	
+631	  const add = async (f) => {
+632	    const { error } = await supabase.from("projects").insert([{
+633	      project_number: f.number, project_name: f.name, plot_number: f.plot,
+634	      location: f.location, plot_area_sqft: parseFloat(f.plotArea) || null,
+635	      bua_sqft: parseFloat(f.bua) || null, duration_months: parseInt(f.duration) || null,
+636	      consultant_name: f.consultant, consultant_contact: f.consultantContact,
+637	      status: f.status || "Active", map_url: f.mapUrl || null,
+638	    }]);
+639	    if (error) return { ok: false, error: error.message };
+640	    await loadData(); return { ok: true };
+641	  };
+642	  const update = async (id, f) => {
+643	    const { error } = await supabase.from("projects").update({
+644	      project_number: f.number, project_name: f.name, plot_number: f.plot,
+645	      location: f.location, plot_area_sqft: parseFloat(f.plotArea) || null,
+646	      bua_sqft: parseFloat(f.bua) || null, duration_months: parseInt(f.duration) || null,
+647	      consultant_name: f.consultant, consultant_contact: f.consultantContact,
+648	      status: f.status, map_url: f.mapUrl || null,
+649	    }).eq("id", id);
+650	    if (error) return { ok: false, error: error.message };
+651	    await loadData(); return { ok: true };
+652	  };
+
+### HOW PROJECTS ARE PASSED TO MODULES ###
+L12060:       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={pro
+L12061:       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={sh
+L12063:       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}
+
+### MR SAVE - HOW project_id IS STORED ###
+L5490:       pid: String(r.project_id||"").toLowerCase(),
+L5522:       mr_number: mrNum, project_id: f.pid, requested_by: f.requestedBy,
+L5541:       project_id: f.pid, requested_by: f.requestedBy, department: f.dept,
+L5588:       id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
+
+### MR FORM - PROJECT FIELD ###
+L5751:     setForm({ pid:mr.pid, requestedBy:mr.requestedBy, dept:mr.dept, date:mr.date, requiredDate:mr.requiredDate, priority:mr.priority, status:mr.status, remarks:
+L5759:     if (!form.pid) { showToast("Select a project","error"); return; }
+L5864:             <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id
+L5924:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(proj
+L6027:     setForm({pid:l.pid,mrId:l.mrId,mrNum:l.mrNum,supplierName:l.supplierName,supplierContact:l.supplierContact,supplierEmail:l.supplierEmail,supplierAddress:l.s
+L6035:     if (!form.pid) { showToast("Select a project","error"); return; }
+L6171:             <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id
+L6271:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option value="all">All Projects</option>{(proj
+
+### LPO SAVE - project_id ###
+L5588:       id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
+L5625:       lpo_number: lpoNum, project_id: f.pid,
+L5662:       project_id: f.pid, supplier_name: f.supplierName, supplier_contact: f.supplierContact,
+
+### App() RENDER - projects prop ###
+L11999:   const { projects, loading: plLoad, add: addP, update: updP, remove: delP } = useProjects();
+L12050:       case "dashboard":      return <Dashboard projects={projects} tasks={tasks} snags={snags} inspections={inspections} reports={reports} mrs={mrs} lpos={lpos}
+L12058:       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks=
+L12059:       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} show
+L12060:       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={pro
+L12061:       case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={sh
+L12062:       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} o
+L12063:       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}
+L12064:       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
+
+### useProjects data mapping ###
+L620:       id: p.id, number: p.project_number || "", name: p.project_name || "",
+L633:       project_number: f.number, project_name: f.name, plot_number: f.plot,
+L644:       project_number: f.number, project_name: f.name, plot_number: f.plot,
+L671:       id: p.id, pid: p.project_id, activity: p.activity_name || "",
+L2234:   const openEdit   = p => { setSel(p); setForm({number:p.number,name:p.name,plot:p.plot,location:p.location,plotArea:String(p.plotArea||""),bua:String(p.bua||""),duration:String(p.duration||""),consultant:p.consultant,consultantContact:p.consultantContact,status:p.status,mapUrl:p.mapUrl}); setMode("form"); };
+L2235:   const openView   = p => { setSel(p); setProgTab("list"); setSelPg(null); setPgForm({...EMPTY_PG,pid:p.id}); setSelectedElementKey(ELEMENT_DEFAULTS[0].key); setMode("view"); };
+
+### MR FULL FILTER BLOCK ###
+=== MR filter (L5778-5793) ===
+5778	  const filtered = mrs.filter(m => {
+5779	    const _pid  = String(m.pid  || "").toLowerCase();
+5780	    const _fpid = String(fProject || "").toLowerCase();
+5781	    if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+5782	    if (fStatus !== "All" && (m.status||"") !== fStatus) return false;
+5783	    if (search) {
+5784	      const q = search.toLowerCase();
+5785	      const hay = `${m.mrNum} ${m.requestedBy} ${m.dept}`.toLowerCase();
+5786	      if (!hay.includes(q)) return false;
+5787	    }
+5788	    return true;
+5789	  })
+5790	
+5791	  const DEL_BADGE = { "Pending":"bg-slate-100 text-slate-500 border-slate-200", "Partially Delivered":"bg-amber-100 text-amber-700 border-amber-200", "Fully Delivered":"bg-green-100 text-green-700 border-green-200" };
+5792	
+
+=== DONE ===
+Press Enter...

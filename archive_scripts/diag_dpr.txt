@@ -1,0 +1,142 @@
+### ManpowerMaster component start ###
+=== ManpowerMaster start ===
+11575	const ManpowerMaster = ({ subcontractors, projects, showToast }) => {
+11576	  const { masters, loading, addMaster, updateMaster, removeMaster } = useManpowerMaster();
+11577	  const [mode,      setMode]      = useState("list");
+11578	  const [sel,       setSel]       = useState(null);
+11579	  const [saving,    setSaving]    = useState(false);
+11580	  const [search,    setSearch]    = useState("");
+11581	  const [fSub,      setFSub]      = useState("All");
+11582	  const [fStatus,   setFStatus]   = useState("Active");
+11583	  const [confirmId, setConfirmId] = useState(null);
+11584	  const [form,      setForm]      = useState(EMPTY_MP_FORM());
+
+### DailyReports component start ###
+=== DailyReports start ===
+3161	const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, showToast, navFilter = {} }) => {
+3162	  const [mode, setMode] = useState("list");
+3163	  const [sel, setSel] = useState(null);
+3164	  const [form, setForm] = useState(EMPTY_DR());
+3165	  const [fProject, setFProject] = useState(navFilter.projectId || "All");
+3166	  const [fStatus, setFStatus]   = useState(navFilter.status || "All");
+3167	  const [fDate, setFDate]       = useState(navFilter.date || "");
+3168	  const [search, setSearch]     = useState("");
+3169	  useEffect(() => {
+3170	    setFProject(navFilter.projectId || "All");
+3171	    setFStatus(navFilter.status || "All");
+3172	    setFDate(navFilter.date || "");
+3173	  }, [navFilter.projectId]);
+3174	  const [saving, setSaving]     = useState(false);
+3175	  const [confirmId, setConfirmId] = useState(null);
+3176	  const [activeSection, setActiveSection] = useState("header");
+3177	
+3178	  const set = k => e => setForm(p => ({...p,[k]:e.target.value}));
+3179	
+3180	  // Dynamic row helpers
+
+### DPR manpower keywords ###
+L3181:   const addRow  = k => () => setForm(p=>({...p,[k]:[...(p[k]||[]), k==="manpower"?EMPTY_MP():k==="equipment"?EMPTY_EQ():k==="activities"?EMPTY_ACT():k==="materi
+L3194:       manpower:r.manpower?.length?r.manpower.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_MP()],
+L3208:     const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+L3212:       manpower:form.manpower.filter(r=>r.trade||r.count),
+L3218:       manpowerTotal: totalMP,
+L3244:     {id:"manpower",label:`? Manpower (${(form.manpower||[]).filter(r=>r.trade||r.count).length})`},
+L3256:     const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+L3282:           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center"><div className="text-2xl font-black text-blue-700">{totalMP}</div><div c
+L3288:           { title:"? Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+L3353:       {/* MANPOWER section */}
+L3354:       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+L3355:         <SectionHead icon="?" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
+L3357:           rows={form.manpower||[]} renderRow={r=>(
+L3359:             <td className="px-2 py-1.5"><Inp value={r.trade} onChange={e=>setRow("manpower",r.id,"trade",e.target.value)} placeholder="Concretor / HVAC..."/></t
+L3360:             <td className="px-2 py-1.5 w-24"><Inp type="number" value={r.count} onChange={e=>setRow("manpower",r.id,"count",e.target.value)} placeholder="0"/></
+L3361:             <td className="px-2 py-1.5"><Inp value={r.foreman} onChange={e=>setRow("manpower",r.id,"foreman",e.target.value)} placeholder="Name"/></td>
+L3362:             <td className="px-2 py-1.5"><Inp value={r.area} onChange={e=>setRow("manpower",r.id,"area",e.target.value)} placeholder="Floor 3, Grid A"/></td>
+L3363:             <td className="px-2 py-1.5"><Inp value={r.remarks} onChange={e=>setRow("manpower",r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+L3364:             <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow("manpower",r.id)} disabled={(form.manpower||[]).length===1} className="text-red-400 hove
+L3368:           Total Workers: <span className="text-blue-600">{(form.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0)}</span>
+L3476:     manpowerTotal:(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0),
+L3482:     {header:"Manpower",key:"manpowerTotal",width:12},{header:"Status",key:"status",width:14},
+L3499:               <tr>{["Report No.","Date","Project","Prepared By","Manpower","Weather","Status","Actions"].map(h=><th key={h} className="text-left px-4 py-3 text-
+L3504:                 const mp=(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+
+### useDailyReports hook ###
+=== useDailyReports ===
+842	function useDailyReports() {
+843	  const [reports, setReports] = useState([]);
+844	  const [loading, setLoading] = useState(true);
+845	  const loadData = useCallback(async () => {
+846	    const { data, error } = await supabase.from("daily_reports").select("*").order("report_date", { ascending: false });
+847	    if (error) console.error("Reports:", error.message);
+848	    if (data) setReports(data.map(r => {
+849	      const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
+850	      return {
+851	        id: r.id, pid: r.project_id, date: r.report_date || "",
+852	        reportNum: r.report_number || "",
+853	        weather: r.weather || "Sunny", temp: r.temperature_high || "",
+854	        workHours: r.work_hours || "8",
+855	        manpower: parse("manpower_json"),
+856	        equipment: parse("equipment_json"),
+857	        activities: parse("activities_json"),
+858	        materials: parse("materials_json"),
+859	        inspections: parse("inspections_json"),
+860	        safety: parse("safety_json"),
+861	        manpowerTotal: r.manpower_total || 0,
+862	        issues: r.issues_delays || "",
+863	        visitors: r.visitors || "",
+864	        remarks: r.remarks || "",
+865	        status: r.status || "Draft",
+866	        preparedBy: r.prepared_by_name || "",
+867	      };
+868	    }));
+869	    setLoading(false);
+870	  }, []);
+871	  useEffect(() => { loadData(); }, [loadData]);
+872	
+873	  const getNextNum = async () => {
+874	    const y = new Date().getFullYear();
+875	    const { data } = await supabase.from("daily_reports").select("report_number").like("report_number", `DR-${y}-%`).order("created_at", { ascending: false }).limit(1);
+876	    const last = data?.[0]?.report_number || `DR-${y}-000`;
+877	    const n = parseInt(last.split("-")[2] || "0") || 0;
+878	    return `DR-${y}-${String(n + 1).padStart(3, "0")}`;
+879	  };
+880	
+881	  const add = async (f) => {
+882	    const reportNum = await getNextNum();
+883	    const { error } = await supabase.from("daily_reports").insert([{
+884	      report_number: reportNum,
+885	      project_id: f.pid, report_date: f.date || null,
+886	      weather: f.weather, temperature_high: parseInt(f.temp) || null,
+887	      work_hours: f.workHours || "8",
+888	      manpower_total: f.manpowerTotal || 0,
+889	      manpower_json: JSON.stringify(f.manpower || []),
+890	      equipment_json: JSON.stringify(f.equipment || []),
+891	      activities_json: JSON.stringify(f.activities || []),
+
+### App() useManpowerMaster ###
+L12064:       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
+
+### ManpowerMaster case ###
+L11495: // ?? useManpowerMaster Hook ????????????????????????????????????????????????????
+L11496: function useManpowerMaster() {
+L11574: // ?? ManpowerMaster Component ??????????????????????????????????????????????????
+L11575: const ManpowerMaster = ({ subcontractors, projects, showToast }) => {
+L11576:   const { masters, loading, addMaster, updateMaster, removeMaster } = useManpowerMaster();
+L12064:       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
+
+### useNOCs hook end ###
+=== useNOCs return ===
+10932	    if (error) return { ok: false, error: error.message };
+10933	    await loadData(); return { ok: true, nocNum };
+10934	  };
+10935	
+10936	  const update = async (id, f) => {
+10937	    let fileUrl = f.fileUrl;
+10938	    if (f.file) fileUrl = await uploadFile(f.file);
+10939	    const { error } = await supabase.from("authority_nocs").update({
+10940	      project_id: f.pid || null, authority_name: f.authority,
+10941	      noc_type: f.nocType==="Others" ? (f.customNocType||"Others") : f.nocType, description: f.desc,
+
+
+=== DONE ===
+Press Enter...

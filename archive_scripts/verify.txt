@@ -1,0 +1,22 @@
+=== DEPLOYMENT VERIFICATION ===
+  [OK] Export button exists
+  [OK] handlePrintDPR is async
+  [OK] Uses Blob download
+  [OK] Uses a.download
+  [MISSING] No window.open
+  [OK] showToast preparing
+  [OK] Panel CSS show/hide
+  [OK] attRowsRef exists
+  [OK] DprAttendancePanel exists
+  [OK] saveAttendance updates DB
+  [OK] loadData gets att counts
+
+Some items missing - fixes not applied
+
+window.open occurrences:
+  L6790: <button onClick={()=>{const t=`AED ${Number(sel.vatEnabled?(sel.totalAmount*1.05
+
+a.download occurrences:
+  L4051: a.download=(rpt.reportNum||'DPR')+'_'+(rpt.date||'')+'.html';
+
+Press Enter...

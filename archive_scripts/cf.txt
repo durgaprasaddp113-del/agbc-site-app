@@ -1,0 +1,40 @@
+=== FILTER CONDITIONS ===
+L2471:     if (fProject !== "All" && t.pid !== fProject) return false;
+L2626:     if (fProject !== "All" && s.pid !== fProject) return false;
+L2930:     if (fProject!=="All" && r.pid!==fProject) return false;
+L4388:     if (fProject !== "All" && !subProjs.find(p => p.id === fProject)) return false;
+L5478:         if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+L5749:         if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+L6514:     if (fProject !== "All" && s.pid !== fProject) return false;
+L11114:         if (_fpid && _fpid !== "all" && _pid !== _fpid) return false;
+
+=== useMatReqs pid ===
+L5186:       pid: r.project_id || "",
+
+=== MR/LPO/NOC dropdown onChange ===
+L2547:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Pro
+L2749:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Pro
+L3189:         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All Proje
+L3336:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Pro
+L4004:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Pro
+L4207:       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option
+L4720:         <Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Pro
+L5618:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option
+L5964:         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto"><option
+L10364:               <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto"><option value="All">All
+L11424:           <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).toLowerCase())} className="w-auto">
+
+=== All Projects option values ===
+L2547 val='All':         <Sel value={fProject} onChange={e => setFProject(e.target.value)} classN
+L2749 val='All':         <Sel value={fProject} onChange={e => setFProject(e.target.value)} classN
+L3189 val='All':         <Sel value={fProject} onChange={e=>setFProject(e.target.value)} classNam
+L3336 val='All':         <Sel value={fProject} onChange={e => setFProject(e.target.value)} classN
+L4004 val='All':         <Sel value={fProject} onChange={e => setFProject(e.target.value)} classN
+L4207 val='All':       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.t
+L4720 val='All':         <Sel value={fProject} onChange={e => setFProject(e.target.value)} classN
+L5618 val='all':         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).to
+L5964 val='all':         <Sel value={fProject} onChange={e=>setFProject(String(e.target.value).to
+L10297 val='':             <div><Lbl t="Project"/><Sel value={form.pid||""} onChange={set("pid"
+L10364 val='All':               <Sel value={fProject} onChange={e=>setFProject(e.target.value)} cl
+L11425 val='All':             <option value="All">All Projects</option>
+Press Enter...

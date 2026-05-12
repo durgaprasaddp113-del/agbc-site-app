@@ -1,0 +1,36 @@
+=== KEY LINE NUMBERS ===
+printData: L3582
+    const [printData, setPrintData] = useState(null);
+printRptId: L3583
+    const [printRptId, setPrintRptId] = useState(null);
+mp_label: L3677
+      {id:"manpower",label:`? Manpower (${(attRowsRef.current||[]).length}).length})`},
+print_fn: L4041
+        const handlePrintDPR = (rpt) => {
+panel: L3915
+        <div style={{display:activeSection==="manpower"?"block":"none"}}><DprAttendancePanel
+modal: L3808
+                        <button onClick={()=>{setPrintData(null);setPrintRptId(null);}} style={{paddin
+
+=== Lines 3582-3592 ===
+3583	  const [printRptId, setPrintRptId] = useState(null);
+3584	  useEffect(() => {
+3585	    if (!printRptId || !printData) return;
+3586	    loadAttendance(printData.rpt.id).then(att => {
+3587	      setPrintData(p => p ? {...p, att: att||[]} : p);
+3588	    });
+3589	  }, [printRptId]);
+3590	  useEffect(() => {
+3591	    if (!printRptId||!printData) return;
+3592	    loadAttendance(printData.rpt.id).then(att=>{
+
+=== Manpower label L3677 ===
+    {id:"manpower",label:`? Manpower (${(attRowsRef.current||[]).length}).length})`},
+
+=== handlePrintDPR ===
+4041	      const handlePrintDPR = (rpt) => {
+4042	        const proj = projects.find(p => p.id === rpt.pid);
+4043	        setPrintData({ rpt, proj, att: [] }); setPrintRptId(String(rpt.id||'')+'_'+Date.now());
+4044	
+4045	      };
+Press Enter...

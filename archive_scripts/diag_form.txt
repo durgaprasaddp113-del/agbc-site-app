@@ -1,0 +1,100 @@
+### MR FORM PROJECT SELECTOR - FULL LINE ###
+=== L5863-5866 ===
+5863	          <Grid2>
+5864	            <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} ? {p.name}</option>)}</Sel></div>
+5865	            <div><Lbl t="Department"/><Sel value={form.dept} onChange={set("dept")}>{MR_DEPT.map(d=><option key={d}>{d}</option>)}</Sel></div>
+5866	            <div><Lbl t="Requested By"/><Inp value={form.requestedBy} onChange={set("requestedBy")} placeholder="Engineer name"/></div>
+
+### LPO FORM PROJECT SELECTOR - FULL LINE ###
+=== L6170-6173 ===
+6170	          <Grid2>
+6171	            <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} ? {p.name}</option>)}</Sel></div>
+6172	            <div><Lbl t="Linked MR"/><Inp value={form.mrNum} readOnly placeholder="Auto-filled from MR" className="bg-slate-50 text-slate-500"/></div>
+6173	            <div><Lbl t="LPO Date"/><Inp type="date" value={form.date} onChange={set("date")}/></div>
+
+### MR TABLE ROW - PROJECT COLUMN ###
+L5941:                     <td className="px-4 py-3"><div className="text-xs font-bold text-slate-800">{proj?.number||"?"}</div><div className="text-xs text-slate-400 max-w-[120px] truncate">{proj?.name}</di
+L6236:                     <td className="px-1 py-1 w-18"><Inp type="number" value={it.qty} onChange={e=>setItemF(it.id,"qty",e.target.value)} placeholder="0"/></td>
+L6237:                     <td className="px-1 py-1 w-24"><Inp type="number" value={it.rate} onChange={e=>setItemF(it.id,"rate",e.target.value)} placeholder="0.00"/></td>
+L6239:                     <td className="px-1 py-1 w-20"><Inp type="number" value={it.deliveredQty} onChange={e=>setItemF(it.id,"deliveredQty",e.target.value)} placeholder="0"/></td>
+L6286:                     <td className="px-4 py-3 text-xs font-bold text-slate-700">{proj?.number||"?"}</td>
+
+### MR LIST - pid lookup for display ###
+L5864:             <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} ? {p.name}</op
+L5910:         exportBtn={<ExportButtons data={filtered.map(m=>({...m,projectNum:(projects.find(p=>p.id===m.pid)||{}).number||"?",projectName:(projects.find(p=>p.id===m.pid)||{}).name||"?",itemCount:m.items.
+L5937:                 const proj = projects.find(p=>p.id===m.pid);
+L6035:     if (!form.pid) { showToast("Select a project","error"); return; }
+L6075:             <p className="text-blue-200 text-sm mt-1">{projects.find(p=>p.id===sel.pid)?.number} ? TRN: {sel.supplierTrn||"?"}</p>
+L6171:             <div><Lbl t="Project" req/><Sel value={form.pid} onChange={set("pid")}><option value="">Select Project...</option>{projects.map(p=><option key={p.id} value={p.id}>{p.number} ? {p.name}</op
+L6265:         exportBtn={<ExportButtons data={filtered.map(l=>({...l,projectNum:(projects.find(p=>p.id===l.pid)||{}).number||"?",totalFmt:`AED ${Number(l.totalAmount).toLocaleString()}`}))}
+L6282:                 const proj = projects.find(p=>p.id===l.pid);
+L6428:       project_id:            f.pid || null,
+L6451:       project_id:            f.pid || null,
+L6494:         project_id:            f.pid  || null,
+
+### NOC FORM PROJECT SELECTOR ###
+L11282:               <Sel value={form.pid} onChange={set("pid")}>
+
+### Sel COMPONENT DEFINITION ###
+=== Sel definition ===
+1237	const Sel = ({ children, ...p }) => <select {...p} className={`${cls} ${p.className || ""}`}>{children}</select>;
+1238	const Txta = ({ rows, ...p }) => <textarea rows={rows || 3} {...p} className={`${cls} resize-none`} />;
+1239	
+1240	const Btn = ({ onClick, disabled, saving, label, color = "amber" }) => {
+1241	  const colors = { amber: "bg-amber-500 hover:bg-amber-600", red: "bg-red-500 hover:bg-red-600", slate: "bg-slate-200 hover:bg-slate-300 text-slate-700" };
+
+
+### MR COMPONENT - is filtered in useMemo? ###
+5728	const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateStatus, projects, showToast, onNavigateLpo, navFilter = {}, lpos = [] }) => {
+5729	  const [mode, setMode] = useState("list");
+5730	  const [sel, setSel] = useState(null);
+5731	  const [form, setForm] = useState(EMPTY_MR());
+5732	  const [search, setSearch] = useState("");
+5733	  const [fStatus, setFStatus] = useState(navFilter.status || "All");
+5734	  const [fLpoStatus, setFLpoStatus] = useState("All");
+5735	  const [fProject, setFProject] = useState(String(navFilter.projectId||"").toLowerCase() || "all");
+5736	  useEffect(() => {
+5737	    setFStatus(navFilter.status || "All");
+5738	    setFProject(String(navFilter.projectId||"").toLowerCase() || "all");
+5739	  }, [navFilter]);
+5740	  const [saving, setSaving] = useState(false);
+5741	  const [confirmId, setConfirmId] = useState(null);
+5742	  const set = k => e => setForm(p => ({...p, [k]: e.target.value}));
+5743	
+5744	  const addItem = () => setForm(p => ({...p, items:[...p.items, EMPTY_MR_ITEM()]}));
+5745	  const removeItem = id => setForm(p => ({...p, items: p.items.filter(i => i.id !== id)}));
+5746	  const setItem = (id, k, v) => setForm(p => ({...p, items: p.items.map(i => i.id===id ? {...i,[k]:v} : i)}));
+5747	
+5748	  const openCreate = () => { setForm(EMPTY_MR()); setSel(null); setMode("form"); };
+5749	  const openEdit = mr => {
+5750	    setSel(mr);
+5751	    setForm({ pid:mr.pid, requestedBy:mr.requestedBy, dept:mr.dept, date:mr.date, requiredDate:mr.requiredDate, priority:mr.priority, status:mr.status, remarks:mr.remarks,
+5752	      items: mr.items.length ? mr.items.map(i=>({id:i.id||Date.now()+Math.random(),desc:i.desc,unit:i.unit,qty:String(i.qty),spec:i.spec,brand:i.brand,remarks:i.remarks})) : [EMPTY_MR_ITEM()] });
+5753	    setMode("form");
+5754	  };
+5755	  const openView = mr => { setSel(mr); setMode("view"); };
+5756	  const goList = () => { setMode("list"); setSel(null); };
+5757	
+5758	  const handleSave = async () => {
+5759	    if (!form.pid) { showToast("Select a project","error"); return; }
+5760	    if (!form.items.some(i=>i.desc.trim())) { showToast("Add at least one item","error"); return; }
+5761	    setSaving(true);
+5762	    const res = sel ? await onUpdate(sel.id, form) : await onAdd(form);
+5763	    setSaving(false);
+5764	    if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+5765	    showToast(sel?"MR updated!":"MR created: "+res.mrNum); goList();
+5766	  };
+5767	  const handleDelete = async id => {
+5768	    const res = await onDelete(id);
+5769	    if (!res.ok) { showToast(res.error,"error"); return; }
+5770	    showToast("MR deleted!"); setConfirmId(null); if (mode!=="list") goList();
+5771	  };
+5772	  const handleApprove = async () => {
+5773	    const res = await onUpdateStatus(sel.id, { status:"Approved" });
+5774	    if (res.ok) { showToast("MR Approved!"); setSel(p=>({...p,status:"Approved"})); }
+5775	    else showToast(res.error,"error");
+5776	  };
+5777	
+
+=== DONE ===
+Press Enter...

@@ -1,0 +1,55 @@
+Total lines: 12672
+
+### handleSave ###
+L3601:   const handleSave = async (submitStatus) => {
+L3602:     if (!form.pid || !form.date) { showToast("Project and Date are required","error"); return; }
+L3603:     setSaving(true);
+L3604:     const totalMP = form.manpower.reduce((s,r)=>s+(Number(r.count)||0),0);
+L3605:     const payload = {
+L3606:       pid:form.pid, date:form.date, reportNum:form.reportNum, preparedBy:form.preparedBy,
+L3607:       weather:form.weather, temp:form.temp, workHours:form.workHours,
+L3608:       manpower:form.manpower.filter(r=>r.trade||r.count),
+L3609:       equipment:form.equipment.filter(r=>r.name),
+L3610:       activities:form.activities.filter(r=>r.activity),
+L3611:       materials:form.materials.filter(r=>r.material),
+L3612:       inspections:form.inspections.filter(r=>r.location||r.type),
+L3613:       safety:form.safety.filter(r=>r.obs),
+L3614:       manpowerTotal: totalMP,
+L3615:       issues:form.issues, visitors:form.visitors, remarks:form.remarks,
+L3616:       status: submitStatus || form.status,
+L3617:     };
+L3618:     const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
+L3619:     setSaving(false);
+L3620:     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
+L3621:         if (res.id || res.dprId) setMpAttDprId(res.id || res.dprId);
+L3622:     showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
+L3623:   };
+L3624: 
+L3625:   const handleDelete = async id => {
+L3626:     const res = await onDelete(id);
+L3627:     if (!res.ok) { showToast(res.error,"error"); return; }
+L3628:     showToast("Report deleted!"); setConfirmId(null); if(mode!=="list") goList();
+L3629:   };
+L3630: 
+
+### DprAttendancePanel state (rows) ###
+L3267: const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast, allRe
+L3268:   const [rows, setRows]       = useState([]);
+L3269:   const [loading, setLoading] = useState(false);
+L3270:   const [saving,  setSaving]  = useState(false);
+L3271:   const [subId,   setSubId]   = useState("");
+
+### print method ###
+L3986:         const _pf = document.createElement('iframe');
+
+### Old manpower summary ###
+L3757:         <SectionHead icon="?" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade|
+
+### Print button ###
+L3714:               <button onClick={()=>handlePrintDPR(sel)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:
+
+### attendance hook in DailyReports ###
+L3570:   const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
+
+=== DONE ===
+Press Enter...

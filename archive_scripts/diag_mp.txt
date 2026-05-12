@@ -1,0 +1,49 @@
+=== useManpowerMaster loadData map ===
+L10552: function useManpowerMaster() {
+L10553:   const [masters, setMasters] = useState([]);
+L10554:   const [loading, setLoading] = useState(true);
+L10555:   const loadData = useCallback(async () => {
+L10556:     const { data, error } = await supabase.from("manpower_master").select("*").order("created_at", { ascending: true });
+L10557:     if (error) { console.error("ManpowerMaster:", error.message); setLoading(false); return; }
+L10558:     if (data) setMasters(data.map(m => ({
+L10559:       id: m.id, subId: m.subcontractor_id || "",
+L10560:       empId: m.employee_id || "", name: m.name || "",
+L10561:       designation: m.designation || "", defaultTeamNo: m.default_team_no || "",
+L10562:       status: m.status || "Active", dateJoined: m.date_joined || "",
+L10563:       dateLeft: m.date_left || "", remarks: m.remarks || "",
+L10564:     })));
+L10565:     setLoading(false);
+L10566:   }, []);
+L10567:   useEffect(() => { loadData(); }, [loadData]);
+L10568: 
+L10569:   const addMaster = async (f) => {
+L10570:     const { error } = await supabase.from("manpower_master").insert([{
+L10571:       subcontractor_id: f.subId || null, employee_id: f.empId || "",
+L10572:       name: f.name || "", designation: f.designation || "",
+L10573:       default_team_no: f.defaultTeamNo || "", status: f.status || "Active",
+L10574:       date_joined: f.dateJoined || null, date_left: f.dateLeft || null, remarks: f.remarks || "",
+L10575:     }]);
+L10576:     if (error) return { ok: false, error: error.message };
+L10577:     await loadData(); return { ok: true };
+L10578:   };
+L10579: 
+L10580:   const updateMaster = async (id, f) => {
+L10581:     const { error } = await supabase.from("manpower_master").update({
+
+=== loadFromMaster function ===
+L10786:   const loadFromMaster = () => {
+L10787:     if (!subId) { showToast("Select a subcontractor","error"); return; }
+L10788:     const active = masters.filter(m => m.subId===subId && m.status==="Active");
+L10789:     if (!active.length) { showToast("No active employees. Add employees in Manpower Master first.","error"); return; }
+L10790:     const existIds = new Set(rows.map(r=>r.mpId).filter(Boolean));
+L10791:     const newRows = active.filter(m=>!existIds.has(m.id)).map(m=>({ rowId:Date.now()+Math.random(), mpId:m.id, subId:m.s
+L10792:     if (!newRows.length) { showToast("All employees already loaded","error"); return; }
+L10793:     setRows(p=>[...p,...newRows]);
+L10794:     showToast(newRows.length+" employees loaded");
+L10795:   };
+L10796: 
+L10797:   const copyLastDpr = async () => {
+L10798:     const prev = (allReports||[]).filter(r=>r.id!==dprId).sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+L10799:     if (!prev) { showToast("No previous DPR found","error"); return; }
+L10800:     setLoading(true);
+Press Enter...

@@ -1,0 +1,166 @@
+=== DprAttendancePanel FULL ===
+3171	const DprAttendancePanel = ({ dprId, subcontractors = [], masters = [], loadAttendance, saveAttendance, showToast }) => {
+3172	  const [rows, setRows]       = useState([]);
+3173	  const [subId, setSubId]     = useState("");
+3174	  const [loading, setLoading] = useState(false);
+3175	  const [saving, setSaving]   = useState(false);
+3176	  const [loaded, setLoaded]   = useState(false);
+3177	
+3178	  useEffect(() => {
+3179	    if (dprId) {
+3180	      setLoading(true);
+3181	      loadAttendance(dprId).then(att => {
+3182	        if (att.length) { setRows(att); setLoaded(true); }
+3183	        setLoading(false);
+3184	      });
+3185	    }
+3186	  }, [dprId, loadAttendance]);
+3187	
+3188	  const activeForSub = subId ? masters.filter(m => m.subId === subId && m.status === "Active") : [];
+3189	
+3190	  const loadFromMaster = () => {
+3191	    if (!subId) { showToast("Select a subcontractor first","error"); return; }
+3192	    if (!activeForSub.length) { showToast("No active employees for this subcontractor","error"); return; }
+3193	    const existing = rows.filter(r => r.subId !== subId);
+3194	    const newRows  = activeForSub.map(mp => EMPTY_ATT_ROW(mp));
+3195	    setRows([...existing, ...newRows]);
+3196	    setLoaded(true);
+3197	    showToast(`Loaded ${newRows.length} employees from master`);
+3198	  };
+3199	
+3200	  const setCell = (rowId, key, val) => setRows(p => p.map(r => r.rowId === rowId || r.id === rowId ? { ...r, [key]: val } : r));
+3201	  const delRow  = (rowId) => setRows(p => p.filter(r => r.rowId !== rowId && r.id !== rowId));
+3202	  const addManual = () => setRows(p => [...p, EMPTY_ATT_ROW(null)]);
+3203	
+3204	  const handleSave = async () => {
+3205	    if (!dprId) { showToast("Save the DPR first, then save attendance","error"); return; }
+3206	    setSaving(true);
+3207	    const res = await saveAttendance(dprId, rows);
+3208	    setSaving(false);
+3209	    if (!res.ok) { showToast(res.error || "Save failed","error"); return; }
+3210	    showToast("Attendance saved!");
+3211	  };
+3212	
+3213	  const subName = id => (subcontractors.find(s => s.id === id) || {}).name || "";
+3214	  const grouped = rows.reduce((acc, r) => { const k = r.subId||"unknown"; if (!acc[k]) acc[k]=[]; acc[k].push(r); return acc; }, {});
+3215	  const totalAM = rows.reduce((s,r) => s + (parseInt(r.am)||0), 0);
+3216	  const totalPM = rows.reduce((s,r) => s + (parseInt(r.pm)||0), 0);
+3217	
+3218	  return (
+3219	    <div className="mt-4 border border-blue-200 rounded-xl overflow-hidden">
+3220	      <div className="bg-blue-600 px-4 py-2.5 flex items-center justify-between">
+3221	        <div className="flex items-center gap-2">
+3222	          <span className="text-white font-bold text-sm">Detailed Attendance (from Master)</span>
+3223	          {rows.length > 0 && (
+3224	            <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">{rows.length} employees</span>
+3225	          )}
+3226	        </div>
+3227	        <div className="flex items-center gap-2 text-xs text-blue-200">
+3228	          <span>AM: {totalAM}</span>
+3229	          <span>PM: {totalPM}</span>
+3230	        </div>
+3231	      </div>
+3232	
+3233	      <div className="bg-blue-50 p-3 flex flex-wrap gap-2 items-end border-b border-blue-200">
+3234	        <div className="flex-1 min-w-[180px]">
+3235	          <label className="block text-xs font-semibold text-blue-700 mb-1">Load Subcontractor from Master</label>
+3236	          <Sel value={subId} onChange={e=>setSubId(e.target.value)} className="w-full">
+3237	            <option value="">Select Subcontractor...</option>
+3238	            {subcontractors.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+3239	          </Sel>
+3240	        </div>
+3241	        <button onClick={loadFromMaster} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+3242	          &#8635; Load from Master
+3243	        </button>
+3244	        <button onClick={addManual} className="px-3 py-2 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+3245	          + Add Row
+3246	        </button>
+3247	        {rows.length > 0 && dprId && (
+3248	          <button onClick={handleSave} disabled={saving} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap">
+3249	            {saving ? "Saving..." : "Save Attendance"}
+3250	          </button>
+3251	        )}
+3252	      </div>
+3253	
+3254	      {loading ? <div className="p-4 text-center text-sm text-slate-400">Loading attendance...</div> :
+3255	       rows.length === 0 ? (
+3256	        <div className="p-6 text-center">
+3257	          <p className="text-sm text-slate-400">No attendance records yet.</p>
+3258	          <p className="text-xs text-slate-300 mt-1">Select a subcontractor above and click "Load from Master"</p>
+3259	        </div>
+3260	      ) : (
+3261	        <div className="overflow-x-auto">
+3262	          {Object.entries(grouped).map(([gSubId, gRows]) => (
+3263	            <div key={gSubId}>
+3264	              {gSubId !== "unknown" && (
+3265	                <div className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 border-b border-slate-200">
+3266	                  {subName(gSubId)} ? {gRows.filter(r=>parseInt(r.am)>0||parseInt(r.pm)>0).length}/{gRows.length} present
+3267	                </div>
+3268	              )}
+3269	              <table className="w-full text-xs min-w-[900px]">
+3270	                <thead className="bg-slate-50 border-b border-slate-200">
+3271	                  <tr>
+3272	                    {["S.No","Emp ID","Name","Designation","A.M","P.M","O.T Hrs","Description of Work","Team No","Remarks",""].map(h=>(
+3273	                      <th key={h} className="text-left px-2 py-2 font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+3274	                    ))}
+3275	                  </tr>
+3276	                </thead>
+3277	                <tbody className="divide-y divide-slate-100">
+3278	                  {gRows.map((r, idx) => (
+3279	                    <tr key={r.rowId||r.id} className="hover:bg-slate-50">
+3280	                      <td className="px-2 py-1.5 text-slate-400 w-8">{idx+1}</td>
+3281	                      <td className="px-2 py-1.5 w-20">
+3282	                        {r.mpId ? <span className="font-mono text-blue-700 font-semibold">{r.empId||"?"}</span>
+3283	                          : <Inp value={r.empId} onChange={e=>setCell(r.rowId||r.id,"empId",e.target.value)} placeholder="ID"/>}
+3284	                      </td>
+3285	                      <td className="px-2 py-1.5 w-32">
+3286	                        {r.mpId ? <span className="font-semibold text-slate-800">{r.name}</span>
+3287	                          : <Inp value={r.name} onChange={e=>setCell(r.rowId||r.id,"name",e.target.value)} placeholder="Name"/>}
+3288	                      </td>
+3289	                      <td className="px-2 py-1.5 w-28">
+3290	                        {r.mpId ? <span className="text-slate-500">{r.designation||"?"}</span>
+3291	                          : <Inp value={r.designation} onChange={e=>setCell(r.rowId||r.id,"designation",e.target.value)} placeholder="Trade"/>}
+3292	                      </td>
+3293	                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.am} onChange={e=>setCell(r.rowId||r.id,"am",e.target.value)} className="text-center font-bold text-green-700"/></td>
+3294	                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" value={r.pm} onChange={e=>setCell(r.rowId||r.id,"pm",e.target.value)} className="text-center font-bold text-blue-700"/></td>
+3295	                      <td className="px-2 py-1.5 w-16"><Inp type="number" min="0" step="0.5" value={r.ot} onChange={e=>setCell(r.rowId||r.id,"ot",e.target.value)} className="text-center text-amber-700"/></td>
+3296	                      <td className="px-2 py-1.5 min-w-[150px]"><Inp value={r.description} onChange={e=>setCell(r.rowId||r.id,"description",e.target.value)} placeholder="Formwork, Rebar, Concrete..."/></td>
+3297	                      <td className="px-2 py-1.5 w-20"><Inp value={r.teamNo} onChange={e=>setCell(r.rowId||r.id,"teamNo",e.target.value)} placeholder="T-1"/></td>
+3298	                      <td className="px-2 py-1.5 min-w-[120px]"><Inp value={r.remarks} onChange={e=>setCell(r.rowId||r.id,"remarks",e.target.value)} placeholder="Notes"/></td>
+3299	                      <td className="px-2 py-1.5 w-8"><button onClick={()=>delRow(r.rowId||r.id)} className="text-red-400 hover:text-red-600 text-base transition-colors">&#215;</button></td>
+3300	                    </tr>
+3301	                  ))}
+3302	                </tbody>
+3303	                <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+3304	                  <tr>
+3305	                    <td colSpan={4} className="px-2 py-1.5 font-bold text-xs text-blue-700">SUBTOTAL</td>
+3306	                    <td className="px-2 py-1.5 font-black text-green-700">{gRows.reduce((s,r)=>s+(parseInt(r.am)||0),0)}</td>
+3307	                    <td className="px-2 py-1.5 font-black text-blue-700">{gRows.reduce((s,r)=>s+(parseInt(r.pm)||0),0)}</td>
+3308	                    <td className="px-2 py-1.5 font-black text-amber-700">{gRows.reduce((s,r)=>s+(parseFloat(r.ot)||0),0).toFixed(1)}</td>
+3309	                    <td colSpan={4}></td>
+3310	                  </tr>
+3311	                </tfoot>
+3312	              </table>
+3313	            </div>
+3314	          ))}
+3315	          {!dprId && <div className="p-2 text-center text-xs text-amber-600 bg-amber-50 border-t border-amber-100">Save the DPR first to persist attendance records</div>}
+3316	        </div>
+3317	      )}
+3318	    </div>
+3319	  );
+3320	};
+
+Lines: 3171 to 3320
+=== EMPTY_ATT_ROW ===
+3163	const EMPTY_ATT_ROW = (mp) => ({
+3164	  rowId: Date.now() + Math.random(),
+3165	  mpId: mp ? mp.id : "", subId: mp ? mp.subId : "",
+3166	  empId: mp ? mp.empId : "", name: mp ? mp.name : "",
+3167	  designation: mp ? mp.designation : "", teamNo: mp ? mp.defaultTeamNo : "",
+
+L11719:   const loadAttendance = async (dprId) => {
+L11731:   const saveAttendance = async (dprId, rows) => {
+L11746:   return { masters, loading, addMaster, updateMaster, removeMaster, toggleMpStatus, loadAttendance, saveAttendance };
+
+=== DONE ===
+Press Enter...

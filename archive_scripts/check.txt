@@ -1,0 +1,78 @@
+handlePrintDPR at L3982
+3982:       const handlePrintDPR = async (rpt) => {
+3983:         showToast('Preparing report...');
+3984:         const proj = projects.find(p => p.id === rpt.pid);
+3985:         const att = await loadAttendance(rpt.id);
+3986:         const pAM = att.filter(r=>r.am==='P').length;
+3987:         const pPM = att.filter(r=>r.pm==='P').length;
+3988:         const attHTML = att.length===0 ? '<p>No attendance records</p>' : (
+3989:           '<table border=1 cellpadding=4 cellspacing=0 style="border-collapse:collapse;width:100%;fo
+3990:           +'<tr style="background:#1e293b;color:white"><th>S.No</th><th>ID No</th><th>Name</th><th>D
+3991:           +att.map((r,i)=>'<tr style="background:'+(r.am==="A"&&r.pm==="A"?"#fff5f5":i%2===0?"#fff":
+3992:             +'<td align=center>'+(i+1)+'</td>'
+3993:             +'<td><b>'+(r.empId||'--')+'</b></td>'
+3994:             +'<td><b>'+(r.name||'--')+'</b></td>'
+3995:             +'<td>'+(r.designation||'--')+'</td>'
+3996:             +'<td align=center><b>'+(r.teamNo||'--')+'</b></td>'
+3997:             +'<td align=center style="color:'+(r.am==="P"?'green':'red')+';font-weight:bold">'+(r.am
+3998:             +'<td align=center style="color:'+(r.pm==="P"?'green':'red')+';font-weight:bold">'+(r.pm
+3999:             +'<td align=center>'+(r.ot&&r.ot!=='0'?r.ot:'--')+'</td>'
+4000:             +'<td>'+(r.description||'--')+'</td>'
+4001:             +'</tr>'
+4002:           ).join('')
+4003:           +'<tr style="background:#1e293b;color:white"><td colspan=5><b>TOTAL PRESENT</b></td><td al
+4004:           +'</table>'
+4005:         );
+4006:         const secHTML = (title,rows,heads,cols) => {
+4007:           if(!rows||!rows.length) return '';
+4008:           return '<h3 style="margin:16px 0 4px;color:#1e293b">'+title+'</h3>'
+4009:             +'<table border=1 cellpadding=4 cellspacing=0 style="border-collapse:collapse;width:100%
+4010:             +'<tr style="background:#f1f5f9">'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr>'
+4011:             +rows.map(r=>'<tr>'+cols.map(c=>'<td>'+(r[c]||'--')+'</td>').join('')+'</tr>').join('')
+4012:             +'</table>';
+4013:         };
+4014:         const html = '<!DOCTYPE html><html><head><meta charset=UTF-8>'
+4015:           +'<title>'+(rpt.reportNum||'DPR')+'</title>'
+4016:           +'<style>body{font-family:Arial,sans-serif;padding:20px;color:#1e293b}'
+4017:           +'h1{font-size:18px;margin:0}h2{font-size:13px;color:#d97706;margin:2px 0 12px}'
+4018:           +'table{page-break-inside:avoid}@media print{button{display:none}}'
+4019:           +'</style></head><body>'
+4020:           +'<div style="text-align:center;border-bottom:3px double #1e293b;padding-bottom:8px;margin
+4021:           +'<h1>AL GHAITH BUILDING CONSTRUCTION LLC</h1>'
+4022:           +'<h2>SITE DAILY REPORT</h2></div>'
+4023:           +'<table border=1 cellpadding=5 cellspacing=0 style="border-collapse:collapse;width:100%;m
+4024:           +'<tr style="background:#f8fafc">'
+4025:           +'<td><b>Site No:</b> '+(proj?proj.number:'--')+'</td>'
+4026:           +'<td><b>Project:</b> '+(proj?proj.name:'--')+'</td>'
+4027:           +'<td><b>Date:</b> '+(rpt.date||'--')+'</td>'
+4028:           +'<td><b>Report No:</b> '+(rpt.reportNum||'--')+'</td></tr>'
+4029:           +'<tr><td><b>Prepared By:</b> '+(rpt.preparedBy||'--')+'</td>'
+4030:           +'<td><b>Weather:</b> '+(rpt.weather||'--')+' '+(rpt.temp?rpt.temp+'C':'')+'</td>'
+4031:           +'<td><b>Work Hours:</b> '+(rpt.workHours||'8')+'h</td>'
+4032:           +'<td><b>Status:</b> '+(rpt.status||'--')+'</td></tr></table>'
+4033:           +'<h3 style="margin:12px 0 4px;color:#1e293b">MANPOWER ATTENDANCE | Total: '+att.length+' 
+4034:           +attHTML
+4035:           +secHTML('EQUIPMENT',rpt.equipment||[],['Equipment','Qty','Status','Operator','Remarks'],[
+4036:           +secHTML('WORK ACTIVITIES',rpt.activities||[],['Location','Activity','Trade','Progress%','
+4037:           +secHTML('MATERIALS',rpt.materials||[],['Material','Qty','Unit','Supplier','DN No'],['mate
+4038:           +(rpt.issues?'<p><b>Issues/Delays:</b> '+rpt.issues+'</p>':'')
+4039:           +(rpt.remarks?'<p><b>Remarks:</b> '+rpt.remarks+'</p>':'')
+4040:           +'<div style="margin-top:40px;display:flex;justify-content:space-between">'
+4041:           +'<div style="width:200px;text-align:center"><div style="border-top:1px solid #000;padding
+4042:           +'<div style="width:200px;text-align:center"><div style="border-top:1px solid #000;padding
+4043:           +'</div>'
+4044:           +'<div style="text-align:center;margin-top:20px">'
+4045:           +'<button onclick="window.print()" style="padding:10px 30px;background:#1e293b;color:white
+4046:           +'<button onclick="window.close()" style="padding:10px 20px;background:#e2e8f0;border:none
+4047:           +'</div></body></html>';
+4048:         const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+4049:         const url = URL.createObjectURL(blob);
+4050:         const a = document.createElement('a');
+4051:         a.href=url; a.target='_blank'; a.rel='noopener';
+Traceback (most recent call last):
+  File "C:\Apps\agbc-site-app\check_build.py", line 21, in <module>
+    print("\n\u2500\u2500 Export/Print button \u2500\u2500")
+  File "C:\Users\Tender\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 2-3: character maps to <undefined>
