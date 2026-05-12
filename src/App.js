@@ -304,6 +304,133 @@ const exportProjectReportPDF = (sel, pgItems, overallPct) => {
     doc.text(overallPct+"% Complete · "+comp+" of "+pgItems.length+" activities done",MARGIN+usableW/2,y+5.5,{align:"center"});
     y+=14;
 
+    // ── CHART 1: Horizontal Work Done% vs Remaining% bars ────────────────────
+    if(pgItems.length>0){
+      // Check space — add page if less than 40mm left
+      if(y+pgItems.length*7.5+14 > pageH-16){ doc.addPage(); drawHeader(); y=HDR_H+8; }
+
+      doc.setFontSize(8.5); doc.setFont("helvetica","bold"); doc.setTextColor(100,116,139);
+      doc.text("WORK DONE % vs REMAINING % PER ACTIVITY",MARGIN,y+4);
+      doc.setDrawColor(245,158,11); doc.setLineWidth(0.4);
+      doc.line(MARGIN,y+5.5,MARGIN+75,y+5.5);
+      y+=10;
+
+      const LBL_W   = 42;
+      const BAR_H   = 5.5;
+      const BAR_GAP = 2;
+      const BAR_AREA = usableW - LBL_W - 14;
+
+      pgItems.forEach((pg,idx)=>{
+        const lbl=(pg.activity==="Other (Custom)"&&pg.customActivity)?pg.customActivity:(pg.activity||"—");
+        const pct=Math.min(100,Math.max(0,Number(pg.pct)||0));
+        const by =y+idx*(BAR_H+BAR_GAP);
+        if(by+BAR_H>pageH-14) return; // skip overflow rows
+
+        // Label
+        doc.setFontSize(5.8); doc.setFont("helvetica","normal"); doc.setTextColor(30,41,59);
+        doc.text(lbl.substring(0,25),MARGIN,by+BAR_H-1.2);
+
+        // Background bar (remaining)
+        doc.setFillColor(241,245,249);
+        doc.roundedRect(MARGIN+LBL_W,by,BAR_AREA,BAR_H,1,1,"F");
+
+        // Done portion
+        const doneW=(pct/100)*BAR_AREA;
+        if(doneW>=1){
+          const clr=pct>=100?[16,185,129]:pct>=60?[59,130,246]:pct>=30?[245,158,11]:[239,68,68];
+          doc.setFillColor(...clr);
+          doc.roundedRect(MARGIN+LBL_W,by,doneW,BAR_H,1,1,"F");
+        }
+
+        // % labels
+        doc.setFontSize(5); doc.setFont("helvetica","bold");
+        if(doneW>10){ doc.setTextColor(255,255,255); doc.text(pct+"%",MARGIN+LBL_W+doneW-2,by+BAR_H-1.2,{align:"right"}); }
+        else if(pct>0){ doc.setTextColor(80,80,80); doc.text(pct+"%",MARGIN+LBL_W+doneW+2,by+BAR_H-1.2); }
+        doc.setFontSize(5); doc.setTextColor(148,163,184);
+        doc.text((100-pct)+"%",MARGIN+LBL_W+BAR_AREA+2,by+BAR_H-1.2);
+
+        // Status dot
+        const SDC={"Completed":[16,185,129],"In Progress":[59,130,246],"On Hold":[245,158,11],"Not Started":[239,68,68]};
+        const dc=SDC[pg.status]||[148,163,184];
+        doc.setFillColor(...dc); doc.circle(MARGIN+LBL_W+BAR_AREA+11,by+BAR_H/2,1.5,"F");
+      });
+
+      y += pgItems.length*(BAR_H+BAR_GAP)+6;
+    }
+
+    // ── CHART 2: Vertical grouped bars — Actual vs Done vs Balance (qty items only) ──
+    const qtyPg=pgItems.filter(i=>i.unit!=="Lumpsum"&&(Number(i.actualQty)||0)>0);
+    if(qtyPg.length>0){
+      const CHART_H=50;
+      if(y+CHART_H+26>pageH-16){ doc.addPage(); drawHeader(); y=HDR_H+8; }
+
+      doc.setFontSize(8.5); doc.setFont("helvetica","bold"); doc.setTextColor(100,116,139);
+      doc.text("QUANTITY PROGRESS — ACTUAL vs WORK DONE vs BALANCE",MARGIN,y+4);
+      doc.setDrawColor(245,158,11); doc.setLineWidth(0.4);
+      doc.line(MARGIN,y+5.5,MARGIN+80,y+5.5);
+      y+=10;
+
+      const maxQty=Math.max(...qtyPg.map(i=>Number(i.actualQty)||0),1);
+      const actW=usableW/qtyPg.length;
+      const barW=Math.min(Math.max((actW-6)/3,2),10);
+      const chartTop=y;
+
+      // Grid lines + Y labels
+      [0,25,50,75,100].forEach(pctG=>{
+        const gy=chartTop+CHART_H-(pctG/100)*CHART_H;
+        doc.setDrawColor(235,235,235); doc.setLineWidth(0.15);
+        doc.line(MARGIN,gy,MARGIN+usableW,gy);
+        if(pctG>0){
+          doc.setFontSize(4.5); doc.setFont("helvetica","normal"); doc.setTextColor(200,200,200);
+          doc.text(String(Math.round((pctG/100)*maxQty)),MARGIN-1,gy+1,{align:"right"});
+        }
+      });
+
+      // X-axis
+      doc.setDrawColor(200,200,200); doc.setLineWidth(0.3);
+      doc.line(MARGIN,chartTop+CHART_H,MARGIN+usableW,chartTop+CHART_H);
+
+      qtyPg.forEach((pg,i)=>{
+        const cx=MARGIN+i*actW+actW/2;
+        const actual=Number(pg.actualQty)||0;
+        const done  =Number(pg.workDoneQty)||0;
+        const bal   =Number(pg.balanceQty)||0;
+        const actualH=(actual/maxQty)*CHART_H;
+        const doneH  =(done/maxQty)*CHART_H;
+        const balH   =(bal/maxQty)*CHART_H;
+
+        // Actual (blue)
+        if(actualH>0){ doc.setFillColor(59,130,246); doc.rect(cx-barW*1.6,chartTop+CHART_H-actualH,barW,actualH,"F"); }
+        // Done (green)
+        if(doneH>0){   doc.setFillColor(16,185,129); doc.rect(cx-barW*0.5,chartTop+CHART_H-doneH,barW,doneH,"F"); }
+        // Balance (red)
+        if(balH>0){    doc.setFillColor(239,68,68);  doc.rect(cx+barW*0.6,chartTop+CHART_H-balH,barW,balH,"F"); }
+
+        // Value labels above bars
+        doc.setFontSize(4.5); doc.setFont("helvetica","bold");
+        if(actualH>5){ doc.setTextColor(59,130,246);  doc.text(String(actual),cx-barW*1.6+barW/2,chartTop+CHART_H-actualH-1,{align:"center"}); }
+        if(doneH>5){   doc.setTextColor(16,185,129);  doc.text(String(done),  cx-barW*0.5+barW/2,chartTop+CHART_H-doneH-1,{align:"center"}); }
+        if(balH>5){    doc.setTextColor(239,68,68);   doc.text(String(bal),   cx+barW*0.6+barW/2,chartTop+CHART_H-balH-1, {align:"center"}); }
+
+        // Activity name + unit below axis
+        const lbl=(pg.activity==="Other (Custom)"&&pg.customActivity)?pg.customActivity:(pg.activity||"—");
+        const shortLbl=lbl.length>9?lbl.substring(0,9)+"…":lbl;
+        doc.setFontSize(5); doc.setFont("helvetica","normal"); doc.setTextColor(100,116,139);
+        doc.text(shortLbl,cx,chartTop+CHART_H+5,{align:"center"});
+        doc.setFontSize(4.5); doc.setTextColor(180,180,180);
+        doc.text(pg.unit||"",cx,chartTop+CHART_H+9.5,{align:"center"});
+      });
+
+      // Legend
+      const legY=chartTop+CHART_H+14;
+      [[59,130,246,"Actual Qty"],[16,185,129,"Work Done"],[239,68,68,"Balance"]].forEach(([r,g,b,lbl],i)=>{
+        doc.setFillColor(r,g,b); doc.rect(MARGIN+i*34,legY,4,3,"F");
+        doc.setFontSize(6); doc.setFont("helvetica","normal"); doc.setTextColor(80,80,80);
+        doc.text(lbl,MARGIN+i*34+5.5,legY+3);
+      });
+      y=legY+10;
+    }
+
     // ── Totals row for qty-based activities
     const qtyItems=pgItems.filter(i=>i.unit!=="Lumpsum"&&(Number(i.actualQty)||0)>0);
     if(qtyItems.length>0){

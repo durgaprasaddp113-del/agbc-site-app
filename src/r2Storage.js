@@ -27,7 +27,7 @@ export const uploadToR2 = (file, folder = 'uploads', onProgress = null) => {
     try {
       const fileName = generateFileName(file);
       const key      = `${folder}/${fileName}`;
-      const endpoint = `${WORKER_URL}/upload/${encodeURIComponent(key)}`;
+      const endpoint = `${WORKER_URL}/upload/${folder}/${fileName}`;
 
       const xhr = new XMLHttpRequest();
 
