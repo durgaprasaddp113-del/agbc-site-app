@@ -528,9 +528,22 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       py+=12;
       const IMG_W=(usableW-6)/2, IMG_H=52;
       let pcol=0,prow=0;
-      const toB64=(url)=>fetch(url).then(r=>r.blob()).then(b=>new Promise((res,rej)=>{
-        const rd=new FileReader();rd.onload=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(b);
-      })).catch(()=>null);
+      // Proxy through Worker to bypass R2 CORS restriction
+      const _WRKR=process.env.REACT_APP_R2_WORKER_URL||"";
+      const toB64=(url)=>{
+        // Extract filename from R2 public URL and fetch via Worker
+        const _fn=url.split("/").pop().split("?")[0];
+        const _proxy=_WRKR?`${_WRKR}/file/${_fn}`:url;
+        return fetch(_proxy)
+          .then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.blob();})
+          .then(b=>new Promise((res,rej)=>{
+            const rd=new FileReader();
+            rd.onload=()=>res(rd.result);
+            rd.onerror=rej;
+            rd.readAsDataURL(b);
+          }))
+          .catch(()=>null);
+      };
       for(const ph of projPhotos.slice(0,12)){
         const checkY=py+prow*(IMG_H+18);
         if(checkY+IMG_H+18>pageH-14){doc.addPage();drawHeader();py=HDR_H+8;prow=0;pcol=0;}
@@ -4899,10 +4912,10 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
             fileName="Progress_Photos"
             pdfTitle="Progress Photos Register"
             orientation="portrait" />}
-          btn={<AddBtn onClick={() => setMode("upload")} label="Upload Photos" />} />;
+          btn={<AddBtn onClick={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} label="Upload Photos" />} />;
       })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
-      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => setMode("upload")} /> : (
+      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} /> : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(p => (
             <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
