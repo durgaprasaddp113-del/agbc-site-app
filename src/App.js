@@ -538,26 +538,25 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       let pcol=0,prow=0;
       const _WRKR=process.env.REACT_APP_R2_WORKER_URL||"";
       const toB64=async(url)=>{
-        // Try 1: direct R2 URL with CORS mode
-        // Try 2: worker proxy /file/ route
-        // Try 3: return null (show placeholder)
+        // Use worker proxy exclusively — R2 public URL has CORS issues in PDF context
         const _fn=url.split("/").pop().split("?")[0];
         const urls=[
-          url,                                          // direct R2 CDN
-          _WRKR?`${_WRKR}/file/${_fn}`:null,           // worker proxy
+          _WRKR?`${_WRKR}/file/${_fn}`:null,  // worker proxy (has CORS headers)
+          url,                                  // fallback: direct URL
         ].filter(Boolean);
         for(const fetchUrl of urls){
           try{
-            const r=await fetch(fetchUrl,{mode:"cors",cache:"no-cache"});
-            if(r.ok){
-              const b=await r.blob();
-              return await new Promise((res,rej)=>{
-                const rd=new FileReader();
-                rd.onload=()=>res(rd.result);
-                rd.onerror=rej;
-                rd.readAsDataURL(b);
-              });
-            }
+            const resp=await fetch(fetchUrl,{mode:"cors",cache:"force-cache"});
+            if(!resp.ok) continue;
+            const blob=await resp.blob();
+            if(!blob.size) continue;
+            const b64=await new Promise((res,rej)=>{
+              const rd=new FileReader();
+              rd.onload=()=>res(rd.result);
+              rd.onerror=rej;
+              rd.readAsDataURL(blob);
+            });
+            if(b64&&b64.length>100) return b64;
           }catch(e){ continue; }
         }
         return null;
