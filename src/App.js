@@ -516,6 +516,44 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       });
     }
 
+
+    // ── Progress Photos ──────────────────────────────────────────────────────
+    if(projPhotos && projPhotos.length>0){
+      doc.addPage(); drawHeader();
+      let py=HDR_H+8;
+      doc.setFontSize(8.5);doc.setFont("helvetica","bold");doc.setTextColor(100,116,139);
+      doc.text("PROGRESS PHOTOS ("+projPhotos.length+" photo"+(projPhotos.length>1?"s":"")+")",MARGIN,py+4);
+      doc.setDrawColor(245,158,11);doc.setLineWidth(0.4);
+      doc.line(MARGIN,py+5.5,MARGIN+55,py+5.5);
+      py+=12;
+      const IMG_W=(usableW-6)/2, IMG_H=52;
+      let pcol=0,prow=0;
+      const toB64=(url)=>fetch(url).then(r=>r.blob()).then(b=>new Promise((res,rej)=>{
+        const rd=new FileReader();rd.onload=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(b);
+      })).catch(()=>null);
+      for(const ph of projPhotos.slice(0,12)){
+        const checkY=py+prow*(IMG_H+18);
+        if(checkY+IMG_H+18>pageH-14){doc.addPage();drawHeader();py=HDR_H+8;prow=0;pcol=0;}
+        const ix=MARGIN+pcol*(IMG_W+6);
+        const iy=py+prow*(IMG_H+18);
+        doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.setLineWidth(0.2);
+        doc.roundedRect(ix,iy,IMG_W,IMG_H+15,2,2,"FD");
+        if(ph.file_url){
+          try{
+            const b64=await toB64(ph.file_url);
+            if(b64){doc.addImage(b64,'JPEG',ix+1,iy+1,IMG_W-2,IMG_H,'','FAST');}
+            else{doc.setFontSize(7);doc.setTextColor(180,180,180);doc.text("Photo unavailable",ix+IMG_W/2,iy+IMG_H/2,{align:"center"});}
+          }catch(e){doc.setFontSize(7);doc.setTextColor(180,180,180);doc.text("Photo error",ix+IMG_W/2,iy+IMG_H/2,{align:"center"});}
+        }
+        doc.setFontSize(6.2);doc.setFont("helvetica","bold");doc.setTextColor(30,41,59);
+        doc.text((ph.caption||"No caption").substring(0,34),ix+2,iy+IMG_H+7);
+        doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(148,163,184);
+        const meta=[ph.area,ph.photo_date].filter(Boolean).join(" · ");
+        doc.text(meta.substring(0,40),ix+2,iy+IMG_H+12);
+        pcol++;if(pcol>=2){pcol=0;prow++;}
+      }
+    }
+
     doc.save(`Project_Report_${sel.number}_${today}.pdf`);
   } catch(e){ console.error("Project PDF error:",e); alert("Export failed: "+e.message); }
 };
