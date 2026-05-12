@@ -1160,7 +1160,7 @@ function usePhotos() {
   };
   const update = async (id, f) => {
     const { error } = await supabase.from("project_photos").update({
-      project_id: f.pid, caption: f.caption, area: f.area,
+      project_id: f.pid, caption: f.caption, area: f.area, photo_date: f.photo_date || null,
     }).eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
@@ -2435,7 +2435,65 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
             ))}
           </div>
           {sel.mapUrl&&<a href={sel.mapUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 mt-3 text-blue-600 text-sm font-medium hover:underline"><Icon name="map" cls="w-4 h-4"/>View on Map</a>}
-          <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100">
+          <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+            <button onClick={()=>{
+              const pgRows = progressItems.filter(pg=>pg.pid===sel.id);
+              const data = pgRows.length>0 ? pgRows.map(pg=>({
+                Activity: getActivityLabel(pg)||pg.activity,
+                Unit: pg.unit||"NOS",
+                Actual_Qty: pg.unit==="Lumpsum"?"L/S":(pg.actualQty||0),
+                Work_Done: pg.unit==="Lumpsum"?(pg.pct||0)+"%":(pg.workDoneQty||0),
+                Balance: pg.unit==="Lumpsum"?(100-(pg.pct||0))+"%":(pg.balanceQty||0),
+                Progress_Pct: (pg.pct||0)+"%",
+                Status: pg.status,
+                Planned_Start: pg.plannedStart||"",
+                Planned_End: pg.plannedEnd||"",
+                Actual_Start: pg.actualStart||"",
+                Actual_End: pg.actualEnd||"",
+                Remarks: pg.remarks||"",
+              })) : [{Project:sel.number, Name:sel.name, Location:sel.location, Status:sel.status, Progress:"No activities"}];
+              const cols = pgRows.length>0 ? [
+                {header:"Activity",key:"Activity",width:24},
+                {header:"Unit",key:"Unit",width:10},
+                {header:"Actual Qty",key:"Actual_Qty",width:12},
+                {header:"Work Done",key:"Work_Done",width:12},
+                {header:"Balance",key:"Balance",width:12},
+                {header:"Progress %",key:"Progress_Pct",width:12},
+                {header:"Status",key:"Status",width:14},
+                {header:"Planned Start",key:"Planned_Start",width:14},
+                {header:"Planned End",key:"Planned_End",width:14},
+                {header:"Actual Start",key:"Actual_Start",width:14},
+                {header:"Actual End",key:"Actual_End",width:14},
+                {header:"Remarks",key:"Remarks",width:24},
+              ] : [{header:"Project",key:"Project",width:14},{header:"Name",key:"Name",width:30},{header:"Location",key:"Location",width:20},{header:"Status",key:"Status",width:14},{header:"Progress",key:"Progress",width:20}];
+              exportToExcel(data, cols, "Project_"+sel.number+"_Progress");
+            }} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">
+              📊 Export Excel
+            </button>
+            <button onClick={()=>{
+              const pgRows = progressItems.filter(pg=>pg.pid===sel.id);
+              const pdfData = pgRows.length>0 ? pgRows.map(pg=>({
+                Activity: getActivityLabel(pg)||pg.activity,
+                Unit: pg.unit||"NOS",
+                Actual_Qty: pg.unit==="Lumpsum"?"L/S":String(pg.actualQty||0),
+                Work_Done: pg.unit==="Lumpsum"?(pg.pct||0)+"%":String(pg.workDoneQty||0),
+                Balance: pg.unit==="Lumpsum"?(100-(pg.pct||0))+"%":String(pg.balanceQty||0),
+                Progress_Pct: (pg.pct||0)+"%",
+                Status: pg.status,
+              })) : [{Activity:"No activities recorded",Unit:"",Actual_Qty:"",Work_Done:"",Balance:"",Progress_Pct:"0%",Status:""}];
+              const pdfCols = [
+                {header:"Activity",key:"Activity",pdfWidth:32},
+                {header:"Unit",key:"Unit",pdfWidth:12},
+                {header:"Actual Qty",key:"Actual_Qty",pdfWidth:16},
+                {header:"Work Done",key:"Work_Done",pdfWidth:16},
+                {header:"Balance",key:"Balance",pdfWidth:16},
+                {header:"Progress %",key:"Progress_Pct",pdfWidth:16},
+                {header:"Status",key:"Status",pdfWidth:16},
+              ];
+              exportToPDF(pdfData, pdfCols, "Project_"+sel.number+"_Progress", sel.number+" — "+sel.name+" | Progress Report | Overall: "+overallPct+"%", "landscape");
+            }} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
+              📄 Export PDF
+            </button>
             <Btn onClick={()=>openEdit(sel)} label="Edit Project"/>
             <Btn onClick={()=>setConfirmId(sel.id)} label="Delete" color="red"/>
           </div>
@@ -2667,7 +2725,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
                 const pgItems = progressItems.filter(pg=>pg.pid===p.id);
                 return (
                   <tr key={p.id} className="hover:bg-amber-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{p.number}</td>
+                    <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700 cursor-pointer hover:underline hover:text-amber-900 select-none" title="Click to open project" onClick={()=>openView(p)}>{p.number}</td>
                     <td className="px-4 py-3 font-medium text-slate-800 max-w-[200px]"><div className="truncate">{p.name}</div></td>
                     <td className="px-4 py-3 text-xs text-slate-600">{p.location}</td>
                     <td className="px-4 py-3 text-xs text-slate-600">{p.consultant}</td>
@@ -4323,8 +4381,8 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
 // ─────────────────────────────────────────────────────────────────────────────
 // PHOTOS MODULE — Full CRUD + Lightbox
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_PHOTO_UPLOAD = { pid: "", caption: "", area: "", file: null };
-const EMPTY_PHOTO_EDIT = { pid: "", caption: "", area: "" };
+const EMPTY_PHOTO_UPLOAD = { pid: "", caption: "", area: "", photo_date: "", file: null };
+const EMPTY_PHOTO_EDIT = { pid: "", caption: "", area: "", photo_date: "" };
 
 const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToast }) => {
   const [mode, setMode] = useState("list"); // list | upload | edit
@@ -4336,13 +4394,14 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
 
-  const openEdit = p => { setSel(p); setEditForm({ pid: p.project_id, caption: p.caption || "", area: p.area || "" }); setMode("edit"); };
+  const openEdit = p => { setSel(p); setEditForm({ pid: p.project_id, caption: p.caption || "", area: p.area || "", photo_date: p.photo_date || "" }); setMode("edit"); };
   const goList = () => { setMode("list"); setSel(null); };
 
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleUpload = async () => {
     if (!uploadForm.file || !uploadForm.pid) { showToast("Please select a project and photo", "error"); return; }
+    if (!uploadForm.photo_date) { showToast("Please enter the photo date", "error"); return; }
     setUploadProgress(0);
     setSaving(true);
     const res = await onAdd(uploadForm, (pct) => setUploadProgress(pct));
@@ -4373,7 +4432,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
     <div className="fixed inset-0 bg-black/90 z-[999] flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
       <div className="max-w-5xl w-full space-y-3" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <div><p className="text-white font-semibold">{lightbox.caption || "No caption"}</p><p className="text-slate-400 text-sm">{lightbox.area} · {projects.find(p => p.id === lightbox.project_id)?.number}</p></div>
+          <div><p className="text-white font-semibold">{lightbox.caption || "No caption"}</p><p className="text-slate-400 text-sm">{lightbox.photo_date ? "📅 "+lightbox.photo_date+" · " : ""}{lightbox.area} · {projects.find(p => p.id === lightbox.project_id)?.number}</p></div>
           <button onClick={() => setLightbox(null)} className="text-white text-4xl leading-none hover:text-red-400 transition-colors">×</button>
         </div>
         <img src={lightbox.file_url} alt={lightbox.caption} className="max-h-[80vh] max-w-full mx-auto rounded-xl object-contain" />
@@ -4388,6 +4447,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
       <h2 className="text-xl font-bold text-slate-800 mb-4">Upload Progress Photo</h2>
       <FormCard>
         <div><Lbl t="Project" req /><Sel value={uploadForm.pid} onChange={e => setUploadForm(p => ({ ...p, pid: e.target.value }))}><option value="">Select Project...</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+        <div><Lbl t="Photo Date" req /><Inp type="date" value={uploadForm.photo_date||""} onChange={e => setUploadForm(p => ({ ...p, photo_date: e.target.value }))}/></div>
         <div><Lbl t="Caption" /><Inp value={uploadForm.caption} onChange={e => setUploadForm(p => ({ ...p, caption: e.target.value }))} placeholder="e.g. Grade slab pour — Block A" /></div>
         <div><Lbl t="Area / Location" /><Inp value={uploadForm.area} onChange={e => setUploadForm(p => ({ ...p, area: e.target.value }))} placeholder="e.g. Ground Floor Block A" /></div>
         <div>
@@ -4448,6 +4508,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           <img src={sel.file_url} alt="" className="w-full h-full object-cover" />
         </div>
         <div><Lbl t="Project" /><Sel value={editForm.pid} onChange={e => setEditForm(p => ({ ...p, pid: e.target.value }))}><option value="">Select...</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}</Sel></div>
+        <div><Lbl t="Photo Date" /><Inp type="date" value={editForm.photo_date||""} onChange={e => setEditForm(p => ({ ...p, photo_date: e.target.value }))}/></div>
         <div><Lbl t="Caption" /><Inp value={editForm.caption} onChange={e => setEditForm(p => ({ ...p, caption: e.target.value }))} placeholder="e.g. Grade slab pour — Block A" /></div>
         <div><Lbl t="Area / Location" /><Inp value={editForm.area} onChange={e => setEditForm(p => ({ ...p, area: e.target.value }))} placeholder="e.g. Ground Floor" /></div>
         <FormActions saving={saving} onSave={handleUpdate} onCancel={goList} label="Update Photo" />
