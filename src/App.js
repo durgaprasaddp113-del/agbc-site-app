@@ -536,50 +536,74 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
       py+=12;
       const IMG_W=(usableW-6)/2, IMG_H=52;
       let pcol=0,prow=0;
-      const _WRKR=process.env.REACT_APP_R2_WORKER_URL||"";
+      const _WRKR=(process.env.REACT_APP_R2_WORKER_URL||"").replace(/\/$/,"");
+
+      // Get image as base64 data URL via Worker proxy
       const toB64=async(url)=>{
-        // Use worker proxy exclusively — R2 public URL has CORS issues in PDF context
-        const _fn=url.split("/").pop().split("?")[0];
-        const urls=[
-          _WRKR?`${_WRKR}/file/${_fn}`:null,  // worker proxy (has CORS headers)
-          url,                                  // fallback: direct URL
-        ].filter(Boolean);
-        for(const fetchUrl of urls){
-          try{
-            const resp=await fetch(fetchUrl,{mode:"cors",cache:"force-cache"});
-            if(!resp.ok) continue;
-            const blob=await resp.blob();
-            if(!blob.size) continue;
-            const b64=await new Promise((res,rej)=>{
-              const rd=new FileReader();
-              rd.onload=()=>res(rd.result);
-              rd.onerror=rej;
-              rd.readAsDataURL(blob);
-            });
-            if(b64&&b64.length>100) return b64;
-          }catch(e){ continue; }
+        try{
+          const _fn=url.split("/").pop().split("?")[0];
+          const proxyUrl=_WRKR?`${_WRKR}/file/${encodeURIComponent(_fn)}`:url;
+          const resp=await fetch(proxyUrl,{mode:"cors"});
+          if(!resp.ok) throw new Error("HTTP "+resp.status);
+          const blob=await resp.blob();
+          return await new Promise((resolve,reject)=>{
+            const reader=new FileReader();
+            reader.onloadend=()=>resolve(reader.result);
+            reader.onerror=reject;
+            reader.readAsDataURL(blob);
+          });
+        }catch(err){
+          console.warn("Photo fetch failed:",err.message);
+          return null;
         }
-        return null;
       };
+
+      // Detect image format from data URL
+      const getImgFmt=(b64)=>{
+        if(!b64) return "JPEG";
+        if(b64.startsWith("data:image/png")) return "PNG";
+        if(b64.startsWith("data:image/webp")) return "WEBP";
+        if(b64.startsWith("data:image/gif")) return "GIF";
+        return "JPEG";
+      };
+
       for(const ph of projPhotos.slice(0,12)){
         const checkY=py+prow*(IMG_H+18);
         if(checkY+IMG_H+18>pageH-14){doc.addPage();drawHeader();py=HDR_H+8;prow=0;pcol=0;}
         const ix=MARGIN+pcol*(IMG_W+6);
         const iy=py+prow*(IMG_H+18);
-        doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.setLineWidth(0.2);
-        doc.roundedRect(ix,iy,IMG_W,IMG_H+15,2,2,"FD");
+
+        // Photo frame
+        doc.setFillColor(240,240,240);
+        doc.rect(ix,iy,IMG_W,IMG_H,"F");
+        doc.setDrawColor(200,200,200);doc.setLineWidth(0.3);
+        doc.rect(ix,iy,IMG_W,IMG_H);
+
         if(ph.file_url){
-          try{
-            const b64=await toB64(ph.file_url);
-            if(b64){doc.addImage(b64,'JPEG',ix+1,iy+1,IMG_W-2,IMG_H,'','FAST');}
-            else{doc.setFontSize(7);doc.setTextColor(180,180,180);doc.text("Photo unavailable",ix+IMG_W/2,iy+IMG_H/2,{align:"center"});}
-          }catch(e){doc.setFontSize(7);doc.setTextColor(180,180,180);doc.text("Photo error",ix+IMG_W/2,iy+IMG_H/2,{align:"center"});}
+          const b64=await toB64(ph.file_url);
+          if(b64 && b64.length>200){
+            try{
+              const fmt=getImgFmt(b64);
+              doc.addImage(b64,fmt,ix,iy,IMG_W,IMG_H,"","FAST");
+            }catch(imgErr){
+              console.warn("addImage failed:",imgErr.message);
+              doc.setFontSize(6);doc.setTextColor(150,150,150);
+              doc.text("Image format error",ix+IMG_W/2,iy+IMG_H/2,{align:"center"});
+            }
+          }else{
+            doc.setFontSize(6);doc.setTextColor(150,150,150);
+            doc.text("Photo unavailable",ix+IMG_W/2,iy+IMG_H/2,{align:"center"});
+          }
         }
+
+        // Caption box below image
+        doc.setFillColor(248,250,252);doc.setDrawColor(226,232,240);doc.setLineWidth(0.2);
+        doc.rect(ix,iy+IMG_H,IMG_W,15,"FD");
         doc.setFontSize(6.2);doc.setFont("helvetica","bold");doc.setTextColor(30,41,59);
-        doc.text((ph.caption||"No caption").substring(0,34),ix+2,iy+IMG_H+7);
+        doc.text((ph.caption||"No caption").substring(0,32),ix+2,iy+IMG_H+6);
         doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(148,163,184);
-        const meta=[ph.area,ph.photo_date].filter(Boolean).join(" · ");
-        doc.text(meta.substring(0,40),ix+2,iy+IMG_H+12);
+        const meta=[ph.photo_date,ph.area].filter(Boolean).join(" · ");
+        doc.text(meta.substring(0,38),ix+2,iy+IMG_H+12);
         pcol++;if(pcol>=2){pcol=0;prow++;}
       }
     }
