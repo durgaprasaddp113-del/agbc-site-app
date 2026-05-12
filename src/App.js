@@ -184,7 +184,7 @@ const exportToPDF = (data, columns, fileName, title, orientation = "landscape") 
 };
 
 // ─── COMPREHENSIVE PROJECT PROGRESS REPORT ────────────────────────────────────
-const exportProjectReportPDF = (sel, pgItems, overallPct) => {
+const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = []) => {
   try {
     const { jsPDF } = window.jspdf;
     if (!jsPDF) { alert("PDF library not loaded. Refresh and try again."); return; }
@@ -2605,7 +2605,7 @@ const ProgressDashboard = ({ items, projectName, overallPct }) => {
   );
 };
 
-const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg, navFilter = {} }) => {
+const Projects = ({ projects, photos = [], loading, onAdd, onUpdate, onDelete, showToast, progressItems = [], onAddPg, onUpdatePg, onDeletePg, navFilter = {} }) => {
   const [mode, setMode] = useState("list");
   const [sel, setSel] = useState(null);
   const [progTab, setProgTab] = useState("list"); // for progress: list | form
@@ -2801,7 +2801,7 @@ const Projects = ({ projects, loading, onAdd, onUpdate, onDelete, showToast, pro
             }} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">
               📊 Export Excel
             </button>
-            <button onClick={()=>exportProjectReportPDF(sel, projPgItems, overallPct)} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
+            <button onClick={async()=>{const projPhotosForPdf=photos.filter(p=>p.project_id===sel.id);await exportProjectReportPDF(sel,projPgItems,overallPct,projPhotosForPdf);}} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
               📄 Full Report PDF
             </button>
             <Btn onClick={()=>openEdit(sel)} label="Edit Project"/>
@@ -4691,14 +4691,15 @@ const Drawings = ({ projects, drawings, loading, onAdd, onUpdate, onDelete, show
 // ─────────────────────────────────────────────────────────────────────────────
 // PHOTOS MODULE — Full CRUD + Lightbox
 // ─────────────────────────────────────────────────────────────────────────────
-const EMPTY_PHOTO_UPLOAD = { pid: "", caption: "", area: "", photo_date: "", file: null };
+const todayStr = () => new Date().toISOString().split("T")[0];
+const EMPTY_PHOTO_UPLOAD = { pid: "", caption: "", area: "", photo_date: todayStr(), file: null };
 const EMPTY_PHOTO_EDIT = { pid: "", caption: "", area: "", photo_date: "" };
 
 const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToast }) => {
   const [mode, setMode] = useState("list"); // list | upload | edit
   const [sel, setSel] = useState(null);
   const [lightbox, setLightbox] = useState(null);
-  const [uploadForm, setUploadForm] = useState(EMPTY_PHOTO_UPLOAD);
+  const [uploadForm, setUploadForm] = useState({...EMPTY_PHOTO_UPLOAD, photo_date: todayStr()});
   const [editForm, setEditForm] = useState(EMPTY_PHOTO_EDIT);
   const [fProject, setFProject] = useState("All");
   const [saving, setSaving] = useState(false);
@@ -4718,7 +4719,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
     setSaving(false);
     setUploadProgress(0);
     if (!res.ok) { showToast(res.error || "Upload failed", "error"); return; }
-    showToast("Photo uploaded to R2 successfully!"); setMode("list"); setUploadForm(EMPTY_PHOTO_UPLOAD);
+    showToast("Photo uploaded to R2 successfully!"); setMode("list"); setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: todayStr()});
   };
 
   const handleUpdate = async () => {
@@ -12473,7 +12474,7 @@ export default function App() {
 
   if (!user) return <Login onLogin={() => {}} />;
 
-  const pp = { projects: projectsWithPct, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter, onNavigate: navigate };
+  const pp = { projects: projectsWithPct, photos, showToast, userProfile, userCanEdit, userIsAdmin, permReqs, onAddPermReq: addPermReq, navFilter, onNavigate: navigate };
 
   const renderPage = () => {
     switch (page) {
