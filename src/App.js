@@ -4798,6 +4798,10 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   const [editForm, setEditForm] = useState(EMPTY_PHOTO_EDIT);
   const [fProject, setFProject] = useState("All");
   const [saving, setSaving] = useState(false);
+  const [fDateFrom, setFDateFrom] = useState("");
+  const [fDateTo, setFDateTo] = useState("");
+  const [viewMode, setViewMode] = useState("day");
+  const [exporting, setExporting] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
 
   const openEdit = p => { setSel(p); setEditForm({ pid: p.project_id, caption: p.caption || "", area: p.area || "", photo_date: p.photo_date || "" }); setMode("edit"); };
@@ -4831,7 +4835,19 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
     showToast("Photo deleted!"); setConfirmId(null);
   };
 
-  const filtered = photos.filter(p => fProject === "All" || p.project_id === fProject);
+  const filtered = photos.filter(p => {
+    if (fProject !== "All" && p.project_id !== fProject) return false;
+    if (fDateFrom && (p.photo_date||p.uploaded_at?.split("T")[0]||"") < fDateFrom) return false;
+    if (fDateTo   && (p.photo_date||p.uploaded_at?.split("T")[0]||"") > fDateTo)   return false;
+    return true;
+  }).sort((a,b)=>(a.photo_date||a.uploaded_at||"").localeCompare(b.photo_date||b.uploaded_at||""));
+  const photosByDay = filtered.reduce((acc,p)=>{
+    const d=p.photo_date||p.uploaded_at?.split("T")[0]||"No Date";
+    if(!acc[d]) acc[d]=[];
+    acc[d].push(p);
+    return acc;
+  },{});
+  const dayKeys = Object.keys(photosByDay).sort();
 
   // Lightbox
   if (lightbox) return (
@@ -4942,24 +4958,182 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           { header: "Project Name", key: "projectName", width: 30 },
           { header: "Upload Date", key: "uploaded", width: 16 },
           { header: "File URL", key: "fileUrl", width: 50 },
-        ];
-        return <PageTitle title="Progress Photos" count={filtered.length}
-          exportBtn={<ExportButtons
-            data={exportData}
-            excelCols={PH_COLS}
-            pdfCols={[
-              { header: "Caption",      key: "caption",     pdfWidth: 60 },
-              { header: "Area",         key: "area",        pdfWidth: 35 },
-              { header: "Project No.",  key: "projectNum",  pdfWidth: 22 },
-              { header: "Date",         key: "uploaded",    pdfWidth: 28 },
-            ]}
-            fileName="Progress_Photos"
-            pdfTitle="Progress Photos Register"
-            orientation="portrait" />}
-          btn={<AddBtn onClick={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} label="Upload Photos" />} />;
-      })()}
-      <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
-      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} /> : (
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Progress Photos</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{filtered.length} photo{filtered.length!==1?"s":""} · {dayKeys.length} day{dayKeys.length!==1?"s":""}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={async()=>{
+            if(!filtered.length){showToast("No photos to export","error");return;}
+            setExporting(true);
+            try{
+              const {jsPDF}=window.jspdf;
+              if(!jsPDF){alert("PDF library not loaded");return;}
+              const doc=new jsPDF({orientation:"portrait",format:"a4",compress:true});
+              const pageW=doc.internal.pageSize.getWidth();
+              const pageH=doc.internal.pageSize.getHeight();
+              const MARGIN=12;
+              const usableW=pageW-MARGIN*2;
+              const now=new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
+              const today=new Date().toLocaleDateString("en-GB").replace(/\//g,"-");
+              const HDR_H=32;
+              let firstPage=true;
+              const drawHdr=()=>{
+                doc.setFillColor(30,41,59);doc.rect(0,0,pageW,HDR_H,"F");
+                doc.setFillColor(245,158,11);doc.rect(0,HDR_H,pageW,2,"F");
+                doc.setTextColor(245,158,11);doc.setFontSize(13);doc.setFont("helvetica","bold");
+                doc.text("AGBC",MARGIN+2,HDR_H/2+4);
+                doc.setTextColor(255,255,255);doc.setFontSize(9);
+                doc.text("PROGRESS PHOTO REPORT",pageW-MARGIN,HDR_H/2+2,{align:"right"});
+                doc.setFontSize(6);doc.setTextColor(160,160,160);
+                doc.text(now,pageW-MARGIN,HDR_H-4,{align:"right"});
+              };
+              const toB64ph=async(url)=>{
+                try{
+                  const isS=url.includes("supabase.co");
+                  const fn=url.split("/").pop().split("?")[0];
+                  const wrkr=(process.env.REACT_APP_R2_WORKER_URL||"").replace(/\/$/,"");
+                  const u=isS?url:(wrkr?`${wrkr}/file/${encodeURIComponent(fn)}`:url);
+                  const r=await fetch(u,{mode:"cors"});
+                  if(!r.ok)return null;
+                  const b=await r.blob();
+                  return await new Promise((res,rej)=>{const rd=new FileReader();rd.onloadend=()=>res(rd.result);rd.onerror=rej;rd.readAsDataURL(b);});
+                }catch(e){return null;}
+              };
+              const fmt=(b64)=>{if(!b64)return"JPEG";if(b64.startsWith("data:image/png"))return"PNG";if(b64.startsWith("data:image/webp"))return"WEBP";return"JPEG";};
+              let dayNum=0;
+              for(const[dateKey,dayPhotos]of Object.entries(photosByDay)){
+                dayNum++;
+                if(!firstPage)doc.addPage();
+                firstPage=false;
+                drawHdr();
+                let y=HDR_H+8;
+                const proj=projects.find(p=>p.id===dayPhotos[0]?.project_id);
+                const fmtD=dateKey&&dateKey!=="No Date"?new Date(dateKey).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dateKey;
+                doc.setFillColor(30,41,59);doc.roundedRect(MARGIN,y,usableW,13,1.5,1.5,"F");
+                doc.setTextColor(245,158,11);doc.setFontSize(9);doc.setFont("helvetica","bold");
+                doc.text("DAY "+dayNum,MARGIN+3,y+8.5);
+                doc.setTextColor(255,255,255);doc.setFontSize(8);
+                doc.text(fmtD,MARGIN+22,y+8.5);
+                if(proj){doc.setTextColor(200,200,200);doc.setFontSize(6.5);doc.text(proj.number+" — "+proj.name,pageW-MARGIN,y+8.5,{align:"right"});}
+                doc.setFontSize(6);doc.setTextColor(150,150,150);
+                doc.text(dayPhotos.length+" photo"+(dayPhotos.length>1?"s":""),MARGIN+3,y+14.5);
+                y+=19;
+                const IW=(usableW-6)/2,IH=56;
+                let pc=0,pr=0;
+                for(const ph of dayPhotos){
+                  if(y+pr*(IH+18)>pageH-20){doc.addPage();drawHdr();y=HDR_H+8;pr=0;pc=0;}
+                  const ix=MARGIN+pc*(IW+6),iy=y+pr*(IH+18);
+                  doc.setFillColor(240,242,245);doc.rect(ix,iy,IW,IH,"F");
+                  doc.setDrawColor(210,215,220);doc.setLineWidth(0.2);doc.rect(ix,iy,IW,IH);
+                  const b64=await toB64ph(ph.file_url||"");
+                  if(b64&&b64.length>200){try{doc.addImage(b64,fmt(b64),ix,iy,IW,IH,"","FAST");}catch(e){}}
+                  else{doc.setFontSize(6);doc.setTextColor(150,150,150);doc.text("Photo unavailable",ix+IW/2,iy+IH/2,{align:"center"});}
+                  doc.setFillColor(20,30,48,0.85);doc.rect(ix,iy+IH-10,IW,10,"F");
+                  doc.setFontSize(5.5);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+                  doc.text((ph.caption||"No caption").substring(0,36),ix+2,iy+IH-3.5);
+                  doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(100,116,139);
+                  doc.text(([ph.area,ph.photo_date].filter(Boolean).join(" · ")).substring(0,40),ix+2,iy+IH+5);
+                  pc++;if(pc>=2){pc=0;pr++;}
+                }
+              }
+              doc.save("Progress_Photo_Report_"+today+".pdf");
+            }finally{setExporting(false);}
+          }} disabled={exporting} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
+            {exporting?"⏳ Generating...":"📄 Day-wise PDF"}
+          </button>
+          <button onClick={()=>{
+            const data=filtered.map((p)=>({
+              Day:dayKeys.indexOf(p.photo_date||p.uploaded_at?.split("T")[0]||"")+1,
+              Date:p.photo_date||p.uploaded_at?.split("T")[0]||"",
+              Project:(projects.find(pr=>pr.id===p.project_id)||{}).number||"",
+              Caption:p.caption||"",
+              Area:p.area||"",
+              File_URL:p.file_url||"",
+            }));
+            exportToExcel(data,[
+              {header:"Day",key:"Day",width:8},
+              {header:"Date",key:"Date",width:14},
+              {header:"Project",key:"Project",width:14},
+              {header:"Caption",key:"Caption",width:40},
+              {header:"Area",key:"Area",width:25},
+              {header:"File URL",key:"File_URL",width:60},
+            ],"Progress_Photos_Report");
+          }} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">
+            📊 Excel
+          </button>
+          <AddBtn onClick={()=>{setUploadForm({...EMPTY_PHOTO_UPLOAD,photo_date:todayStr()});setMode("upload");}} label="Upload Photo"/>
+        </div>
+      </div>
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 mb-4 bg-white border border-slate-200 rounded-xl p-3">
+        <Sel value={fProject} onChange={e=>setFProject(e.target.value)} className="w-auto">
+          <option value="All">All Projects</option>
+          {projects.map(p=><option key={p.id} value={p.id}>{p.number} — {p.name}</option>)}
+        </Sel>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500 font-semibold">From:</span>
+          <Inp type="date" value={fDateFrom} onChange={e=>setFDateFrom(e.target.value)} className="w-36"/>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500 font-semibold">To:</span>
+          <Inp type="date" value={fDateTo} onChange={e=>setFDateTo(e.target.value)} className="w-36"/>
+        </div>
+        {(fDateFrom||fDateTo||fProject!=="All")&&(
+          <button onClick={()=>{setFDateFrom("");setFDateTo("");setFProject("All");}} className="text-xs text-amber-600 font-semibold hover:underline px-2">✕ Clear</button>
+        )}
+        <div className="ml-auto flex gap-1">
+          <button onClick={()=>setViewMode("day")} className={"px-2.5 py-1 rounded-lg text-xs font-semibold border "+(viewMode==="day"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200")}>📅 Day View</button>
+          <button onClick={()=>setViewMode("grid")} className={"px-2.5 py-1 rounded-lg text-xs font-semibold border "+(viewMode==="grid"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200")}>⊞ Grid</button>
+        </div>
+      </div>
+      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos found" onCreate={()=>{setUploadForm({...EMPTY_PHOTO_UPLOAD,photo_date:todayStr()});setMode("upload");}} /> : viewMode==="day" ? (
+        <div className="space-y-6">
+          {dayKeys.map((dateKey,dayIdx)=>{
+            const dayPhotos=photosByDay[dateKey];
+            const proj=projects.find(p=>p.id===dayPhotos[0]?.project_id);
+            const fmtD=dateKey&&dateKey!=="No Date"?new Date(dateKey).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dateKey;
+            return(
+              <div key={dateKey} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-amber-500 text-white text-xs font-black px-2.5 py-1 rounded-lg">DAY {dayIdx+1}</div>
+                    <div>
+                      <div className="text-white font-bold text-sm">{fmtD}</div>
+                      <div className="text-slate-400 text-xs mt-0.5">{dayPhotos.length} photo{dayPhotos.length!==1?"s":""}{proj?" · "+proj.number+" — "+proj.name:""}</div>
+                    </div>
+                  </div>
+                  <div className="text-amber-400 text-xs font-semibold">{dateKey}</div>
+                </div>
+                <div className="p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {dayPhotos.map(p=>(
+                    <div key={p.id} className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden hover:shadow-md transition-shadow group">
+                      <div className="h-36 bg-slate-200 relative overflow-hidden cursor-pointer" onClick={()=>setLightbox(p)}>
+                        <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                          <Icon name="eye" cls="w-7 h-7 text-white opacity-0 group-hover:opacity-100 transition-opacity"/>
+                        </div>
+                      </div>
+                      <div className="p-2.5">
+                        <div className="text-xs font-semibold text-slate-700 leading-tight mb-0.5">{p.caption||"No caption"}</div>
+                        {p.area&&<div className="text-xs text-slate-400">📍 {p.area}</div>}
+                        <div className="text-xs text-slate-400">{fmtDate(p.photo_date||p.uploaded_at?.split("T")[0])}</div>
+                        <div className="flex gap-1 mt-2">
+                          <ActBtn onClick={()=>setLightbox(p)} label="View" color="view"/>
+                          <ActBtn onClick={()=>openEdit(p)} label="Edit" color="edit"/>
+                          <ActBtn onClick={()=>setConfirmId(p.id)} label="Del" color="del"/>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(p => (
             <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
