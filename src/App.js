@@ -4812,6 +4812,9 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   const [uploadForm, setUploadForm] = useState({...EMPTY_PHOTO_UPLOAD, photo_date: todayStr()});
   const [editForm, setEditForm] = useState(EMPTY_PHOTO_EDIT);
   const [fProject, setFProject] = useState("All");
+  const [viewMode, setViewMode] = useState("day");
+  const [fDateFrom, setFDateFrom] = useState("");
+  const [fDateTo, setFDateTo] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
 
