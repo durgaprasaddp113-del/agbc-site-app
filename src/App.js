@@ -1579,6 +1579,7 @@ function usePhotos() {
       file_url:   r2Result.url,   // ← R2 CDN URL stored here
       caption:    f.caption,
       area:       f.area,
+      photo_date: f.photo_date || null,
     }]);
     if (error) return { ok: false, error: error.message };
     await loadData();
