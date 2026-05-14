@@ -5031,12 +5031,9 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           btn={<AddBtn onClick={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} label="Upload Photos" />} />;
       })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
-      {loading ? <Spinner /> : filtered.length === 0
-        ? <EmptyState msg="No photos found" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} />
-        : viewMode === "day" ? _dayView
-        : (
+      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} /> : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(p => (
+          {viewMode !== "grid" ? _dayView : filtered.map(p => (
             <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
               <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
                 <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
