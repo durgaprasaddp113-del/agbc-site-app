@@ -3268,6 +3268,99 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
           <button onClick={() => setViewMode("grid")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border " + (viewMode === "grid" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-500 border-slate-200")}>Grid</button>
         </div>
       </div>
+      <div className="flex gap-2 mb-2">
+        <button onClick={async () => {
+          if (!filtered.length) { alert("No photos to export."); return; }
+          try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: "portrait", format: "a4", compress: true });
+            const W = doc.internal.pageSize.getWidth();
+            const H = doc.internal.pageSize.getHeight();
+            const M = 12, UW = W - M * 2, HDR = 30;
+            const now = new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+            const drawHdr = () => {
+              doc.setFillColor(30,41,59); doc.rect(0,0,W,HDR,"F");
+              doc.setFillColor(245,158,11); doc.rect(0,HDR,W,2,"F");
+              doc.setTextColor(245,158,11); doc.setFontSize(13); doc.setFont("helvetica","bold");
+              doc.text("AGBC", M+2, HDR/2+4);
+              doc.setTextColor(255,255,255); doc.setFontSize(9);
+              doc.text("PROGRESS PHOTO REPORT", W-M, HDR/2+2, { align: "right" });
+              doc.setFontSize(6); doc.setTextColor(160,160,160);
+              doc.text(now, W-M, HDR-4, { align: "right" });
+            };
+            const fetchB64 = async (url) => {
+              try {
+                const r = await fetch(url, { mode: "cors" });
+                if (!r.ok) return null;
+                const b = await r.blob();
+                return await new Promise((res, rej) => {
+                  const rd = new FileReader();
+                  rd.onloadend = () => res(rd.result);
+                  rd.onerror = rej;
+                  rd.readAsDataURL(b);
+                });
+              } catch(e) { return null; }
+            };
+            const getFmt = (b) => {
+              if (!b) return "JPEG";
+              if (b.startsWith("data:image/png")) return "PNG";
+              if (b.startsWith("data:image/webp")) return "WEBP";
+              return "JPEG";
+            };
+            const byDay = {};
+            filtered.forEach(p => {
+              const k = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "No Date") || "No Date";
+              if (!byDay[k]) byDay[k] = [];
+              byDay[k].push(p);
+            });
+            const days = Object.keys(byDay).sort();
+            let first = true, dn = 0;
+            for (const dk of days) {
+              dn++;
+              if (!first) doc.addPage(); first = false;
+              drawHdr();
+              let y = HDR + 8;
+              const dP = byDay[dk];
+              const fd = dk !== "No Date" ? new Date(dk).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : dk;
+              doc.setFillColor(30,41,59); doc.roundedRect(M, y, UW, 13, 1.5, 1.5, "F");
+              doc.setTextColor(245,158,11); doc.setFontSize(9); doc.setFont("helvetica","bold");
+              doc.text("DAY " + dn, M+3, y+9);
+              doc.setTextColor(255,255,255); doc.setFontSize(8);
+              doc.text(fd, M+22, y+9);
+              doc.setTextColor(200,200,200); doc.setFontSize(6.5);
+              doc.text(dP.length + " photo" + (dP.length !== 1 ? "s" : ""), W-M, y+9, { align: "right" });
+              y += 18;
+              const IW = (UW-6)/2, IH = 56;
+              let pc = 0, pr = 0;
+              for (const ph of dP) {
+                if (y + pr*(IH+18) > H-18) { doc.addPage(); drawHdr(); y = HDR+8; pr = 0; pc = 0; }
+                const ix = M + pc*(IW+6), iy = y + pr*(IH+18);
+                doc.setFillColor(240,242,245); doc.rect(ix,iy,IW,IH,"F");
+                doc.setDrawColor(210,215,220); doc.setLineWidth(0.2); doc.rect(ix,iy,IW,IH);
+                if (ph.file_url) {
+                  const b64 = await fetchB64(ph.file_url);
+                  if (b64 && b64.length > 200) {
+                    try { doc.addImage(b64, getFmt(b64), ix, iy, IW, IH, "", "FAST"); } catch(e) {}
+                  } else {
+                    doc.setFontSize(6); doc.setTextColor(150,150,150);
+                    doc.text("Image unavailable", ix+IW/2, iy+IH/2, { align: "center" });
+                  }
+                }
+                doc.setFillColor(20,30,48); doc.rect(ix, iy+IH-10, IW, 10, "F");
+                doc.setFontSize(5.5); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
+                doc.text((ph.caption||"No caption").substring(0,36), ix+2, iy+IH-3.5);
+                doc.setFontSize(5.5); doc.setFont("helvetica","normal"); doc.setTextColor(100,116,139);
+                doc.text(([ph.area, ph.photo_date].filter(Boolean).join(" - ")).substring(0,40), ix+2, iy+IH+5);
+                pc++; if (pc >= 2) { pc = 0; pr++; }
+              }
+            }
+            const today = new Date().toLocaleDateString("en-GB").replace(/[/]/g, "-");
+            doc.save("Progress_Photo_Report_" + today + ".pdf");
+          } catch(e) { console.error("Photo PDF error:", e); alert("PDF failed: " + e.message); }
+        }} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
+          📄 Photo PDF Report
+        </button>
+      </div>
       {(() => {
         const exportData = filtered.map(t => ({
           ...t,
