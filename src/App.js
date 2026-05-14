@@ -4983,7 +4983,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
             };
             const gF=b=>{if(!b)return"JPEG";if(b.startsWith("data:image/png"))return"PNG";if(b.startsWith("data:image/webp"))return"WEBP";return"JPEG";};
             let first=true,dn=0;
-            for(const[dk,dP]of Object.entries(photosByDay)){
+            for(const[dk,dP]of Object.entries(photosByDay||{})){
               dn++;if(!first)doc.addPage();first=false;drawH();
               let y=HDR+8;
               const pr=projects.find(p=>p.id===dP[0]?.project_id);
@@ -5020,7 +5020,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
         </button>
         <button onClick={()=>{
           exportToExcel(filtered.map((p)=>({
-            Day:dayKeys.indexOf(p.photo_date||p.uploaded_at?.split("T")[0]||"")+1,
+            Day:(dayKeys||[]).indexOf(p.photo_date||p.uploaded_at?.split("T")[0]||"")+1,
             Date:p.photo_date||p.uploaded_at?.split("T")[0]||"",
             Project:(projects.find(pr=>pr.id===p.project_id)||{}).number||"",
             Caption:p.caption||"",
@@ -5077,7 +5077,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
         ? <EmptyState msg="No photos found" onCreate={()=>{setUploadForm({...EMPTY_PHOTO_UPLOAD,photo_date:todayStr()});setMode("upload");}} />
         : viewMode==="day" ? (
           <div className="space-y-6">
-            {dayKeys.map((dk,di)=>{
+            {(dayKeys||[]).map((dk,di)=>{
               const dPhotos=photosByDay[dk];
               const dProj=projects.find(p=>p.id===dPhotos[0]?.project_id);
               const dFmt=dk&&dk!=="No Date"?new Date(dk).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dk;
