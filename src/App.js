@@ -4988,7 +4988,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
       })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
       {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} /> : (
-        <div>
+        <>
           {viewMode==="day" && (
             <div className="space-y-4">
               {_dayKeys.map((dk,di)=>{
@@ -5007,7 +5007,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
                       {_dP.map(p=>(
                         <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg group">
                           <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={()=>setLightbox(p)}>
-                            <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+                            <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform"/>
                           </div>
                           <div className="p-3">
                             <div className="text-xs font-semibold text-slate-700 mb-0.5">{p.caption||"No caption"}</div>
@@ -5050,7 +5050,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           ))}
         </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
