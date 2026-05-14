@@ -3259,13 +3259,13 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
       {confirmId && <ConfirmDialog message="Delete this task permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
       <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
         <span className="text-xs font-semibold text-slate-500">From:</span>
-        <input type="date" value={fDateFrom} onChange={e=>setFDateFrom(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"/>
+        <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
         <span className="text-xs text-slate-400">To:</span>
-        <input type="date" value={fDateTo} onChange={e=>setFDateTo(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"/>
-        {(fDateFrom||fDateTo)&&<button onClick={()=>{setFDateFrom("");setFDateTo("");}} className="text-xs text-red-500 font-bold px-2">Clear</button>}
+        <input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs" />
+        {(fDateFrom || fDateTo) && <button onClick={() => { setFDateFrom(""); setFDateTo(""); }} className="text-xs text-red-500 font-bold px-2">Clear</button>}
         <div className="ml-auto flex gap-1">
-          <button onClick={()=>setViewMode("day")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border "+(viewMode==="day"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-500 border-slate-200")}>Day View</button>
-          <button onClick={()=>setViewMode("grid")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border "+(viewMode==="grid"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-500 border-slate-200")}>Grid</button>
+          <button onClick={() => setViewMode("day")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border " + (viewMode === "day" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-500 border-slate-200")}>Day View</button>
+          <button onClick={() => setViewMode("grid")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border " + (viewMode === "grid" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-500 border-slate-200")}>Grid</button>
         </div>
       </div>
       {(() => {
@@ -4848,17 +4848,21 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
 
   const filtered = photos.filter(p => {
     if (fProject !== "All" && p.project_id !== fProject) return false;
-    const _pd = p.photo_date || p.uploaded_at?.split("T")[0] || "";
+    const _pd = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "");
     if (fDateFrom && _pd < fDateFrom) return false;
     if (fDateTo && _pd > fDateTo) return false;
     return true;
-  }).sort((a,b)=>((a.photo_date||a.uploaded_at||"").localeCompare(b.photo_date||b.uploaded_at||"")));
-  const _byDay = filtered.reduce((acc,p)=>{
-    const k=p.photo_date||p.uploaded_at?.split("T")[0]||"No Date";
-    if(!acc[k])acc[k]=[];
-    acc[k].push(p);
-    return acc;
-  },{});
+  }).sort((a, b) => {
+    const da = a.photo_date || (a.uploaded_at ? a.uploaded_at.split("T")[0] : "");
+    const db = b.photo_date || (b.uploaded_at ? b.uploaded_at.split("T")[0] : "");
+    return da.localeCompare(db);
+  });
+  const _byDay = {};
+  filtered.forEach(p => {
+    const k = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "No Date") || "No Date";
+    if (!_byDay[k]) _byDay[k] = [];
+    _byDay[k].push(p);
+  });
   const _dayKeys = Object.keys(_byDay).sort();
 
   // Lightbox
@@ -4951,6 +4955,46 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   );
 
   // List
+  const _dayView = (
+    <div className="space-y-4">
+      {_dayKeys.map((dk, di) => {
+        const _dP = _byDay[dk];
+        const _fd = (dk && dk !== "No Date")
+          ? new Date(dk).toLocaleDateString("en-GB", {weekday:"long",day:"numeric",month:"long",year:"numeric"})
+          : dk;
+        return (
+          <div key={dk} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 flex items-center gap-3">
+              <span className="bg-amber-500 text-white text-xs font-black px-2.5 py-1 rounded-lg">DAY {di + 1}</span>
+              <div>
+                <div className="text-white font-bold text-sm">{_fd}</div>
+                <div className="text-slate-400 text-xs">{_dP.length} photo{_dP.length !== 1 ? "s" : ""}</div>
+              </div>
+            </div>
+            <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+              {_dP.map(p => (
+                <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg group">
+                  <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
+                    <img src={p.file_url} alt={p.caption || ""} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                  </div>
+                  <div className="p-3">
+                    <div className="text-xs font-semibold text-slate-700 mb-0.5 leading-tight">{p.caption || "No caption"}</div>
+                    <div className="text-xs text-slate-400">{p.area || ""}</div>
+                    <div className="flex gap-1.5 mt-2">
+                      <ActBtn onClick={() => setLightbox(p)} label="View" color="view" />
+                      <ActBtn onClick={() => openEdit(p)} label="Edit" color="edit" />
+                      <ActBtn onClick={() => setConfirmId(p.id)} label="Del" color="del" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this photo permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
@@ -4988,71 +5032,31 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
       })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
       {loading ? <Spinner /> : filtered.length === 0
-        ? <EmptyState msg="No photos found" onCreate={()=>{setUploadForm({...EMPTY_PHOTO_UPLOAD,photo_date:new Date().toISOString().split("T")[0]});setMode("upload");}} />
+        ? <EmptyState msg="No photos found" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} />
+        : viewMode === "day" ? _dayView
         : (
-        <>
-          {viewMode==="day" && (
-            <div className="space-y-4">
-              {_dayKeys.map((dk,di)=>{
-                const _dP=_byDay[dk];
-                const _fd=dk&&dk!=="No Date"?new Date(dk).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dk;
-                return(
-                  <div key={dk} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-2">
-                    <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 flex items-center gap-3">
-                      <span className="bg-amber-500 text-white text-xs font-black px-2.5 py-1 rounded-lg">DAY {di+1}</span>
-                      <div>
-                        <div className="text-white font-bold text-sm">{_fd}</div>
-                        <div className="text-slate-400 text-xs">{_dP.length} photo{_dP.length!==1?"s":""}</div>
-                      </div>
-                    </div>
-                    <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                      {_dP.map(p=>(
-                        <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg group">
-                          <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={()=>setLightbox(p)}>
-                            <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform"/>
-                          </div>
-                          <div className="p-3">
-                            <div className="text-xs font-semibold text-slate-700 mb-0.5">{p.caption||"No caption"}</div>
-                            <div className="text-xs text-slate-400">{p.area}</div>
-                            <div className="flex gap-1.5 mt-2">
-                              <ActBtn onClick={()=>setLightbox(p)} label="View" color="view"/>
-                              <ActBtn onClick={()=>openEdit(p)} label="Edit" color="edit"/>
-                              <ActBtn onClick={()=>setConfirmId(p.id)} label="Del" color="del"/>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {viewMode!=="day" && (
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filtered.map(p => (
-                <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
-                  <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
-                    <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
-                      <Icon name="eye" cls="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  </div>
-                  <div className="p-3">
-                    <div className="text-xs font-semibold text-slate-700 mb-0.5 leading-tight">{p.caption || "No caption"}</div>
-                    <div className="text-xs text-slate-400">{p.area}</div>
-                    <div className="text-xs text-slate-400">{projects.find(pr => pr.id === p.project_id)?.number || ""} · {fmtDate(p.uploaded_at?.split("T")[0])}</div>
-                    <div className="flex gap-1.5 mt-2">
-                      <ActBtn onClick={() => setLightbox(p)} label="View" color="view" />
-                      <ActBtn onClick={() => openEdit(p)} label="Edit" color="edit" />
-                      <ActBtn onClick={() => setConfirmId(p.id)} label="Del" color="del" />
-                    </div>
-                  </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map(p => (
+            <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
+              <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
+                <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+                  <Icon name="eye" cls="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-              ))}
+              </div>
+              <div className="p-3">
+                <div className="text-xs font-semibold text-slate-700 mb-0.5 leading-tight">{p.caption || "No caption"}</div>
+                <div className="text-xs text-slate-400">{p.area}</div>
+                <div className="text-xs text-slate-400">{projects.find(pr => pr.id === p.project_id)?.number || ""} · {fmtDate(p.uploaded_at?.split("T")[0])}</div>
+                <div className="flex gap-1.5 mt-2">
+                  <ActBtn onClick={() => setLightbox(p)} label="View" color="view" />
+                  <ActBtn onClick={() => openEdit(p)} label="Edit" color="edit" />
+                  <ActBtn onClick={() => setConfirmId(p.id)} label="Del" color="del" />
+                </div>
+              </div>
             </div>
-          )}
-        </>
+          ))}
+        </div>
       )}
     </div>
   );
