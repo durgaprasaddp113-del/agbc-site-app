@@ -3178,10 +3178,9 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
   }, [navFilter.projectId]);
   const [saving, setSaving] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
+  const [viewMode, setViewMode] = useState("day");
   const [fDateFrom, setFDateFrom] = useState("");
-  const [fDateTo,   setFDateTo]   = useState("");
-  const [viewMode,  setViewMode]  = useState("day");
-  const [exporting, setExporting] = useState(false);
+  const [fDateTo, setFDateTo] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectBox, setShowRejectBox] = useState(false);
   const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
@@ -3258,6 +3257,17 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this task permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
+      <div className="flex flex-wrap items-center gap-2 mb-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+        <span className="text-xs font-semibold text-slate-500">From:</span>
+        <input type="date" value={fDateFrom} onChange={e=>setFDateFrom(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"/>
+        <span className="text-xs text-slate-400">To:</span>
+        <input type="date" value={fDateTo} onChange={e=>setFDateTo(e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs"/>
+        {(fDateFrom||fDateTo)&&<button onClick={()=>{setFDateFrom("");setFDateTo("");}} className="text-xs text-red-500 font-bold px-2">Clear</button>}
+        <div className="ml-auto flex gap-1">
+          <button onClick={()=>setViewMode("day")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border "+(viewMode==="day"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-500 border-slate-200")}>Day View</button>
+          <button onClick={()=>setViewMode("grid")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border "+(viewMode==="grid"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-500 border-slate-200")}>Grid</button>
+        </div>
+      </div>
       {(() => {
         const exportData = filtered.map(t => ({
           ...t,
@@ -4836,22 +4846,20 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
     showToast("Photo deleted!"); setConfirmId(null);
   };
 
-  const filtered = photos
-    .filter(p => {
-      if (fProject !== "All" && p.project_id !== fProject) return false;
-      const _d = p.photo_date || p.uploaded_at?.split("T")[0] || "";
-      if (fDateFrom && _d < fDateFrom) return false;
-      if (fDateTo   && _d > fDateTo)   return false;
-      return true;
-    })
-    .sort((a,b)=>((a.photo_date||a.uploaded_at||"").localeCompare(b.photo_date||b.uploaded_at||"")));
-  const photosByDay = filtered.reduce((acc,p)=>{
-    const _k=p.photo_date||p.uploaded_at?.split("T")[0]||"No Date";
-    if(!acc[_k]) acc[_k]=[];
-    acc[_k].push(p);
+  const filtered = photos.filter(p => {
+    if (fProject !== "All" && p.project_id !== fProject) return false;
+    const _pd = p.photo_date || p.uploaded_at?.split("T")[0] || "";
+    if (fDateFrom && _pd < fDateFrom) return false;
+    if (fDateTo && _pd > fDateTo) return false;
+    return true;
+  }).sort((a,b)=>((a.photo_date||a.uploaded_at||"").localeCompare(b.photo_date||b.uploaded_at||"")));
+  const _byDay = filtered.reduce((acc,p)=>{
+    const k=p.photo_date||p.uploaded_at?.split("T")[0]||"No Date";
+    if(!acc[k])acc[k]=[];
+    acc[k].push(p);
     return acc;
   },{});
-  const dayKeys = Object.keys(photosByDay).sort();
+  const _dayKeys = Object.keys(_byDay).sort();
 
   // Lightbox
   if (lightbox) return (
@@ -4946,101 +4954,6 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this photo permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
-      <div className="flex flex-wrap gap-2 mb-3">
-        <button disabled={exporting} onClick={async()=>{
-          if(!filtered.length){showToast("No photos","error");return;}
-          setExporting(true);
-          try{
-            const{jsPDF}=window.jspdf;if(!jsPDF){alert("PDF lib not loaded");return;}
-            const doc=new jsPDF({orientation:"portrait",format:"a4",compress:true});
-            const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=12,UW=W-M*2,HDR=30;
-            const now=new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
-            const drawH=()=>{
-              doc.setFillColor(30,41,59);doc.rect(0,0,W,HDR,"F");
-              doc.setFillColor(245,158,11);doc.rect(0,HDR,W,2,"F");
-              doc.setTextColor(245,158,11);doc.setFontSize(12);doc.setFont("helvetica","bold");
-              doc.text("AGBC",M+2,HDR/2+4);
-              doc.setTextColor(255,255,255);doc.setFontSize(9);
-              doc.text("PROGRESS PHOTO REPORT",W-M,HDR/2+2,{align:"right"});
-              doc.setFontSize(6);doc.setTextColor(160,160,160);
-              doc.text(now,W-M,HDR-4,{align:"right"});
-            };
-            const getB=async(url)=>{
-              try{
-                const iS=url.includes("supabase.co");
-                const fn=url.split("/").pop().split("?")[0];
-                const wr=process.env.REACT_APP_R2_WORKER_URL||"";
-                const u=iS?url:(wr?wr+"/file/"+encodeURIComponent(fn):url);
-                const r=await fetch(u,{mode:"cors"});
-                if(!r.ok)return null;
-                const b=await r.blob();
-                return await new Promise((res,rej)=>{
-                  const rd=new FileReader();
-                  rd.onloadend=()=>res(rd.result);
-                  rd.onerror=rej;
-                  rd.readAsDataURL(b);
-                });
-              }catch(e){return null;}
-            };
-            const gF=b=>{if(!b)return"JPEG";if(b.startsWith("data:image/png"))return"PNG";if(b.startsWith("data:image/webp"))return"WEBP";return"JPEG";};
-            let first=true,dn=0;
-            for(const[dk,dP]of Object.entries(photosByDay||{})){
-              dn++;if(!first)doc.addPage();first=false;drawH();
-              let y=HDR+8;
-              const pr=projects.find(p=>p.id===dP[0]?.project_id);
-              const fd=dk&&dk!=="No Date"?new Date(dk).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dk;
-              doc.setFillColor(30,41,59);doc.roundedRect(M,y,UW,13,1.5,1.5,"F");
-              doc.setTextColor(245,158,11);doc.setFontSize(9);doc.setFont("helvetica","bold");
-              doc.text("DAY "+dn,M+3,y+9);
-              doc.setTextColor(255,255,255);doc.setFontSize(8);
-              doc.text(fd,M+22,y+9);
-              if(pr){doc.setTextColor(200,200,200);doc.setFontSize(6.5);doc.text(pr.number,W-M,y+9,{align:"right"});}
-              y+=18;
-              const IW=(UW-6)/2,IH=56;let pc=0,pr2=0;
-              for(const ph of dP){
-                if(y+pr2*(IH+18)>H-18){doc.addPage();drawH();y=HDR+8;pr2=0;pc=0;}
-                const ix=M+pc*(IW+6),iy=y+pr2*(IH+18);
-                doc.setFillColor(240,242,245);doc.rect(ix,iy,IW,IH,"F");
-                doc.setDrawColor(210,215,220);doc.setLineWidth(0.2);doc.rect(ix,iy,IW,IH);
-                const b64=await getB(ph.file_url||"");
-                if(b64&&b64.length>200){try{doc.addImage(b64,gF(b64),ix,iy,IW,IH,"","FAST");}catch(e){}}
-                else{doc.setFontSize(6);doc.setTextColor(150,150,150);doc.text("Unavailable",ix+IW/2,iy+IH/2,{align:"center"});}
-                doc.setFillColor(20,30,48);doc.rect(ix,iy+IH-10,IW,10,"F");
-                doc.setFontSize(5.5);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
-                doc.text((ph.caption||"").substring(0,36),ix+2,iy+IH-3.5);
-                doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(100,116,139);
-                doc.text(([ph.area,ph.photo_date].filter(Boolean).join(" - ")).substring(0,40),ix+2,iy+IH+5);
-                pc++;if(pc>=2){pc=0;pr2++;}
-              }
-            }
-            const today=new Date().toLocaleDateString("en-GB").replace(/[/]/g,"-");
-            doc.save("Progress_Photo_Report_"+today+".pdf");
-          }finally{setExporting(false);}
-        }} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100 disabled:opacity-50">
-          {exporting?"Generating...":"PDF Report"}
-        </button>
-        <button onClick={()=>{
-          exportToExcel(filtered.map((p)=>({
-            Day:(dayKeys||[]).indexOf(p.photo_date||p.uploaded_at?.split("T")[0]||"")+1,
-            Date:p.photo_date||p.uploaded_at?.split("T")[0]||"",
-            Project:(projects.find(pr=>pr.id===p.project_id)||{}).number||"",
-            Caption:p.caption||"",
-            Area:p.area||"",
-            File_URL:p.file_url||"",
-          })),[
-            {header:"Day",key:"Day",width:8},
-            {header:"Date",key:"Date",width:14},
-            {header:"Project",key:"Project",width:14},
-            {header:"Caption",key:"Caption",width:40},
-            {header:"Area",key:"Area",width:25},
-            {header:"File URL",key:"File_URL",width:60},
-          ],"Progress_Photos_Report");
-        }} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">
-          Excel
-        </button>
-        <button onClick={()=>setViewMode("day")} className={"px-3 py-2 rounded-lg text-xs font-bold border "+(viewMode==="day"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200")}>Day View</button>
-        <button onClick={()=>setViewMode("grid")} className={"px-3 py-2 rounded-lg text-xs font-bold border "+(viewMode==="grid"?"bg-amber-500 text-white border-amber-500":"bg-white text-slate-600 border-slate-200")}>Grid</button>
-      </div>
       {(() => {
         const exportData = filtered.map(p => ({
           caption: p.caption || "No caption",
@@ -5074,53 +4987,46 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           btn={<AddBtn onClick={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} label="Upload Photos" />} />;
       })()}
       <div className="mb-4"><Sel value={fProject} onChange={e => setFProject(e.target.value)} className="w-auto"><option value="All">All Projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.number}</option>)}</Sel></div>
-      {loading ? <Spinner /> : filtered.length === 0
-        ? <EmptyState msg="No photos found" onCreate={()=>{setUploadForm({...EMPTY_PHOTO_UPLOAD,photo_date:todayStr()});setMode("upload");}} />
-        : viewMode==="day" ? (
-          <div className="space-y-6">
-            {(dayKeys||[]).map((dk,di)=>{
-              const dPhotos=photosByDay[dk];
-              const dProj=projects.find(p=>p.id===dPhotos[0]?.project_id);
-              const dFmt=dk&&dk!=="No Date"?new Date(dk).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dk;
-              return(
-                <div key={dk} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+      {loading ? <Spinner /> : filtered.length === 0 ? <EmptyState msg="No photos yet" onCreate={() => { setUploadForm({...EMPTY_PHOTO_UPLOAD, photo_date: new Date().toISOString().split("T")[0]}); setMode("upload"); }} /> : (
+        <div>
+          {viewMode==="day" && (
+            <div className="space-y-4">
+              {_dayKeys.map((dk,di)=>{
+                const _dP=_byDay[dk];
+                const _fd=dk&&dk!=="No Date"?new Date(dk).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):dk;
+                return(
+                  <div key={dk} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-2">
+                    <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-3 flex items-center gap-3">
                       <span className="bg-amber-500 text-white text-xs font-black px-2.5 py-1 rounded-lg">DAY {di+1}</span>
                       <div>
-                        <div className="text-white font-bold text-sm">{dFmt}</div>
-                        <div className="text-slate-400 text-xs">{dPhotos.length} photo{dPhotos.length!==1?"s":""}{dProj?" · "+dProj.number:""}</div>
+                        <div className="text-white font-bold text-sm">{_fd}</div>
+                        <div className="text-slate-400 text-xs">{_dP.length} photo{_dP.length!==1?"s":""}</div>
                       </div>
                     </div>
-                    <span className="text-amber-400 text-xs font-semibold">{dk}</span>
-                  </div>
-                  <div className="p-4 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {dPhotos.map(p=>(
-                      <div key={p.id} className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden hover:shadow-md group">
-                        <div className="h-36 bg-slate-200 relative overflow-hidden cursor-pointer" onClick={()=>setLightbox(p)}>
-                          <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
-                            <Icon name="eye" cls="w-7 h-7 text-white opacity-0 group-hover:opacity-100 transition-opacity"/>
+                    <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {_dP.map(p=>(
+                        <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg group">
+                          <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={()=>setLightbox(p)}>
+                            <img src={p.file_url} alt={p.caption} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+                          </div>
+                          <div className="p-3">
+                            <div className="text-xs font-semibold text-slate-700 mb-0.5">{p.caption||"No caption"}</div>
+                            <div className="text-xs text-slate-400">{p.area}</div>
+                            <div className="flex gap-1.5 mt-2">
+                              <ActBtn onClick={()=>setLightbox(p)} label="View" color="view"/>
+                              <ActBtn onClick={()=>openEdit(p)} label="Edit" color="edit"/>
+                              <ActBtn onClick={()=>setConfirmId(p.id)} label="Del" color="del"/>
+                            </div>
                           </div>
                         </div>
-                        <div className="p-2.5">
-                          <div className="text-xs font-semibold text-slate-700 leading-tight mb-0.5">{p.caption||"No caption"}</div>
-                          {p.area&&<div className="text-xs text-slate-400">{p.area}</div>}
-                          <div className="text-xs text-slate-400">{fmtDate(p.photo_date||p.uploaded_at?.split("T")[0])}</div>
-                          <div className="flex gap-1 mt-2">
-                            <ActBtn onClick={()=>setLightbox(p)} label="View" color="view"/>
-                            <ActBtn onClick={()=>openEdit(p)} label="Edit" color="edit"/>
-                            <ActBtn onClick={()=>setConfirmId(p.id)} label="Del" color="del"/>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
+                );
+              })}
+            </div>
+          )}
+          {viewMode!=="day" && (
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(p => (
             <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-visible hover:shadow-lg transition-shadow group">
@@ -5142,6 +5048,8 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
               </div>
             </div>
           ))}
+        </div>
+          )}
         </div>
       )}
     </div>
