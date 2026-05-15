@@ -3268,119 +3268,6 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
           <button onClick={() => setViewMode("grid")} className={"px-3 py-1.5 rounded-lg text-xs font-bold border " + (viewMode === "grid" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-500 border-slate-200")}>Grid</button>
         </div>
       </div>
-      <div className="flex gap-2 mb-2">
-        <button onClick={async () => {
-          try {
-            // Fetch photos directly from DB at click time — avoids stale closure
-            const SUPA_URL = "https://awzxxzaspmwqgrywplnu.supabase.co/rest/v1/project_photos?select=*&order=photo_date.asc";
-            const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3enh4emFzcG13cWdyeXdwbG51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MjI0NjgsImV4cCI6MjA5MjQ5ODQ2OH0._1uvuSwKvWCKUxilJuC-AiO9U2-rKz6yB6-MPrzwYxg";
-            const resp = await fetch(SUPA_URL, { headers: { apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY } });
-            const allPhotos = await resp.json();
-            if (!allPhotos || !allPhotos.length) { alert("No photos found in database."); return; }
-            // Apply current filters
-            const toExport = allPhotos.filter(p => {
-              if (fProject !== "All" && p.project_id !== fProject) return false;
-              const d = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "");
-              if (fDateFrom && d < fDateFrom) return false;
-              if (fDateTo && d > fDateTo) return false;
-              return true;
-            });
-            if (!toExport.length) { alert("No photos match current filters."); return; }
-          try {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: "portrait", format: "a4", compress: true });
-            const W = doc.internal.pageSize.getWidth();
-            const H = doc.internal.pageSize.getHeight();
-            const M = 12, UW = W - M * 2, HDR = 30;
-            const now = new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
-            const drawHdr = () => {
-              doc.setFillColor(30,41,59); doc.rect(0,0,W,HDR,"F");
-              doc.setFillColor(245,158,11); doc.rect(0,HDR,W,2,"F");
-              doc.setTextColor(245,158,11); doc.setFontSize(13); doc.setFont("helvetica","bold");
-              doc.text("AGBC", M+2, HDR/2+4);
-              doc.setTextColor(255,255,255); doc.setFontSize(9);
-              doc.text("PROGRESS PHOTO REPORT", W-M, HDR/2+2, { align: "right" });
-              doc.setFontSize(6); doc.setTextColor(160,160,160);
-              doc.text(now, W-M, HDR-4, { align: "right" });
-            };
-            const fetchB64 = async (url) => {
-              try {
-                const isR2 = url.includes("r2.dev");
-                const wrkr = "https://agbc-r2-api.durgaprasad-dp113.workers.dev";
-                const fn = url.split("/").pop().split("?")[0];
-                const fetchUrl = isR2 ? wrkr + "/file/" + encodeURIComponent(fn) : url;
-                const r = await fetch(fetchUrl, { mode: "cors" });
-                if (!r.ok) return null;
-                const b = await r.blob();
-                return await new Promise((res, rej) => {
-                  const rd = new FileReader();
-                  rd.onloadend = () => res(rd.result);
-                  rd.onerror = rej;
-                  rd.readAsDataURL(b);
-                });
-              } catch(e) { return null; }
-            };
-            const getFmt = (b) => {
-              if (!b) return "JPEG";
-              if (b.startsWith("data:image/png")) return "PNG";
-              if (b.startsWith("data:image/webp")) return "WEBP";
-              return "JPEG";
-            };
-            const byDay = {};
-            toExport.forEach(p => {
-              const k = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "No Date") || "No Date";
-              if (!byDay[k]) byDay[k] = [];
-              byDay[k].push(p);
-            });
-            const days = Object.keys(byDay).sort();
-            let first = true, dn = 0;
-            for (const dk of days) {
-              dn++;
-              if (!first) doc.addPage(); first = false;
-              drawHdr();
-              let y = HDR + 8;
-              const dP = byDay[dk];
-              const fd = dk !== "No Date" ? new Date(dk).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : dk;
-              doc.setFillColor(30,41,59); doc.roundedRect(M, y, UW, 13, 1.5, 1.5, "F");
-              doc.setTextColor(245,158,11); doc.setFontSize(9); doc.setFont("helvetica","bold");
-              doc.text("DAY " + dn, M+3, y+9);
-              doc.setTextColor(255,255,255); doc.setFontSize(8);
-              doc.text(fd, M+22, y+9);
-              doc.setTextColor(200,200,200); doc.setFontSize(6.5);
-              doc.text(dP.length + " photo" + (dP.length !== 1 ? "s" : ""), W-M, y+9, { align: "right" });
-              y += 18;
-              const IW = (UW-6)/2, IH = 56;
-              let pc = 0, pr = 0;
-              for (const ph of dP) {
-                if (y + pr*(IH+18) > H-18) { doc.addPage(); drawHdr(); y = HDR+8; pr = 0; pc = 0; }
-                const ix = M + pc*(IW+6), iy = y + pr*(IH+18);
-                doc.setFillColor(240,242,245); doc.rect(ix,iy,IW,IH,"F");
-                doc.setDrawColor(210,215,220); doc.setLineWidth(0.2); doc.rect(ix,iy,IW,IH);
-                if (ph.file_url) {
-                  const b64 = await fetchB64(ph.file_url);
-                  if (b64 && b64.length > 200) {
-                    try { doc.addImage(b64, getFmt(b64), ix, iy, IW, IH, "", "FAST"); } catch(e) {}
-                  } else {
-                    doc.setFontSize(6); doc.setTextColor(150,150,150);
-                    doc.text("Image unavailable", ix+IW/2, iy+IH/2, { align: "center" });
-                  }
-                }
-                doc.setFillColor(20,30,48); doc.rect(ix, iy+IH-10, IW, 10, "F");
-                doc.setFontSize(5.5); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
-                doc.text((ph.caption||"No caption").substring(0,36), ix+2, iy+IH-3.5);
-                doc.setFontSize(5.5); doc.setFont("helvetica","normal"); doc.setTextColor(100,116,139);
-                doc.text(([ph.area, ph.photo_date].filter(Boolean).join(" - ")).substring(0,40), ix+2, iy+IH+5);
-                pc++; if (pc >= 2) { pc = 0; pr++; }
-              }
-            }
-            const today = new Date().toLocaleDateString("en-GB").replace(/[/]/g, "-");
-            doc.save("Progress_Photo_Report_" + today + ".pdf");
-          } catch(e) { console.error("Photo PDF error:", e); alert("PDF failed: " + e.message); }
-          } catch(e) { alert("Failed to load photos: " + e.message); }
-        }} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
-          📄 Photo PDF Report
-        </button>
-      </div>
       {(() => {
         const exportData = filtered.map(t => ({
           ...t,
@@ -5114,6 +5001,73 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
   return (
     <div className="p-6">
       {confirmId && <ConfirmDialog message="Delete this photo permanently?" onConfirm={() => handleDelete(confirmId)} onCancel={() => setConfirmId(null)} />}
+      <div className="flex gap-2 mb-2">
+        <button onClick={async () => {
+          var SKEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3enh4emFzcG13cWdyeXdwbG51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MjI0NjgsImV4cCI6MjA5MjQ5ODQ2OH0._1uvuSwKvWCKUxilJuC-AiO9U2-rKz6yB6-MPrzwYxg";
+          var WRKR = "https://agbc-r2-api.durgaprasad-dp113.workers.dev";
+          var getImg = async function(url) {
+            try {
+              var fn = url.split("/").pop().split("?")[0];
+              var u = url.indexOf("r2.dev") >= 0 ? WRKR+"/file/"+encodeURIComponent(fn) : url;
+              var r = await fetch(u, { mode: "cors" });
+              if (!r.ok) return null;
+              var b = await r.blob();
+              return await new Promise(function(ok,err){ var fr=new FileReader(); fr.onloadend=function(){ok(fr.result);}; fr.onerror=err; fr.readAsDataURL(b); });
+            } catch(e) { return null; }
+          };
+          var fmt = function(b){ return (!b?"JPEG":b.indexOf("image/png")>=0?"PNG":"JPEG"); };
+          try {
+            var res = await fetch("https://awzxxzaspmwqgrywplnu.supabase.co/rest/v1/project_photos?select=*&order=photo_date.asc,uploaded_at.asc",{headers:{apikey:SKEY,Authorization:"Bearer "+SKEY}});
+            var allPh = await res.json();
+            if (!allPh||!allPh.length) { alert("No photos found."); return; }
+            var jsPDF2 = window.jspdf.jsPDF;
+            var doc = new jsPDF2({orientation:"portrait",format:"a4",compress:true});
+            var W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=12,UW=W-M*2;
+            var now=new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});
+            var drawH=function(){
+              doc.setFillColor(30,41,59);doc.rect(0,0,W,32,"F");
+              doc.setFillColor(245,158,11);doc.rect(0,32,W,2,"F");
+              doc.setTextColor(245,158,11);doc.setFontSize(13);doc.setFont("helvetica","bold");doc.text("AGBC",M+2,20);
+              doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text("PROGRESS PHOTO REPORT",W-M,18,{align:"right"});
+              doc.setFontSize(6);doc.setTextColor(160,160,160);doc.text(now,W-M,28,{align:"right"});
+            };
+            var byDay={};
+            allPh.forEach(function(p){var k=p.photo_date||(p.uploaded_at||"").split("T")[0]||"Undated";if(!byDay[k])byDay[k]=[];byDay[k].push(p);});
+            var first=true,dn=0;
+            var dayKeys=Object.keys(byDay).sort();
+            for(var di=0;di<dayKeys.length;di++){
+              var dk=dayKeys[di];
+              dn++;if(!first)doc.addPage();first=false;drawH();
+              var y=40;var dP=byDay[dk];
+              var fd=dk!=="Undated"?new Date(dk).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"}):"Date not set";
+              doc.setFillColor(30,41,59);doc.roundedRect(M,y,UW,12,1,1,"F");
+              doc.setTextColor(245,158,11);doc.setFontSize(8);doc.setFont("helvetica","bold");doc.text("DAY "+dn,M+3,y+8);
+              doc.setTextColor(255,255,255);doc.setFontSize(7.5);doc.text(fd,M+20,y+8);
+              doc.setTextColor(200,200,200);doc.setFontSize(6.5);doc.text(dP.length+" photo"+(dP.length!==1?"s":""),W-M,y+8,{align:"right"});
+              y+=16;var IW=(UW-6)/2,IH=55;var pc=0,pr=0;
+              for(var pi=0;pi<dP.length;pi++){
+                var ph=dP[pi];
+                if(y+pr*(IH+16)>H-16){doc.addPage();drawH();y=40;pr=0;pc=0;}
+                var ix=M+pc*(IW+6),iy=y+pr*(IH+16);
+                doc.setFillColor(240,242,245);doc.rect(ix,iy,IW,IH,"F");
+                doc.setDrawColor(210,215,220);doc.setLineWidth(0.2);doc.rect(ix,iy,IW,IH);
+                var b64=await getImg(ph.file_url||"");
+                if(b64&&b64.length>100){try{doc.addImage(b64,fmt(b64),ix,iy,IW,IH,"","FAST");}catch(imgE){}}
+                else{doc.setFontSize(6);doc.setTextColor(150,150,150);doc.text("Unavailable",ix+IW/2,iy+IH/2,{align:"center"});}
+                doc.setFillColor(20,30,48);doc.rect(ix,iy+IH-10,IW,10,"F");
+                doc.setFontSize(5.5);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+                doc.text((ph.caption||"No caption").substring(0,36),ix+2,iy+IH-3.5);
+                doc.setFontSize(5.5);doc.setFont("helvetica","normal");doc.setTextColor(100,116,139);
+                doc.text(([ph.area,ph.photo_date].filter(Boolean).join(" - ")).substring(0,40),ix+2,iy+IH+5);
+                pc++;if(pc>=2){pc=0;pr++;}
+              }
+            }
+            doc.save("Progress_Photo_Report_"+new Date().toLocaleDateString("en-GB").replace(/[/]/g,"-")+".pdf");
+          } catch(e){console.error(e);alert("PDF export failed: "+e.message);}
+        }} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
+          Photo PDF Report
+        </button>
+      </div>
       {(() => {
         const exportData = filtered.map(p => ({
           caption: p.caption || "No caption",
