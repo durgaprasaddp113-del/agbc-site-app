@@ -4037,7 +4037,10 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             <tbody className="divide-y divide-slate-100">
               {filtered.map(r=>{
                 const proj=projects.find(p=>p.id===r.pid);
-                const mp = Number(r.manpowerTotal) || (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+                const mp = Number(r.manpowerTotal) || (
+                  (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0) +
+                  (r.mpSummary||[]).reduce((s,x)=>s+(Number(x.no_workers||x.count||0)),0)
+                );
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
@@ -11601,7 +11604,17 @@ function useManpowerMaster() {
     })));
     if (error) return { ok: false, error: error.message };
     const presentCount = valid.filter(r => r.am === "P" || r.pm === "P").length;
-    await supabase.from("daily_reports").update({ manpower_total: presentCount }).eq("id", dprId);
+    // Fetch manpower summary total so we can combine both counts
+      const { data: _snap1 } = await supabase.from("daily_reports")
+        .select("manpower_breakdown").eq("id", dprId).single();
+      let _sumTotal1 = 0;
+      try {
+        const _mb = _snap1?.manpower_breakdown;
+        const _arr = Array.isArray(_mb) ? _mb : JSON.parse(_mb || "[]");
+        _sumTotal1 = _arr.reduce((a, x) => a + (Number(x.no_workers || x.count || 0)), 0);
+      } catch {}
+      await supabase.from("daily_reports")
+        .update({ manpower_total: presentCount + _sumTotal1 }).eq("id", dprId);
     return { ok: true };
   };
 
