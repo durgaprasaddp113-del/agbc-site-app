@@ -1309,7 +1309,7 @@ function useDailyReports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
-    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_count)").order("report_date", { ascending: false });
+    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_count, am_status)").order("report_date", { ascending: false });
     if (error) console.error("Reports:", error.message);
     if (data) setReports(data.map(r => {
       const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
@@ -1325,7 +1325,7 @@ function useDailyReports() {
         inspections: parse("inspections_json"),
         safety: parse("safety_json"),
         manpowerTotal: r.manpower_total || 0,
-          attendancePresent: (r.dpr_attendance || []).filter(a => (a.am_count || 0) > 0).length,
+          attendancePresent: (r.dpr_attendance || []).length,
         mpSummary: (() => { try { const v = r.manpower_breakdown; return v ? (typeof v === "string" ? JSON.parse(v) : v) : []; } catch { return []; } })(),
         issues: r.issues_delays || "",
         visitors: r.visitors || "",
@@ -4039,7 +4039,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
               {filtered.map(r=>{
                 const proj=projects.find(p=>p.id===r.pid);
                 const _attMp = Number(r.attendancePresent) || 0;
-                  const _sumMp = (r.mpSummary||[]).reduce((s,x)=>s+(Number(x.no_workers||x.count||0)),0);
+                  const _sumMp = (r.mpSummary||[]).reduce((s,x)=>s+(Number(x.no_workers||x.noWorkers||x.num_workers||x.workers||x.count||0)),0);
                   const mp = (_attMp + _sumMp) || Number(r.manpowerTotal) || (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
