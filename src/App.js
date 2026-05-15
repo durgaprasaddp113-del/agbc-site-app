@@ -2193,7 +2193,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
   const nocExpired   = nocs.filter(n => isExpired(n.expiryDate, n.status) && n.status !== "Expired").length;
 
   const todayReports = reports.filter(r => r.date === todayStr);
-  const totalMP      = todayReports.reduce((s,r) => s + (Number(r.manpower)||0), 0);
+  const totalMP      = todayReports.reduce((s,r) => s + (Number(r.manpowerTotal)||0), 0);
 
   // Alerts lists
   const overdueTasks   = tasks.filter(t => isOverdue(t.due, t.status)).slice(0,5);
@@ -2328,8 +2328,8 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
                   {Array.from({length:7},(_,i)=>{
                     const d=new Date(); d.setDate(d.getDate()-6+i);
                     const ds=d.toISOString().split("T")[0];
-                    const mp=reports.filter(r=>r.date===ds).reduce((s,r)=>s+(Number(r.manpower)||0),0);
-                    const allMp=reports.map(r=>Number(r.manpower)||0);
+                    const mp=reports.filter(r=>r.date===ds).reduce((s,r)=>s+(Number(r.manpowerTotal)||0),0);
+                    const allMp=reports.map(r=>Number(r.manpowerTotal)||0);
                     const maxMp=Math.max(1,...allMp);
                     const h=mp>0?Math.max(6,Math.round((mp/maxMp)*52)):4;
                     const isToday=ds===todayStr;
@@ -2377,7 +2377,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
                         className="flex items-center gap-3 bg-slate-50 hover:bg-amber-50 rounded-lg px-3 py-2.5 cursor-pointer transition-colors">
                         <span className="text-xs font-mono font-bold text-amber-700">{proj?.number||"—"}</span>
                         <div className="flex-1 min-w-0 text-xs text-slate-700 truncate">{proj?.name||"—"}</div>
-                        <span className="text-xs text-slate-500">{r.manpower?`${r.manpower} workers`:""}</span>
+                        <span className="text-xs text-slate-500">{r.manpowerTotal?`${r.manpowerTotal} workers`:""}</span>
                         <Badge text={r.status}/>
                         <span className="text-slate-300 text-xs">›</span>
                       </div>
