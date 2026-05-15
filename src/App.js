@@ -5017,9 +5017,10 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
           };
           var fmt = function(b){ return (!b?"JPEG":b.indexOf("image/png")>=0?"PNG":"JPEG"); };
           try {
-            var res = await fetch("https://awzxxzaspmwqgrywplnu.supabase.co/rest/v1/project_photos?select=*&order=photo_date.asc,uploaded_at.asc",{headers:{apikey:SKEY,Authorization:"Bearer "+SKEY}});
+            var projFilter = (typeof fProject !== "undefined" && fProject !== "All") ? "&project_id=eq."+fProject : "";
+            var res = await fetch("https://awzxxzaspmwqgrywplnu.supabase.co/rest/v1/project_photos?select=*&order=photo_date.asc,uploaded_at.asc"+projFilter,{headers:{apikey:SKEY,Authorization:"Bearer "+SKEY}});
             var allPh = await res.json();
-            if (!allPh||!allPh.length) { alert("No photos found."); return; }
+            if (!allPh||!allPh.length) { alert("No photos found for selected project."); return; }
             var jsPDF2 = window.jspdf.jsPDF;
             var doc = new jsPDF2({orientation:"portrait",format:"a4",compress:true});
             var W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),M=12,UW=W-M*2;
