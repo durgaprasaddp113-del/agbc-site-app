@@ -3846,7 +3846,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {activeSection==="manpower"&&<DprAttendancePanel dprId={sel?sel.id:null} subcontractors={subcontractors||[]} masters={mpMasters||[]} loadAttendance={loadAttendance} saveAttendance={saveAttendance} showToast={showToast} allReports={reports}/>}
+      {activeSection==="manpower"&&<DprAttendancePanel dprId={sel?sel.id:null} subcontractors={subcontractors||[]} masters={mpMasters||[]} loadAttendance={loadAttendance} saveAttendance={saveAttendance} showToast={showToast} allReports={reports} onSaved={loadData}/>}
       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
@@ -11751,7 +11751,7 @@ const ManpowerMaster = ({ subcontractors = [], showToast }) => {
 };
 
 // ── DPR Attendance Panel ─────────────────────────────────────────────
-const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendance, saveAttendance, showToast, allReports=[] }) => {
+const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendance, saveAttendance, showToast, allReports=[], onSaved }) => {
   const [rows, setRows] = useState([]);
   const [subId, setSubId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -11796,7 +11796,7 @@ const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendan
     const res = await saveAttendance(dprId, rows);
     setSaving(false);
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
-    showToast("Attendance saved!");
+    showToast("Attendance saved!"); if (onSaved) onSaved();
   };
 
   const presentAM = rows.filter(r=>r.am==="P").length;
