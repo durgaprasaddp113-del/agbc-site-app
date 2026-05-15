@@ -5028,9 +5028,9 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
             var drawH=function(){
               doc.setFillColor(30,41,59);doc.rect(0,0,W,32,"F");
               doc.setFillColor(245,158,11);doc.rect(0,32,W,2,"F");
-              doc.setTextColor(245,158,11);doc.setFontSize(13);doc.setFont("helvetica","bold");doc.text("AGBC",M+2,20);
-              doc.setTextColor(255,255,255);doc.setFontSize(9);doc.text("PROGRESS PHOTO REPORT",W-M,18,{align:"right"});
-              doc.setFontSize(6);doc.setTextColor(160,160,160);doc.text(now,W-M,28,{align:"right"});
+              try{doc.addImage("data:image/jpeg;base64,"+AGBC_LOGO_B64,"JPEG",M,4,24,24);}catch(e){doc.setTextColor(245,158,11);doc.setFontSize(13);doc.setFont("helvetica","bold");doc.text("AGBC",M+2,20);}
+              doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont("helvetica","bold");doc.text("PROGRESS PHOTO REPORT",W-M,18,{align:"right"});
+              doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(160,160,160);doc.text(now,W-M,28,{align:"right"});
             };
             var byDay={};
             allPh.forEach(function(p){var k=p.photo_date||(p.uploaded_at||"").split("T")[0]||"Undated";if(!byDay[k])byDay[k]=[];byDay[k].push(p);});
