@@ -4976,14 +4976,14 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
             </div>
             <div className="p-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
               {_dP.map(p => (
-                <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg group">
-                  <div className="h-44 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
-                    <img src={p.file_url} alt={p.caption || ""} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                <div key={p.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg">
+                  <div className="h-32 bg-slate-100 relative overflow-hidden cursor-pointer" onClick={() => setLightbox(p)}>
+                    <img src={p.file_url} alt={p.caption || ""} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
                   </div>
-                  <div className="p-3">
-                    <div className="text-xs font-semibold text-slate-700 mb-0.5 leading-tight">{p.caption || "No caption"}</div>
-                    <div className="text-xs text-slate-400">{p.area || ""}</div>
-                    <div className="flex gap-1.5 mt-2">
+                  <div className="p-2 bg-white">
+                    <div className="text-xs font-semibold text-slate-700 leading-tight mb-0.5 truncate">{p.caption || "No caption"}</div>
+                    {p.area && <div className="text-xs text-slate-400 truncate mb-1">{p.area}</div>}
+                    <div className="flex flex-wrap gap-1">
                       <ActBtn onClick={() => setLightbox(p)} label="View" color="view" />
                       <ActBtn onClick={() => openEdit(p)} label="Edit" color="edit" />
                       <ActBtn onClick={() => setConfirmId(p.id)} label="Del" color="del" />
@@ -5028,7 +5028,7 @@ const Photos = ({ projects, photos, loading, onAdd, onUpdate, onDelete, showToas
             var drawH=function(){
               doc.setFillColor(30,41,59);doc.rect(0,0,W,32,"F");
               doc.setFillColor(245,158,11);doc.rect(0,32,W,2,"F");
-              try{doc.addImage("data:image/jpeg;base64,"+AGBC_LOGO_B64,"JPEG",M,4,24,24);}catch(e){doc.setTextColor(245,158,11);doc.setFontSize(13);doc.setFont("helvetica","bold");doc.text("AGBC",M+2,20);}
+              try{doc.addImage("data:image/jpeg;base64,"+AGBC_LOGO_B64,"JPEG",M,3,36,26);}catch(e){doc.setTextColor(245,158,11);doc.setFontSize(13);doc.setFont("helvetica","bold");doc.text("AGBC",M+2,20);}
               doc.setTextColor(255,255,255);doc.setFontSize(9);doc.setFont("helvetica","bold");doc.text("PROGRESS PHOTO REPORT",W-M,18,{align:"right"});
               doc.setFontSize(6);doc.setFont("helvetica","normal");doc.setTextColor(160,160,160);doc.text(now,W-M,28,{align:"right"});
             };
