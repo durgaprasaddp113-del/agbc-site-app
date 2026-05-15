@@ -1309,7 +1309,7 @@ function useDailyReports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
-    const { data, error } = await supabase.from("daily_reports").select("*").order("report_date", { ascending: false });
+    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_count)").order("report_date", { ascending: false });
     if (error) console.error("Reports:", error.message);
     if (data) setReports(data.map(r => {
       const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
@@ -1325,6 +1325,7 @@ function useDailyReports() {
         inspections: parse("inspections_json"),
         safety: parse("safety_json"),
         manpowerTotal: r.manpower_total || 0,
+          attendancePresent: (r.dpr_attendance || []).filter(a => (a.am_count || 0) > 0).length,
         mpSummary: (() => { try { const v = r.manpower_breakdown; return v ? (typeof v === "string" ? JSON.parse(v) : v) : []; } catch { return []; } })(),
         issues: r.issues_delays || "",
         visitors: r.visitors || "",
@@ -2402,7 +2403,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
                         className="flex items-center gap-3 bg-slate-50 hover:bg-amber-50 rounded-lg px-3 py-2.5 cursor-pointer transition-colors">
                         <span className="text-xs font-mono font-bold text-amber-700">{proj?.number||"—"}</span>
                         <div className="flex-1 min-w-0 text-xs text-slate-700 truncate">{proj?.name||"—"}</div>
-                        <span className="text-xs text-slate-500">{r.manpowerTotal?`${r.manpowerTotal} workers`:""}</span>
+                        <span className="text-xs text-slate-500">{(()=>{const _a=Number(r.attendancePresent)||0; const _s=(r.mpSummary||[]).reduce((t,x)=>t+(Number(x.no_workers||x.count||0)),0); const _t=_a+_s||Number(r.manpowerTotal)||0; return _t?`${_t} workers`:""})()}</span>
                         <Badge text={r.status}/>
                         <span className="text-slate-300 text-xs">›</span>
                       </div>
@@ -3846,7 +3847,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       </div>}
 
       {/* MANPOWER section */}
-      {activeSection==="manpower"&&<DprAttendancePanel dprId={sel?sel.id:null} subcontractors={subcontractors||[]} masters={mpMasters||[]} loadAttendance={loadAttendance} saveAttendance={saveAttendance} showToast={showToast} allReports={reports} onSaved={loadData}/>}
+      {activeSection==="manpower"&&<DprAttendancePanel dprId={sel?sel.id:null} subcontractors={subcontractors||[]} masters={mpMasters||[]} loadAttendance={loadAttendance} saveAttendance={saveAttendance} showToast={showToast} allReports={reports}/>}
       {activeSection==="manpower"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="👷" title="Manpower Summary" count={(form.manpower||[]).filter(r=>r.trade||r.count).length} onAdd={addRow("manpower")}/>
         <DynTable heads={["Trade/Company","No. Workers","Foreman","Work Area","Remarks",""]}
@@ -4037,10 +4038,9 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             <tbody className="divide-y divide-slate-100">
               {filtered.map(r=>{
                 const proj=projects.find(p=>p.id===r.pid);
-                const mp = Number(r.manpowerTotal) || (
-                  (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0) +
-                  (r.mpSummary||[]).reduce((s,x)=>s+(Number(x.no_workers||x.count||0)),0)
-                );
+                const _attMp = Number(r.attendancePresent) || 0;
+                  const _sumMp = (r.mpSummary||[]).reduce((s,x)=>s+(Number(x.no_workers||x.count||0)),0);
+                  const mp = (_attMp + _sumMp) || Number(r.manpowerTotal) || (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
@@ -11604,17 +11604,7 @@ function useManpowerMaster() {
     })));
     if (error) return { ok: false, error: error.message };
     const presentCount = valid.filter(r => r.am === "P" || r.pm === "P").length;
-    // Fetch manpower summary total so we can combine both counts
-      const { data: _snap1 } = await supabase.from("daily_reports")
-        .select("manpower_breakdown").eq("id", dprId).single();
-      let _sumTotal1 = 0;
-      try {
-        const _mb = _snap1?.manpower_breakdown;
-        const _arr = Array.isArray(_mb) ? _mb : JSON.parse(_mb || "[]");
-        _sumTotal1 = _arr.reduce((a, x) => a + (Number(x.no_workers || x.count || 0)), 0);
-      } catch {}
-      await supabase.from("daily_reports")
-        .update({ manpower_total: presentCount + _sumTotal1 }).eq("id", dprId);
+    await supabase.from("daily_reports").update({ manpower_total: presentCount }).eq("id", dprId);
     return { ok: true };
   };
 
@@ -11751,7 +11741,7 @@ const ManpowerMaster = ({ subcontractors = [], showToast }) => {
 };
 
 // ── DPR Attendance Panel ─────────────────────────────────────────────
-const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendance, saveAttendance, showToast, allReports=[], onSaved }) => {
+const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendance, saveAttendance, showToast, allReports=[] }) => {
   const [rows, setRows] = useState([]);
   const [subId, setSubId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -11796,7 +11786,7 @@ const DprAttendancePanel = ({ dprId, subcontractors=[], masters=[], loadAttendan
     const res = await saveAttendance(dprId, rows);
     setSaving(false);
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
-    showToast("Attendance saved!"); if (onSaved) onSaved();
+    showToast("Attendance saved!");
   };
 
   const presentAM = rows.filter(r=>r.am==="P").length;
