@@ -3290,7 +3290,11 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
             };
             const fetchB64 = async (url) => {
               try {
-                const r = await fetch(url, { mode: "cors" });
+                const isR2 = url.includes("r2.dev");
+                const wrkr = "https://agbc-r2-api.durgaprasad-dp113.workers.dev";
+                const fn = url.split("/").pop().split("?")[0];
+                const fetchUrl = isR2 ? wrkr + "/file/" + encodeURIComponent(fn) : url;
+                const r = await fetch(fetchUrl, { mode: "cors" });
                 if (!r.ok) return null;
                 const b = await r.blob();
                 return await new Promise((res, rej) => {
