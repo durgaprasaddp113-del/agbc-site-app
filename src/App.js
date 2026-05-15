@@ -735,6 +735,28 @@ const exportDailyReportPDF = (report, projectName) => {
     });
     if (y > pageH - 50) { doc.addPage(); y = 16; }
     y = Math.max(y, pageH - 50);
+    // Authorized Signature block on last page
+    if (y > pageH - 60) { doc.addPage(); y = 16; }
+    y = Math.max(y, pageH - 58);
+    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3);
+    doc.setFillColor(248,250,252); doc.rect(14, y, pageW-28, 48, "FD");
+    doc.setFillColor(...AMBER_COLOR); doc.rect(14, y, pageW-28, 8, "F");
+    doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+    doc.text("  AUTHORIZED SIGNATURES", 14+2, y+5.5);
+    const sigW = (pageW-28)/3;
+    const sigLabels = ["Prepared By", "Reviewed By", "Approved By"];
+    sigLabels.forEach((lbl, i) => {
+      const sx = 14 + i*sigW;
+      const lineY = y + 36;
+      doc.setDrawColor(100); doc.setLineWidth(0.4);
+      doc.line(sx+6, lineY, sx+sigW-6, lineY);
+      doc.setFontSize(7); doc.setFont("helvetica","bold"); doc.setTextColor(80);
+      doc.text(lbl, sx+sigW/2, lineY+5, {align:"center"});
+      doc.setFontSize(6); doc.setFont("helvetica","normal"); doc.setTextColor(150);
+      doc.text("Name & Stamp", sx+sigW/2, lineY+9, {align:"center"});
+      if (i===0 && report.preparedBy) { doc.setFontSize(7); doc.setTextColor(30,41,59); doc.text(report.preparedBy, sx+sigW/2, lineY-3, {align:"center"}); }
+    });
+    y += 50;
     doc.setDrawColor(200); doc.setLineWidth(0.3); doc.line(14, y, 90, y); doc.line(pageW - 90, y, pageW - 14, y);
     doc.setFontSize(7); doc.setTextColor(120);
     doc.text("Site Engineer Signature", 14, y + 5); doc.text("Project Manager Signature", pageW - 90, y + 5);
@@ -1303,6 +1325,7 @@ function useDailyReports() {
         inspections: parse("inspections_json"),
         safety: parse("safety_json"),
         manpowerTotal: r.manpower_total || 0,
+        mpSummary: (() => { try { const v = r.manpower_breakdown; return v ? (typeof v === "string" ? JSON.parse(v) : v) : []; } catch { return []; } })(),
         issues: r.issues_delays || "",
         visitors: r.visitors || "",
         remarks: r.remarks || "",
@@ -1324,7 +1347,7 @@ function useDailyReports() {
 
   const add = async (f) => {
     const reportNum = await getNextNum();
-    const { error } = await supabase.from("daily_reports").insert([{
+    const { data: insertedData, error } = await supabase.from("daily_reports").insert([{
       report_number: reportNum,
       project_id: f.pid, report_date: f.date || null,
       weather: f.weather, temperature_high: parseInt(f.temp) || null,
@@ -1336,12 +1359,13 @@ function useDailyReports() {
       materials_json: JSON.stringify(f.materials || []),
       inspections_json: JSON.stringify(f.inspections || []),
       safety_json: JSON.stringify(f.safety || []),
+      manpower_breakdown: f.mpSummary ? JSON.stringify(f.mpSummary) : null,
       issues_delays: f.issues, visitors: f.visitors,
       remarks: f.remarks, status: f.status || "Draft",
       prepared_by_name: f.preparedBy,
-    }]);
+    }]).select("id").single();
     if (error) return { ok: false, error: error.message };
-    await loadData(); return { ok: true, reportNum };
+    await loadData(); return { ok: true, reportNum, id: insertedData?.id };
   };
 
   const update = async (id, f) => {
@@ -1356,6 +1380,7 @@ function useDailyReports() {
       materials_json: JSON.stringify(f.materials || []),
       inspections_json: JSON.stringify(f.inspections || []),
       safety_json: JSON.stringify(f.safety || []),
+      manpower_breakdown: f.mpSummary ? JSON.stringify(f.mpSummary) : null,
       issues_delays: f.issues, visitors: f.visitors,
       remarks: f.remarks, status: f.status || "Draft",
       prepared_by_name: f.preparedBy,
@@ -3580,6 +3605,7 @@ const EMPTY_DR = () => ({
   manpower:[EMPTY_MP()], equipment:[EMPTY_EQ()],
   activities:[EMPTY_ACT()], materials:[EMPTY_MAT()],
   inspections:[EMPTY_INS()], safety:[EMPTY_SAF()],
+  mpSummary:[],
 });
 
 const SectionHead = ({ icon, title, count, onAdd, addLabel }) => (
@@ -3641,6 +3667,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
       materials:r.materials?.length?r.materials.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_MAT()],
       inspections:r.inspections?.length?r.inspections.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_INS()],
       safety:r.safety?.length?r.safety.map(x=>({...x,id:x.id||Date.now()+Math.random()})):[EMPTY_SAF()],
+      mpSummary:r.mpSummary||[],
     });
     setActiveSection("header"); setMode("form");
   };
@@ -3666,7 +3693,14 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     const res = sel ? await onUpdate(sel.id, payload) : await onAdd(payload);
     setSaving(false);
     if (!res.ok) { showToast(res.error||"Save failed","error"); return; }
-    showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
+    if (!sel && res.id) {
+      showToast("Report created: "+res.reportNum+" — now add attendance below");
+      const newRec = { ...payload, id: res.id, reportNum: res.reportNum, manpower: payload.manpower, mpSummary: payload.mpSummary||[] };
+      setSel(newRec);
+      setForm(f => ({ ...f, reportNum: res.reportNum }));
+    } else {
+      showToast(sel?"Report updated!":"Report created: "+res.reportNum); goList();
+    }
   };
 
   const handleDelete = async id => {
@@ -3692,6 +3726,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
     {id:"inspections",label:`🔍 Inspections (${(form.inspections||[]).filter(r=>r.location||r.type).length})`},
     {id:"safety",label:`⛑️ Safety (${(form.safety||[]).filter(r=>r.obs).length})`},
     {id:"remarks",label:"📝 Notes"},
+    {id:"mp_summary",label:"Manpower Summary"},
   ];
 
   // ── VIEW ────────────────────────────────────────────────────────────────────
@@ -3830,6 +3865,46 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         </div>
       </div>}
 
+      {/* MANPOWER SUMMARY section */}
+      {activeSection==="mp_summary"&&(
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+            <div className="flex items-center gap-2">
+              <span className="text-base">👷</span>
+              <span className="font-bold text-slate-700 text-sm">Manpower Summary (Subcontractor-wise)</span>
+              <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-semibold">{(form.mpSummary||[]).filter(r=>r.contractor||r.count).length}</span>
+            </div>
+            <button onClick={()=>setForm(p=>({...p,mpSummary:[...(p.mpSummary||[]),{id:Date.now()+Math.random(),contractor:"",count:"",type:"Subcontractor",remarks:""}]}))} className="text-xs font-bold text-amber-600 hover:text-amber-700 border border-amber-300 hover:bg-amber-50 rounded-lg px-2.5 py-1">+ Add Row</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>{["Contractor / Company","Type","No. Workers","Remarks",""].map(h=><th key={h} className="text-left px-3 py-2 text-xs font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(form.mpSummary||[]).map(r=>(
+                  <tr key={r.id} className="border-t border-slate-100">
+                    <td className="px-2 py-1.5"><Inp value={r.contractor||""} onChange={e=>setForm(p=>({...p,mpSummary:(p.mpSummary||[]).map(x=>x.id===r.id?{...x,contractor:e.target.value}:x)}))} placeholder="e.g. MEP Subcontractor" /></td>
+                    <td className="px-2 py-1.5 w-36"><Sel value={r.type||"Subcontractor"} onChange={e=>setForm(p=>({...p,mpSummary:(p.mpSummary||[]).map(x=>x.id===r.id?{...x,type:e.target.value}:x)}))}><option>Company</option><option>Labour Supply</option><option>Subcontractor</option></Sel></td>
+                    <td className="px-2 py-1.5 w-24"><Inp type="number" min="0" value={r.count||""} onChange={e=>setForm(p=>({...p,mpSummary:(p.mpSummary||[]).map(x=>x.id===r.id?{...x,count:e.target.value}:x)}))} placeholder="0" /></td>
+                    <td className="px-2 py-1.5"><Inp value={r.remarks||""} onChange={e=>setForm(p=>({...p,mpSummary:(p.mpSummary||[]).map(x=>x.id===r.id?{...x,remarks:e.target.value}:x)}))} /></td>
+                    <td className="px-2 py-1.5 w-8"><button onClick={()=>setForm(p=>({...p,mpSummary:(p.mpSummary||[]).filter(x=>x.id!==r.id)}))} disabled={(form.mpSummary||[]).length<=0} className="text-red-400 hover:text-red-600 font-bold text-lg leading-none disabled:opacity-30">×</button></td>
+                  </tr>
+                ))}
+                {(form.mpSummary||[]).length===0&&<tr><td colSpan="5" className="px-4 py-6 text-center text-sm text-slate-400">No entries. Click "+ Add Row" to add subcontractor manpower.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap gap-4 text-sm font-bold text-slate-700">
+            {["Company","Labour Supply","Subcontractor"].map(type=>{
+              const cnt=(form.mpSummary||[]).filter(r=>r.type===type).reduce((s,r)=>s+(Number(r.count)||0),0);
+              return cnt>0?<span key={type}>{type}: <span className="text-blue-600">{cnt}</span></span>:null;
+            })}
+            <span className="ml-auto">Grand Total: <span className="text-amber-600 text-base">{(form.mpSummary||[]).reduce((s,r)=>s+(Number(r.count)||0),0)}</span></span>
+          </div>
+        </div>
+      )}
+
       {/* EQUIPMENT section */}
       {activeSection==="equipment"&&<div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <SectionHead icon="🚜" title="Equipment Summary" count={(form.equipment||[]).filter(r=>r.name).length} onAdd={addRow("equipment")}/>
@@ -3962,7 +4037,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             <tbody className="divide-y divide-slate-100">
               {filtered.map(r=>{
                 const proj=projects.find(p=>p.id===r.pid);
-                const mp=(r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+                const mp = Number(r.manpowerTotal) || (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
