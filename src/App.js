@@ -3270,7 +3270,22 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
       </div>
       <div className="flex gap-2 mb-2">
         <button onClick={async () => {
-          if (!filtered.length) { alert("No photos to export."); return; }
+          try {
+            // Fetch photos directly from DB at click time — avoids stale closure
+            const SUPA_URL = "https://awzxxzaspmwqgrywplnu.supabase.co/rest/v1/project_photos?select=*&order=photo_date.asc";
+            const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3enh4emFzcG13cWdyeXdwbG51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MjI0NjgsImV4cCI6MjA5MjQ5ODQ2OH0._1uvuSwKvWCKUxilJuC-AiO9U2-rKz6yB6-MPrzwYxg";
+            const resp = await fetch(SUPA_URL, { headers: { apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY } });
+            const allPhotos = await resp.json();
+            if (!allPhotos || !allPhotos.length) { alert("No photos found in database."); return; }
+            // Apply current filters
+            const toExport = allPhotos.filter(p => {
+              if (fProject !== "All" && p.project_id !== fProject) return false;
+              const d = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "");
+              if (fDateFrom && d < fDateFrom) return false;
+              if (fDateTo && d > fDateTo) return false;
+              return true;
+            });
+            if (!toExport.length) { alert("No photos match current filters."); return; }
           try {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF({ orientation: "portrait", format: "a4", compress: true });
@@ -3312,7 +3327,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
               return "JPEG";
             };
             const byDay = {};
-            filtered.forEach(p => {
+            toExport.forEach(p => {
               const k = p.photo_date || (p.uploaded_at ? p.uploaded_at.split("T")[0] : "No Date") || "No Date";
               if (!byDay[k]) byDay[k] = [];
               byDay[k].push(p);
@@ -3361,6 +3376,7 @@ const Tasks = ({ projects, tasks, loading, onAdd, onUpdate, onDelete, showToast,
             const today = new Date().toLocaleDateString("en-GB").replace(/[/]/g, "-");
             doc.save("Progress_Photo_Report_" + today + ".pdf");
           } catch(e) { console.error("Photo PDF error:", e); alert("PDF failed: " + e.message); }
+          } catch(e) { alert("Failed to load photos: " + e.message); }
         }} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">
           📄 Photo PDF Report
         </button>
