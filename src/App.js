@@ -814,7 +814,7 @@ const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSumma
     }
 
     // ── WORK SECTIONS ───────────────────────────────────────────
-    [["Work Activities Today",report.activities],["Issues & Delays",report.issues],["Safety Observations",report.safety],["Materials Received",report.materials],["Visitors",report.visitors],["Remarks",report.remarks]].filter(([,v])=>v&&String(v).trim()).forEach(([lbl,val])=>{
+    [["Work Activities Today",report.activities],["Equipment on Site",report.completed],["Inspections",report.inspections],["Issues & Delays",report.issues],["Safety Observations",report.safety],["Materials Received",report.materials],["Visitors",report.visitors],["Remarks",report.remarks]].filter(([,v])=>v&&String(v).trim()).forEach(([lbl,val])=>{
       if (y>pageH-40){doc.addPage();y=15;}
       doc.setFillColor(245,158,11); doc.rect(10,y,pageW-20,7,"F");
       doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.text(lbl,13,y+5);
@@ -3885,6 +3885,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
               materials:  toStr(sel.materials,  m=>`${m.material||""} — ${m.qty||0} ${m.unit||""} | ${m.supplier||""} | DN: ${m.dn||""}`),
               safety:     toStr(sel.safety,     s=>`[${s.severity||""}] ${s.obs||""} → ${s.action||""}`),
               completed:  toStr(sel.equipment,  e=>`${e.name||""} (${e.status||""}) — Op: ${e.operator||""}`),
+                inspections: toStr(sel.inspections, i=>`${i.type||""} | Location: ${i.location||"—"} | Consultant: ${i.consultant||"—"} | Status: ${i.status||""}`),
               issues:     sel.issues||"",
               visitors:   sel.visitors||"",
               remarks:    sel.remarks||"",
