@@ -630,6 +630,8 @@ const toWordsAED = (amount) => {
   return r.trim()+" Dirham And "+(fils>0?grp(fils).trim()+" Fils":"Zero Fils");
 };
 const exportLpoPDF = (lpo, projects) => {
+  try {
+
   if (!lpo) { showToast("No LPO selected","error"); return; }
   const proj = projects?.find(p => p.id === lpo.pid);
   const doc  = new jsPDF({ orientation:"portrait", format:"a4" });
@@ -792,6 +794,10 @@ const exportLpoPDF = (lpo, projects) => {
   doc.text("Authorised Signature", lm, y + 4);
 
   doc.save("LPO_" + (lpo.lpoNum || "export") + ".pdf");
+  } catch(err) {
+    console.error('LPO PDF Error:', err);
+    alert('PDF Error: ' + (err && err.message ? err.message : String(err)) + '\n\nOpen browser console (F12) for full details.');
+  }
 };
 
 
