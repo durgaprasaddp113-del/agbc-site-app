@@ -1384,7 +1384,7 @@ function useDailyReports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
-    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_count, am_status)").order("report_date", { ascending: false });
+    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_status, pm_status)").order("report_date", { ascending: false });
     if (error) console.error("Reports:", error.message);
     if (data) setReports(data.map(r => {
       const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
@@ -3872,7 +3872,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
               let _attRows=[];
               try{
                 const {data:_ad}=await supabase.from("dpr_attendance")
-                  .select("*, manpower_master(employee_id, employee_name, designation, trade)")
+                  .select("id, am_status, pm_status, ot_hours, description_of_work, team_no, manpower_master(employee_id, employee_name, designation, trade)")
                   .eq("dpr_id",sel.id).order("created_at");
                 _attRows=_ad||[];
               }catch(e){}
