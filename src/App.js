@@ -1918,21 +1918,21 @@ const Icon = ({ name, cls: c = "w-5 h-5" }) => {
 // SIDEBAR & HEADER
 // ─────────────────────────────────────────────────────────────────────────────
 const NAV = [
-  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { id: "projects", label: "Projects", icon: "projects" },
-  { id: "tasks", label: "Tasks", icon: "tasks" },
-  { id: "snags", label: "Snag List", icon: "snags" },
-  { id: "reports", label: "Daily Reports", icon: "reports" },
-  { id: "inspections", label: "Inspections", icon: "inspections" },
-  { id: "drawings", label: "Drawing Register", icon: "drawings" },
-  { id: "photos", label: "Progress Photos", icon: "photos" },
-  { id: "subcontractors", label: "Subcontractors", icon: "subs" },
-  { id: "users", label: "Team Members", icon: "subs" },
-  { id: "mr", label: "Material Request", icon: "mr" },
-  { id: "lpo", label: "LPO", icon: "lpo" },
-  { id: "store", label: "Material Store", icon: "store" },
-          { id: "manpower-master", label: "Manpower Master", icon: "users" },
-  { id: "noc", label: "NOC & Permits", icon: "noc" },
+  { id: "dashboard",       label: "Dashboard",        icon: "dashboard"   },
+  { id: "projects",        label: "Projects",          icon: "projects"    },
+  { id: "tasks",           label: "Tasks",             icon: "tasks"       },
+  { id: "reports",         label: "Daily Reports",     icon: "reports"     },
+  { id: "subcontractors",  label: "Subcontractors",    icon: "subs"        },
+  { id: "manpower-master", label: "Manpower Master",   icon: "users"       },
+  { id: "inspections",     label: "Inspections",       icon: "inspections" },
+  { id: "photos",          label: "Progress Photos",   icon: "photos"      },
+  { id: "mr",              label: "Material Request",  icon: "mr"          },
+  { id: "lpo",             label: "LPO",               icon: "lpo"         },
+  { id: "store",           label: "Material Store",    icon: "store"       },
+  { id: "noc",             label: "NOC & Permits",     icon: "noc"         },
+  { id: "drawings",        label: "Drawing Register",  icon: "drawings"    },
+  { id: "snags",           label: "Snag List",         icon: "snags"       },
+  { id: "users",           label: "Team Members",      icon: "subs"        },
 ];
 
 const SidebarInner = ({ mini, active, onNav, user, onSignOut }) => (
