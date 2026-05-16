@@ -657,122 +657,197 @@ const exportLpoPDF = (lpo, projects) => {
   doc.save(`LPO_${lpo.lpoNum||"export"}.pdf`);
 };
 
-const exportDailyReportPDF = (report, projectName) => {
+const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSummary) => {
   try {
+    const _attRows = Array.isArray(attendanceRows) ? attendanceRows : [];
+    const _mpSum   = Array.isArray(manpowerSummary) ? manpowerSummary : [];
     const { jsPDF } = window.jspdf;
     if (!jsPDF) { alert("PDF library not loaded."); return; }
-    const today = report.date || todayExport();
-    const doc = new jsPDF({ orientation: "portrait", format: "a4" });
+    const doc   = new jsPDF({ orientation: "portrait", format: "a4" });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
-    // ── Header (portrait A4, 210mm wide, usable 190mm) ─────────────────────
-    const DR_HDR_H = 38;
-    const DR_LOGO_ASPECT = 4.7;
-    const DR_LOGO_H = 28;
-    const DR_LOGO_MAX_W = (pageW - 20) * 0.60; // 60% of usable width
-    const DR_LOGO_W = Math.min(DR_LOGO_H * DR_LOGO_ASPECT, DR_LOGO_MAX_W);
 
-    doc.setFillColor(...DARK_COLOR);
-    doc.rect(0, 0, pageW, DR_HDR_H, "F");
-    doc.setFillColor(...AMBER_COLOR);
-    doc.rect(0, DR_HDR_H, pageW, 2.5, "F");
-
-    // Logo (left side)
+    // ── HEADER ──────────────────────────────────────────────────
+    doc.setFillColor(30, 41, 59);
+    doc.rect(0, 0, pageW, 35, "F");
+    doc.setFillColor(245, 158, 11);
+    doc.rect(0, 35, pageW, 2.5, "F");
     try {
-      doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, (DR_HDR_H - DR_LOGO_H) / 2, DR_LOGO_W, DR_LOGO_H);
+      doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64, "JPEG", 10, 4, 70, 27);
     } catch(e) {
-      doc.setTextColor(245, 158, 11); doc.setFontSize(14); doc.setFont("helvetica", "bold");
-      doc.text("AGBC", 12, DR_HDR_H / 2 + 4);
+      doc.setTextColor(245,158,11); doc.setFontSize(14); doc.setFont("helvetica","bold");
+      doc.text("AGBC", 12, 22);
+    }
+    doc.setTextColor(255,255,255); doc.setFontSize(14); doc.setFont("helvetica","bold");
+    doc.text("DAILY SITE REPORT", pageW-10, 18, { align:"right" });
+    doc.setFontSize(6.5); doc.setFont("helvetica","normal"); doc.setTextColor(180,180,180);
+    doc.text(new Date().toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"}), pageW-10, 30, {align:"right"});
+
+    let y = 43;
+
+    // ── PROJECT INFO BOX ────────────────────────────────────────
+    const infoFmt = d => { try { return new Date(d).toLocaleDateString("en-GB",{weekday:"long",year:"numeric",month:"long",day:"numeric"}); } catch{ return d||"—"; }};
+    doc.setFillColor(248,250,252); doc.setDrawColor(226,232,240); doc.setLineWidth(0.3);
+    doc.roundedRect(10, y, pageW-20, 22, 2, 2, "FD");
+    const infoItems = [["Project",projectName||"—"],["Report Date",infoFmt(report.date)],["Prepared By",report.preparedBy||"—"],["Status",report.status||"Draft"],["Weather",(report.weather||"—")+(report.temp?" · "+report.temp+"°C":"")],["Work Hours",report.workHours||"8"]];
+    const c1x=14, c2x=pageW/2+5;
+    infoItems.forEach(([lbl,val],idx)=>{
+      const col=idx%2, row=Math.floor(idx/2);
+      const x=col===0?c1x:c2x, iy=y+6+row*7;
+      doc.setFontSize(6.5); doc.setFont("helvetica","bold"); doc.setTextColor(100); doc.text(lbl+":",x,iy);
+      doc.setFont("helvetica","normal"); doc.setTextColor(30,41,59); doc.setFontSize(7.5); doc.text(String(val),x+22,iy);
+    });
+    y += 26;
+
+    // ── ATTENDANCE TABLE ────────────────────────────────────────
+    if (_attRows.length > 0) {
+      if (y > pageH-60) { doc.addPage(); y=15; }
+      doc.setFillColor(245,158,11); doc.rect(10,y,pageW-20,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      doc.text("DAILY ATTENDANCE REGISTER", 13, y+5);
+      y += 9;
+
+      // Column definitions
+      const C = [
+        {h:"S.No",   w:9,  x:10},
+        {h:"ID",     w:9,  x:19},
+        {h:"Name",   w:38, x:28},
+        {h:"Designation", w:30, x:66},
+        {h:"A.M",    w:11, x:96},
+        {h:"P.M",    w:11, x:107},
+        {h:"O.T",    w:11, x:118},
+        {h:"Description of Work", w:pageW-20-118, x:129},
+      ];
+
+      // Header row
+      doc.setFillColor(30,41,59); doc.rect(10,y,pageW-20,7,"F");
+      C.forEach(col=>{
+        doc.setTextColor(255,255,255); doc.setFontSize(6.5); doc.setFont("helvetica","bold");
+        doc.text(col.h, col.x+1, y+5);
+      });
+      y += 7;
+
+      // Data rows
+      _attRows.forEach((row,idx)=>{
+        if (y > pageH-50) { doc.addPage(); y=15; }
+        doc.setFillColor(idx%2===0?255:248, idx%2===0?255:250, idx%2===0?255:252);
+        doc.rect(10,y,pageW-20,6.5,"F");
+        doc.setDrawColor(226,232,240); doc.setLineWidth(0.2); doc.line(10,y+6.5,pageW-10,y+6.5);
+        const mm  = row.manpower_master||{};
+        const am  = row.am_status||"A";
+        const pm  = row.pm_status||"A";
+        const cells = [
+          {v:String(idx+1), x:10, bold:false},
+          {v:String(mm.employee_id||"—"), x:19, bold:false},
+          {v:(mm.employee_name||"—").substring(0,20), x:28, bold:false},
+          {v:(mm.designation||mm.trade||"—").substring(0,18), x:66, bold:false},
+          {v:am, x:96, bold:true, clr:am==="P"?[0,140,0]:[200,0,0]},
+          {v:pm, x:107, bold:true, clr:pm==="P"?[0,140,0]:[200,0,0]},
+          {v:String(row.ot_hours||0), x:118, bold:false},
+          {v:(row.description_of_work||"").substring(0,28), x:129, bold:false},
+        ];
+        cells.forEach(cell=>{
+          doc.setFontSize(6.5);
+          doc.setFont("helvetica", cell.bold?"bold":"normal");
+          doc.setTextColor(...(cell.clr||[30,41,59]));
+          doc.text(cell.v, cell.x+1, y+4.5);
+        });
+        y += 6.5;
+      });
+
+      // Totals row
+      const presentAM = _attRows.filter(r=>r.am_status==="P").length;
+      const absentAM  = _attRows.filter(r=>r.am_status!=="P").length;
+      doc.setFillColor(30,41,59); doc.rect(10,y,pageW-20,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      doc.text("TOTAL PRESENT:  "+presentAM, 13, y+5);
+      doc.text("ABSENT:  "+absentAM, pageW/2, y+5);
+      y += 11;
     }
 
-    // Title (right side)
-    const DR_TITLE_X = 10 + DR_LOGO_W + 5;
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text("DAILY SITE REPORT", pageW - 10, 16, { align: "right" });
-    doc.setFontSize(6.5);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(160, 160, 160);
-    doc.text(new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }), pageW - 10, DR_HDR_H - 6, { align: "right" });
+    // ── SUB-CONTRACTORS SUMMARY ─────────────────────────────────
+    const hasSummary = _mpSum.length > 0 || _attRows.length > 0;
+    if (hasSummary) {
+      if (y > pageH-60) { doc.addPage(); y=15; }
+      doc.setFillColor(245,158,11); doc.rect(10,y,pageW-20,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      doc.text("SUB CONTRACTORS", 13, y+5);
+      y += 9;
 
-    let y = DR_HDR_H + 8;
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(14, y, pageW - 28, 32, 3, 3, "FD");
-    const infoFmt = d => { if (!d) return "—"; try { return new Date(d).toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }); } catch { return d; } };
-    const infoItems = [["Project", projectName || "—"], ["Report Date", infoFmt(report.date)], ["Prepared By", report.preparedBy || "—"], ["Status", report.status || "Draft"]];
-    const halfW = (pageW - 28) / 2;
-    infoItems.forEach(([label, value], idx) => {
-      const col = idx % 2, row = Math.floor(idx / 2);
-      const x = 18 + col * halfW, iy = y + 9 + row * 11;
-      doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(100); doc.text(label + ":", x, iy);
-      doc.setFont("helvetica", "normal"); doc.setTextColor(...DARK_COLOR); doc.setFontSize(8); doc.text(value, x + 24, iy);
+      const sW=[50,18,38,44,pageW-20-158]; const sX=[10];
+      sW.forEach((w,i)=>sX.push(sX[i]+w));
+      const sH=["Trade / Company","Workers","Foreman","Work Area","Remarks"];
+
+      doc.setFillColor(51,65,85); doc.rect(10,y,pageW-20,7,"F");
+      sH.forEach((h,i)=>{ doc.setTextColor(255,255,255); doc.setFontSize(6.5); doc.setFont("helvetica","bold"); doc.text(h,sX[i]+1,y+5); });
+      y+=7;
+
+      let grandTotal=0;
+      _mpSum.forEach((row,idx)=>{
+        if (y>pageH-40){doc.addPage();y=15;}
+        doc.setFillColor(idx%2===0?255:248, idx%2===0?255:250, idx%2===0?255:252);
+        doc.rect(10,y,pageW-20,6.5,"F");
+        doc.setDrawColor(226,232,240); doc.line(10,y+6.5,pageW-10,y+6.5);
+        const cnt=Number(row.count||row.no_workers||0); grandTotal+=cnt;
+        [row.trade||row.contractor||"—",String(cnt),row.foreman||"—",row.area||row.location||"—",row.remarks||"—"].forEach((v,i)=>{
+          doc.setTextColor(30,41,59); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
+          doc.text(String(v).substring(0,24),sX[i]+1,y+4.5);
+        });
+        y+=6.5;
+      });
+
+      if (_attRows.length>0) {
+        const pCnt=_attRows.filter(r=>r.am_status==="P").length;
+        grandTotal+=pCnt;
+        doc.setFillColor(248,250,252); doc.rect(10,y,pageW-20,6.5,"F");
+        doc.setDrawColor(226,232,240); doc.line(10,y+6.5,pageW-10,y+6.5);
+        ["Company Labour (Daily Register)",String(pCnt),"—","Site",pCnt+" present"].forEach((v,i)=>{
+          doc.setTextColor(30,41,59); doc.setFontSize(6.5); doc.setFont("helvetica","normal");
+          doc.text(v.substring(0,24),sX[i]+1,y+4.5);
+        });
+        y+=6.5;
+      }
+
+      doc.setFillColor(30,41,59); doc.rect(10,y,pageW-20,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      doc.text("TOTAL",sX[0]+1,y+5); doc.text(String(grandTotal),sX[1]+1,y+5);
+      y+=11;
+    }
+
+    // ── WORK SECTIONS ───────────────────────────────────────────
+    [["Work Activities Today",report.activities],["Issues & Delays",report.issues],["Safety Observations",report.safety],["Materials Received",report.materials],["Visitors",report.visitors],["Remarks",report.remarks]].filter(([,v])=>v&&String(v).trim()).forEach(([lbl,val])=>{
+      if (y>pageH-40){doc.addPage();y=15;}
+      doc.setFillColor(245,158,11); doc.rect(10,y,pageW-20,7,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.text(lbl,13,y+5);
+      y+=9;
+      const tLines=doc.splitTextToSize(String(val),pageW-28);
+      const bH=Math.max(tLines.length*5+6,12);
+      if(y+bH>pageH-30){doc.addPage();y=15;}
+      doc.setFillColor(248,250,252); doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.rect(10,y,pageW-20,bH,"FD");
+      doc.setTextColor(30,41,59); doc.setFontSize(7.5); doc.setFont("helvetica","normal"); doc.text(tLines,14,y+5);
+      y+=bH+5;
     });
-    y += 36;
-    const cards = [{ label: "Weather", value: report.weather || "—", bg: [254, 243, 199], text: [120, 80, 0] }, { label: "Temperature", value: report.temp ? `${report.temp}°C` : "—", bg: [209, 250, 229], text: [0, 100, 60] }, { label: "Manpower", value: String(report.manpower || 0), bg: [219, 234, 254], text: [30, 60, 150] }];
-    const cardW = (pageW - 28 - 6) / 3;
-    cards.forEach((card, i) => {
-      const cx = 14 + i * (cardW + 3);
-      doc.setFillColor(...card.bg); doc.setDrawColor(220); doc.roundedRect(cx, y, cardW, 22, 2, 2, "FD");
-      doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(...card.text); doc.text(card.label, cx + cardW / 2, y + 7, { align: "center" });
-      doc.setFontSize(13); doc.setFont("helvetica", "bold"); doc.text(card.value, cx + cardW / 2, y + 18, { align: "center" });
-    });
-    y += 28;
-    const sections = [["Work Activities Today", report.activities], ["Work Completed", report.completed], ["Issues & Delays", report.issues], ["Safety Observations", report.safety], ["Materials Received", report.materials]].filter(([, v]) => v && v.trim());
-    sections.forEach(([label, value]) => {
-      if (y > pageH - 40) { doc.addPage(); y = 16; }
-      doc.setFillColor(...AMBER_COLOR); doc.rect(14, y, pageW - 28, 8, "F");
-      doc.setTextColor(255, 255, 255); doc.setFontSize(8); doc.setFont("helvetica", "bold"); doc.text(`  ${label}`, 17, y + 5.5);
-      y += 10;
-      const lines = doc.splitTextToSize(value, pageW - 36);
-      const bodyH = Math.max(lines.length * 5 + 8, 14);
-      if (y + bodyH > pageH - 30) { doc.addPage(); y = 16; }
-      doc.setFillColor(...LIGHT_COLOR); doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3); doc.rect(14, y, pageW - 28, bodyH, "FD");
-      doc.setTextColor(...DARK_COLOR); doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.text(lines, 18, y + 6);
-      y += bodyH + 5;
-    });
-    if (y > pageH - 50) { doc.addPage(); y = 16; }
-    y = Math.max(y, pageH - 50);
-    // Authorized Signature block on last page
-    if (y > pageH - 60) { doc.addPage(); y = 16; }
-    y = Math.max(y, pageH - 58);
-    doc.setDrawColor(226,232,240); doc.setLineWidth(0.3);
-    doc.setFillColor(248,250,252); doc.rect(14, y, pageW-28, 48, "FD");
-    doc.setFillColor(...AMBER_COLOR); doc.rect(14, y, pageW-28, 8, "F");
-    doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
-    doc.text("  AUTHORIZED SIGNATURES", 14+2, y+5.5);
-    const sigW = (pageW-28)/3;
-    const sigLabels = ["Prepared By", "Reviewed By", "Approved By"];
-    sigLabels.forEach((lbl, i) => {
-      const sx = 14 + i*sigW;
-      const lineY = y + 36;
-      doc.setDrawColor(100); doc.setLineWidth(0.4);
-      doc.line(sx+6, lineY, sx+sigW-6, lineY);
+
+    // ── SIGNATURE BLOCK ─────────────────────────────────────────
+    if (y>pageH-45){doc.addPage();y=15;}
+    y=Math.max(y, pageH-45);
+    doc.setFillColor(248,250,252); doc.setDrawColor(226,232,240); doc.setLineWidth(0.3); doc.rect(10,y,pageW-20,40,"FD");
+    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(100); doc.text("AUTHORIZED SIGNATURES",pageW/2,y+7,{align:"center"});
+    const sigW=(pageW-20)/3;
+    [["Prepared By","Name & Stamp","Site Engineer",report.preparedBy||""],["Reviewed By","Name & Stamp","Project Manager",""],["Approved By","Name & Stamp","",""]].forEach(([t1,t2,t3,name],i)=>{
+      const sx=10+i*sigW, smx=sx+sigW/2;
+      if(i>0){doc.setDrawColor(200);doc.line(sx,y+8,sx,y+40);}
       doc.setFontSize(7); doc.setFont("helvetica","bold"); doc.setTextColor(80);
-      doc.text(lbl, sx+sigW/2, lineY+5, {align:"center"});
-      doc.setFontSize(6); doc.setFont("helvetica","normal"); doc.setTextColor(150);
-      doc.text("Name & Stamp", sx+sigW/2, lineY+9, {align:"center"});
-      if (i===0 && report.preparedBy) { doc.setFontSize(7); doc.setTextColor(30,41,59); doc.text(report.preparedBy, sx+sigW/2, lineY-3, {align:"center"}); }
+      doc.text(t1,smx,y+15,{align:"center"}); doc.text(t2,smx,y+20,{align:"center"});
+      if(name){doc.setFont("helvetica","normal");doc.setTextColor(30,41,59);doc.text(name,smx,y+30,{align:"center"});}
+      if(t3){doc.setFontSize(6);doc.setTextColor(120);doc.text(t3+" Signature",smx,y+37,{align:"center"});}
     });
-    y += 50;
-    doc.setDrawColor(200); doc.setLineWidth(0.3); doc.line(14, y, 90, y); doc.line(pageW - 90, y, pageW - 14, y);
-    doc.setFontSize(7); doc.setTextColor(120);
-    doc.text("Site Engineer Signature", 14, y + 5); doc.text("Project Manager Signature", pageW - 90, y + 5);
-    doc.text(report.preparedBy || "_______________", 14, y + 11);
-    const totalPages = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFillColor(245, 245, 245);
-      doc.rect(0, pageH - 10, pageW, 10, "F");
-      doc.setFontSize(7);
-      doc.setTextColor(150);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${i} / ${totalPages}`, pageW / 2, pageH - 3, { align: "center" });
-    }
-    doc.save(`Daily_Report_${today}.pdf`);
-  } catch(e) { console.error("Daily Report PDF error:", e); alert("PDF export failed: " + e.message); }
+
+    doc.save("DPR_"+(report.reportNum||"Report")+"_"+(report.date||"")+".pdf");
+  } catch(err) {
+    console.error("PDF export error:", err);
+    alert("PDF export failed: " + err.message);
+  }
 };
 
 
@@ -3791,9 +3866,16 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         {sel.issues&&<div className="bg-red-50 border border-red-200 rounded-xl p-4"><div className="text-xs font-bold text-red-600 uppercase mb-1">Issues / Delays</div><p className="text-sm text-slate-700">{sel.issues}</p></div>}
         {sel.remarks&&<div className="bg-slate-50 border border-slate-200 rounded-xl p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-1">Remarks</div><p className="text-sm text-slate-700">{sel.remarks}</p></div>}
         <div className="flex flex-wrap gap-3">
-          <button onClick={()=>{
+          <button onClick={async ()=>{
             const proj=projects.find(p=>p.id===sel.pid);
             const toStr=(arr,fn)=>Array.isArray(arr)?arr.filter(Boolean).map(fn).join("\n"):(arr||"");
+              let _attRows=[];
+              try{
+                const {data:_ad}=await supabase.from("dpr_attendance")
+                  .select("*, manpower_master(employee_id, employee_name, designation, trade)")
+                  .eq("dpr_id",sel.id).order("created_at");
+                _attRows=_ad||[];
+              }catch(e){}
             const rpt={
               ...sel,
               manpower:   toStr(sel.manpower, m=>`${m.trade||m.contractor||""}: ${Number(m.count)||0} workers | Foreman: ${m.foreman||""} | Area: ${m.area||m.location||""}`),
@@ -3805,7 +3887,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
               visitors:   sel.visitors||"",
               remarks:    sel.remarks||"",
             };
-            exportDailyReportPDF(rpt, proj?.name||"");
+            exportDailyReportPDF(rpt, proj?.name||"", _attRows, sel.manpower||[]);
           }} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-red-50 text-red-700 border-red-300 hover:bg-red-100">📄 Export PDF</button>
           <button onClick={()=>{const proj=projects.find(p=>p.id===sel.pid);const mp=(sel.manpower||[]);const data=[{Report_No:sel.reportNum,Date:sel.date,Project:proj?.number||"",Project_Name:proj?.name||"",Prepared_By:sel.preparedBy,Weather:sel.weather,Temperature:sel.temp+"°C",Work_Hours:sel.workHours,Total_Manpower:mp.reduce((s,r)=>s+(Number(r.count)||0),0),Issues:sel.issues,Remarks:sel.remarks,Status:sel.status}];exportToExcel(data,[{header:"Report No",key:"Report_No",width:14},{header:"Date",key:"Date",width:14},{header:"Project",key:"Project",width:12},{header:"Project Name",key:"Project_Name",width:30},{header:"Prepared By",key:"Prepared_By",width:20},{header:"Weather",key:"Weather",width:12},{header:"Temp",key:"Temperature",width:10},{header:"Work Hours",key:"Work_Hours",width:12},{header:"Manpower",key:"Total_Manpower",width:12},{header:"Issues",key:"Issues",width:30},{header:"Remarks",key:"Remarks",width:30},{header:"Status",key:"Status",width:12}],"DPR_"+sel.reportNum);}} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border bg-green-50 text-green-700 border-green-300 hover:bg-green-100">📊 Export Excel</button>
           <Btn onClick={()=>openEdit(sel)} label="Edit Report"/>
