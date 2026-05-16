@@ -1927,6 +1927,7 @@ const NAV = [
   { id: "inspections",     label: "Inspections",       icon: "inspections" },
   { id: "photos",          label: "Progress Photos",   icon: "photos"      },
   { id: "mr",              label: "Material Request",  icon: "mr"          },
+  { id: "suppliers",       label: "Suppliers",         icon: "suppliers"   },
   { id: "lpo",             label: "LPO",               icon: "lpo"         },
   { id: "store",           label: "Material Store",    icon: "store"       },
   { id: "noc",             label: "NOC & Permits",     icon: "noc"         },
@@ -6732,6 +6733,227 @@ const MaterialRequests = ({ mrs, loading, onAdd, onUpdate, onDelete, onUpdateSta
 const LPO_STATUS = ["Draft","Pending Approval","Approved","Sent to Supplier","Partially Delivered","Fully Delivered","Completed","Rejected","Cancelled"];
 const LPO_PAYMENT = ["Advance","7 Days","15 Days","30 Days","45 Days","60 Days","90 Days","On Delivery","Cash","Custom..."];
 const LPO_SCOPE = ["Civil Works","MEP","Architecture","Steel Works","Finishing","Procurement","IT & Technology","Subcontract","Others"];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPPLIERS MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+const PAYMENT_TERMS_OPTIONS = ["15 Days","30 Days","45 Days","60 Days","90 Days","Cash on Delivery","Advance Payment","Letter of Credit"];
+const EMPTY_SUPPLIER = () => ({
+  companyName:"", tradeName:"", trn:"", contact:"",
+  phone:"", email:"", address:"", city:"",
+  paymentTerms:"30 Days", status:"Active", remarks:""
+});
+
+function useSuppliers() {
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase.from("suppliers").select("*").order("company_name");
+    if (data) setSuppliers(data.map(s => ({
+      id: s.id,
+      companyName: s.company_name || "",
+      tradeName:   s.trade_name   || "",
+      trn:         s.trn_number   || "",
+      contact:     s.contact_person || "",
+      phone:       s.phone        || "",
+      email:       s.email        || "",
+      address:     s.address      || "",
+      city:        s.city         || "",
+      paymentTerms: s.payment_terms || "30 Days",
+      status:      s.status       || "Active",
+      remarks:     s.remarks      || "",
+    })));
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const add = async (f) => {
+    const { error } = await supabase.from("suppliers").insert([{
+      company_name: f.companyName, trade_name: f.tradeName,
+      trn_number: f.trn, contact_person: f.contact,
+      phone: f.phone, email: f.email,
+      address: f.address, city: f.city,
+      payment_terms: f.paymentTerms, status: f.status, remarks: f.remarks,
+    }]);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const update = async (id, f) => {
+    const { error } = await supabase.from("suppliers").update({
+      company_name: f.companyName, trade_name: f.tradeName,
+      trn_number: f.trn, contact_person: f.contact,
+      phone: f.phone, email: f.email,
+      address: f.address, city: f.city,
+      payment_terms: f.paymentTerms, status: f.status, remarks: f.remarks,
+    }).eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  const remove = async (id) => {
+    const { error } = await supabase.from("suppliers").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await loadData(); return { ok: true };
+  };
+
+  return { suppliers, loading, add, update, remove };
+}
+
+// ─── Suppliers Component ──────────────────────────────────────────────────────
+const SuppliersModule = ({ suppliers, loading, onAdd, onUpdate, onDelete, showToast }) => {
+  const [mode, setMode] = useState("list");
+  const [sel, setSel]   = useState(null);
+  const [form, setForm] = useState(EMPTY_SUPPLIER());
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [confirmId, setConfirmId] = useState(null);
+
+  const set = k => e => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const openCreate = () => { setForm(EMPTY_SUPPLIER()); setSel(null); setMode("form"); };
+  const openEdit   = s  => { setForm({ ...s }); setSel(s); setMode("form"); };
+  const goList     = () => { setMode("list"); setSel(null); };
+
+  const handleSave = async () => {
+    if (!form.companyName.trim()) { showToast("Company name is required", "error"); return; }
+    setSaving(true);
+    const res = sel ? await onUpdate(sel.id, form) : await onAdd(form);
+    setSaving(false);
+    if (!res.ok) { showToast(res.error || "Save failed", "error"); return; }
+    showToast(sel ? "Supplier updated!" : "Supplier added!");
+    goList();
+  };
+
+  const handleDelete = async (id) => {
+    const res = await onDelete(id);
+    if (!res.ok) { showToast(res.error || "Delete failed", "error"); return; }
+    showToast("Supplier deleted!"); setConfirmId(null);
+  };
+
+  const filtered = suppliers.filter(s =>
+    !search || s.companyName.toLowerCase().includes(search.toLowerCase()) ||
+    s.trn.includes(search) || s.contact.toLowerCase().includes(search.toLowerCase()) ||
+    s.city.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // ── FORM ──
+  if (mode === "form") return (
+    <div className="p-6 max-w-3xl">
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={goList} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">&#8592;</button>
+        <h2 className="text-xl font-bold text-slate-800">{sel ? "Edit Supplier" : "Add New Supplier"}</h2>
+      </div>
+      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+        {/* Company Info */}
+        <div>
+          <div className="text-xs font-bold text-amber-600 uppercase tracking-wide mb-3">Company Information</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2"><Lbl t="Company Name" req/><Inp value={form.companyName} onChange={set("companyName")} placeholder="e.g. Al Futtaim Trading LLC"/></div>
+            <div><Lbl t="Trade Name"/><Inp value={form.tradeName} onChange={set("tradeName")} placeholder="Brand or trade name"/></div>
+            <div><Lbl t="TRN Number"/><Inp value={form.trn} onChange={set("trn")} placeholder="e.g. 100XXXXXXXXX0003"/></div>
+            <div><Lbl t="City"/><Inp value={form.city} onChange={set("city")} placeholder="Dubai"/></div>
+            <div><Lbl t="Payment Terms"/>
+              <Sel value={form.paymentTerms} onChange={set("paymentTerms")}>
+                {PAYMENT_TERMS_OPTIONS.map(t => <option key={t}>{t}</option>)}
+              </Sel>
+            </div>
+            <div className="sm:col-span-2"><Lbl t="Address"/><Inp value={form.address} onChange={set("address")} placeholder="Full address"/></div>
+          </div>
+        </div>
+        {/* Contact Info */}
+        <div>
+          <div className="text-xs font-bold text-amber-600 uppercase tracking-wide mb-3">Contact Information</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><Lbl t="Contact Person"/><Inp value={form.contact} onChange={set("contact")} placeholder="Name"/></div>
+            <div><Lbl t="Phone / Mobile"/><Inp value={form.phone} onChange={set("phone")} placeholder="+971 XX XXX XXXX"/></div>
+            <div><Lbl t="Email"/><Inp value={form.email} onChange={set("email")} placeholder="supplier@email.com"/></div>
+            <div><Lbl t="Status"/>
+              <Sel value={form.status} onChange={set("status")}>
+                <option>Active</option><option>Inactive</option>
+              </Sel>
+            </div>
+            <div className="sm:col-span-2"><Lbl t="Remarks"/><Txta value={form.remarks} onChange={set("remarks")} rows={2} placeholder="Any additional notes..."/></div>
+          </div>
+        </div>
+        <div className="flex gap-3 pt-2">
+          <Btn onClick={handleSave} saving={saving} label={sel ? "Update Supplier" : "Save Supplier"}/>
+          <button onClick={goList} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── LIST ──
+  return (
+    <div className="p-6">
+      {confirmId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <p className="font-semibold text-slate-800 mb-4">Delete this supplier permanently?</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => handleDelete(confirmId)} className="px-5 py-2 bg-red-600 text-white rounded-xl font-semibold text-sm hover:bg-red-700">Yes, Delete</button>
+              <button onClick={() => setConfirmId(null)} className="px-5 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm hover:bg-slate-200">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Suppliers</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{suppliers.length} supplier{suppliers.length!==1?"s":""} registered</p>
+        </div>
+        <AddBtn onClick={openCreate} label="Add Supplier"/>
+      </div>
+      <div className="mb-4">
+        <SearchBar value={search} onChange={e => setSearch(e.target.value)} placeholder="Search company, TRN, contact, city..."/>
+      </div>
+      {loading ? <Spinner/> : filtered.length === 0 ? (
+        <EmptyState msg="No suppliers yet" onCreate={openCreate}/>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>{["Company Name","Trade Name","TRN","Contact","Phone","City","Payment Terms","Status","Actions"].map(h=>(
+                <th key={h} className="text-left px-4 py-3 text-xs font-bold text-slate-500 uppercase">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map(s => (
+                <tr key={s.id} className="hover:bg-amber-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-slate-800 text-sm">{s.companyName}</div>
+                    {s.email && <div className="text-xs text-slate-400">{s.email}</div>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{s.tradeName||"—"}</td>
+                  <td className="px-4 py-3 text-xs font-mono text-slate-700">{s.trn||"—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{s.contact||"—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{s.phone||"—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{s.city||"—"}</td>
+                  <td className="px-4 py-3 text-xs text-slate-600">{s.paymentTerms}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${s.status==="Active"?"bg-green-100 text-green-700":"bg-slate-100 text-slate-500"}`}>{s.status}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1.5">
+                      <ActBtn onClick={() => openEdit(s)} label="Edit"/>
+                      <ActBtn onClick={() => setConfirmId(s.id)} label="Del" color="del"/>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LPO_DEL_STATUS = ["Not Delivered","Partially Delivered","Fully Delivered"];
 const EMPTY_LPO_ITEM = () => ({ id:Date.now()+Math.random(), desc:"", unit:"Nos", qty:"", rate:"", amount:0, deliveredQty:"0", itemDeliveryStatus:"Not Delivered" });
 const EMPTY_LPO = (mrObj) => ({
@@ -6749,7 +6971,7 @@ const EMPTY_LPO = (mrObj) => ({
 // ─────────────────────────────────────────────────────────────────────────────
 // LPO MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill, navFilter = {}, onNavigate }) => {
+const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, showToast, prefillMr, onClearPrefill, navFilter = {}, onNavigate, suppliers = [] }) => {
   const [mode, setMode] = useState(prefillMr ? "form" : "list");
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState(() => EMPTY_LPO(prefillMr));
@@ -6973,6 +7195,30 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
         {/* Supplier Details */}
         <FormCard>
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Supplier Details</div>
+          {/* Supplier quick-select */}
+          {suppliers && suppliers.length > 0 && (
+            <div className="sm:col-span-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <Lbl t="🏢 Select from Saved Suppliers (auto-fills details)"/>
+              <Sel value={form.supplierId||""} onChange={e => {
+                const sup = (suppliers||[]).find(s => s.id === e.target.value);
+                if (sup) setForm(p => ({ ...p,
+                  supplierId: sup.id,
+                  supplierName: sup.companyName,
+                  supplierContact: sup.contact,
+                  supplierEmail: sup.phone || sup.email,
+                  supplierAddress: sup.address + (sup.city ? ", " + sup.city : ""),
+                  supplierTrn: sup.trn,
+                  paymentTerms: sup.paymentTerms || p.paymentTerms,
+                }));
+                else setForm(p => ({ ...p, supplierId: "" }));
+              }}>
+                <option value="">— Select a supplier —</option>
+                {(suppliers||[]).filter(s=>s.status==="Active").map(s => (
+                  <option key={s.id} value={s.id}>{s.companyName}{s.trn ? " (TRN: "+s.trn+")" : ""}</option>
+                ))}
+              </Sel>
+            </div>
+          )}
           <div><Lbl t="Supplier Company Name" req/><Inp value={form.supplierName} onChange={set("supplierName")} placeholder="e.g. Al Futtaim Building Materials LLC"/></div>
           <Grid2>
             <div><Lbl t="Contact Person"/><Inp value={form.supplierContact} onChange={set("supplierContact")} placeholder="Contact name"/></div>
@@ -12852,6 +13098,7 @@ export default function App() {
   const { users,  loading: usLoad,  add: addU,   update: updU,  remove: delU  } = useUsers();
   const { mrs, loading: mrLoad, add: addMr, update: updMr, remove: delMr, updateStatus: updMrStatus } = useMatReqs();
   const { lpos, loading: lpoLoad, add: addLpo, update: updLpo, remove: delLpo } = useLPOs();
+  const { suppliers, loading: supLoad, add: addSup, update: updSup, remove: delSup } = useSuppliers();
   const { stock, receipts, issues, loading: stLoad, addStock, updateStock, removeStock, addReceipt, approveReceipt, removeReceipt, addIssue, removeIssue } = useStore();
   const { nocs, loading: nocLoad, add: addNoc, update: updNoc, remove: delNoc } = useNOCs();
   const { masters: mpMasters, loadAttendance, saveAttendance } = useManpowerMaster();
@@ -12903,7 +13150,8 @@ export default function App() {
       case "subcontractors": return <Subcontractors subs={subs} loading={sbLoad} onAdd={addSub} onUpdate={updSub} onDelete={delSub} showToast={showToast} tasks={tasks} snags={snags} projects={projects} />;
       case "users":          return <Users users={users} usersLoading={usLoad} onAddUser={addU} onUpdateUser={updU} onDeleteUser={delU} projects={projects} showToast={showToast} userIsAdmin={userIsAdmin} userProfile={userProfile} permReqs={permReqs} onUpdatePermReq={updatePermReq}/>;
       case "mr":  return <MaterialRequests mrs={mrs} loading={mrLoad} onAdd={addMr} onUpdate={updMr} onDelete={delMr} onUpdateStatus={updMrStatus} projects={projects} showToast={showToast} onNavigateLpo={mr=>{setPrefillMr(mr);navigate("lpo");}}/>;
-      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)}/>;
+        case "suppliers": return <SuppliersModule suppliers={suppliers} loading={supLoad} onAdd={addSup} onUpdate={updSup} onDelete={delSup} showToast={showToast}/>;
+      case "lpo": return <LPOModule lpos={lpos} loading={lpoLoad} onAdd={addLpo} onUpdate={updLpo} onDelete={delLpo} projects={projects} mrs={mrs} showToast={showToast} prefillMr={prefillMr} onClearPrefill={()=>setPrefillMr(null)} suppliers={suppliers}/>;
       case "store": return <MaterialStore stock={stock} receipts={receipts} issues={issues} loading={stLoad} onAddStock={addStock} onUpdateStock={updateStock} onRemoveStock={removeStock} onAddReceipt={addReceipt} onApproveReceipt={approveReceipt} onRemoveReceipt={removeReceipt} onAddIssue={addIssue} onRemoveIssue={removeIssue} projects={projects} lpos={lpos} showToast={showToast}/>;
       case "noc":   return <NOCModule nocs={nocs} loading={nocLoad} onAdd={addNoc} onUpdate={updNoc} onDelete={delNoc} projects={projects} showToast={showToast}/>;
       case "manpower-master": return <ManpowerMaster subcontractors={subs} projects={projects} showToast={showToast}/>;
