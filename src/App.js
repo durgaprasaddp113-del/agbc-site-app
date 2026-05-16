@@ -733,14 +733,13 @@ const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSumma
         doc.setFillColor(idx%2===0?255:248, idx%2===0?255:250, idx%2===0?255:252);
         doc.rect(10,y,pageW-20,6.5,"F");
         doc.setDrawColor(226,232,240); doc.setLineWidth(0.2); doc.line(10,y+6.5,pageW-10,y+6.5);
-        const mm  = row.manpower_master||{};
-        const am  = row.am_status||"A";
-        const pm  = row.pm_status||"A";
+        const am  = (row.am_count||0)>0?"P":"A";
+        const pm  = (row.pm_count||0)>0?"P":"A";
         const cells = [
           {v:String(idx+1), x:10, bold:false},
-          {v:String(mm.employee_id||"—"), x:19, bold:false},
-          {v:(mm.employee_name||"—").substring(0,20), x:28, bold:false},
-          {v:(mm.designation||mm.trade||"—").substring(0,18), x:66, bold:false},
+          {v:String(row.employee_id||"—"), x:19, bold:false},
+          {v:(row.emp_name||"—").substring(0,20), x:28, bold:false},
+          {v:(row.designation||"—").substring(0,18), x:66, bold:false},
           {v:am, x:96, bold:true, clr:am==="P"?[0,140,0]:[200,0,0]},
           {v:pm, x:107, bold:true, clr:pm==="P"?[0,140,0]:[200,0,0]},
           {v:String(row.ot_hours||0), x:118, bold:false},
@@ -756,8 +755,8 @@ const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSumma
       });
 
       // Totals row
-      const presentAM = _attRows.filter(r=>r.am_status==="P").length;
-      const absentAM  = _attRows.filter(r=>r.am_status!=="P").length;
+      const presentAM = _attRows.filter(r=>(r.am_count||0)>0).length;
+      const absentAM  = _attRows.filter(r=>(r.am_count||0)===0).length;
       doc.setFillColor(30,41,59); doc.rect(10,y,pageW-20,7,"F");
       doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
       doc.text("TOTAL PRESENT:  "+presentAM, 13, y+5);
@@ -797,7 +796,7 @@ const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSumma
       });
 
       if (_attRows.length>0) {
-        const pCnt=_attRows.filter(r=>r.am_status==="P").length;
+        const pCnt=_attRows.filter(r=>(r.am_count||0)>0).length;
         grandTotal+=pCnt;
         doc.setFillColor(248,250,252); doc.rect(10,y,pageW-20,6.5,"F");
         doc.setDrawColor(226,232,240); doc.line(10,y+6.5,pageW-10,y+6.5);
@@ -1384,7 +1383,7 @@ function useDailyReports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
-    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_status, pm_status)").order("report_date", { ascending: false });
+    const { data, error } = await supabase.from("daily_reports").select("*, dpr_attendance(id, am_count, pm_count)").order("report_date", { ascending: false });
     if (error) console.error("Reports:", error.message);
     if (data) setReports(data.map(r => {
       const parse = (field) => { try { return JSON.parse(r[field]||"[]"); } catch { return []; } };
@@ -1400,7 +1399,7 @@ function useDailyReports() {
         inspections: parse("inspections_json"),
         safety: parse("safety_json"),
         manpowerTotal: r.manpower_total || 0,
-          attendancePresent: (r.dpr_attendance || []).filter(a => a.am_status === 'P').length,
+          attendancePresent: (r.dpr_attendance || []).filter(a => (a.am_count||0) > 0).length,
         mpSummary: (() => { try { const v = r.manpower_breakdown; return v ? (typeof v === "string" ? JSON.parse(v) : v) : []; } catch { return []; } })(),
         issues: r.issues_delays || "",
         visitors: r.visitors || "",
@@ -3871,18 +3870,13 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             const toStr=(arr,fn)=>Array.isArray(arr)?arr.filter(Boolean).map(fn).join("\n"):(arr||"");
               let _attRows=[];
               try{
-                // Fetch attendance rows without join
+                // Fetch attendance with correct column names
                 const {data:_ad,error:_ae}=await supabase.from("dpr_attendance")
-                  .select("id,am_status,pm_status,ot_hours,description_of_work,team_no,manpower_master_id")
+                  .select("id,employee_id,emp_name,designation,am_count,pm_count,ot_hours,description_of_work,team_no")
                   .eq("dpr_id",sel.id)
                   .order("created_at");
                 if(_ae){console.error("Attendance fetch:",_ae);}
-                if(_ad&&_ad.length>0){
-                  // Use mpMasters already loaded in component state — no DB join needed
-                  const _mmap={};
-                  (mpMasters||[]).forEach(m=>{_mmap[m.id]=m;});
-                  _attRows=_ad.map(r=>({...r,manpower_master:_mmap[r.manpower_master_id]||{}}));
-                }
+                else{ _attRows=_ad||[]; }
               }catch(e){console.error("PDF fetch error:",e);}
             const rpt={
               ...sel,
@@ -12671,7 +12665,7 @@ const DPRManpowerSection = ({ subcontractorId, subcontractorName, dprId, reportD
     setSaving(true);
     let errors = 0;
     for (const row of rows) {
-      if (!row.masterId) continue;
+      if (!row.mpId && !row.masterId) continue;
       const payload = {
         dpr_id:              dprId,
         subcontractor_id:    subcontractorId,
