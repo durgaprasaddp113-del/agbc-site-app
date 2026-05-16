@@ -615,47 +615,151 @@ const exportProjectReportPDF = async (sel, pgItems, overallPct, projPhotos = [])
   } catch(e){ console.error("Project PDF error:",e); alert("Export failed: "+e.message); }
 };
 
-const exportLpoPDF = (lpo, projects) => {
-  const { jsPDF } = window.jspdf;
-  if (!jsPDF) { alert("PDF library not loaded."); return; }
-  const proj = projects?.find(p=>p.id===lpo.pid);
-  const doc = new jsPDF({ orientation:"portrait", format:"a4" });
-  const aw = 190; const lm = 10;
-  // Logo
-  try { doc.addImage("data:image/jpeg;base64," + AGBC_LOGO_B64,"JPEG",lm,8,aw,20); } catch(e) {}
-  let y = 33;
-  doc.setFontSize(14); doc.setFont(undefined,"bold");
-  doc.text("LOCAL PURCHASE ORDER", 105, y, {align:"center"}); y += 8;
-  doc.setFontSize(10); doc.setFont(undefined,"normal");
-  doc.setFillColor(245,245,245); doc.rect(lm,y,aw,18,"F");
-  doc.setFont(undefined,"bold"); doc.text(`LPO No: ${lpo.lpoNum||""}`, lm+2, y+5);
-  doc.text(`Date: ${lpo.date||""}`, lm+2, y+11);
-  doc.text(`Status: ${lpo.status||""}`, 130, y+5);
-  doc.text(`Project: ${proj?.number||lpo.pid||""}`, 130, y+11); y += 22;
-  // Supplier
-  doc.setFillColor(37,99,235); doc.rect(lm,y,aw,6,"F");
-  doc.setTextColor(255,255,255); doc.setFont(undefined,"bold");
-  doc.text("SUPPLIER DETAILS",lm+2,y+4); y+=8;
-  doc.setTextColor(0,0,0); doc.setFont(undefined,"normal");
-  [[`Company: ${lpo.supplierName||"-"}`, `Contact: ${lpo.supplierContact||"-"}`],
-   [`Email: ${lpo.supplierEmail||"-"}`, `TRN: ${lpo.supplierTrn||"-"}`],
-   [`Address: ${lpo.supplierAddress||"-"}`, `Payment: ${lpo.paymentTerms==="Custom..."?lpo.customPaymentTerms:lpo.paymentTerms||"-"}`]
-  ].forEach(row=>{doc.text(row[0],lm+2,y+4);doc.text(row[1],lm+95,y+4);y+=7;});
-  y+=3;
-  // Items table
-  const heads = [["#","Description","Unit","Qty","Rate (AED)","Amount (AED)"]];
-  const rows = (lpo.items||[]).map((it,i)=>[i+1,it.desc||"",it.unit||"",Number(it.qty||0).toLocaleString(),Number(it.rate||0).toLocaleString(),(Number(it.qty||0)*Number(it.rate||0)).toLocaleString()]);
-  doc.autoTable({head:heads,body:rows,startY:y,margin:{left:lm,right:lm},styles:{fontSize:8},headStyles:{fillColor:[37,99,235]},
-    foot:lpo.vatEnabled?[["","","","","Sub Total:",Number(lpo.totalAmount||0).toLocaleString()],["","","","","VAT (5%):",(Number(lpo.totalAmount||0)*0.05).toLocaleString()],["","","","","Grand Total:",(Number(lpo.totalAmount||0)*1.05).toLocaleString()]]
-         :[["","","","","Total Amount:",Number(lpo.totalAmount||0).toLocaleString()]],
-    footStyles:{fontStyle:"bold",fillColor:[240,240,240]}
-  });
-  y = doc.lastAutoTable.finalY + 8;
-  if(lpo.remarks){doc.setFontSize(9);doc.setFont(undefined,"bold");doc.text("Remarks:",lm,y);doc.setFont(undefined,"normal");doc.text(lpo.remarks,lm+20,y);y+=8;}
-  doc.setFontSize(8);doc.setTextColor(100,100,100);
-  doc.text("Al Ghaith Building Construction Co. LLC",105,y+10,{align:"center"});
-  doc.save(`LPO_${lpo.lpoNum||"export"}.pdf`);
+
+// ── Number → Words (AED) ─────────────────────────────────────────────────────
+const toWordsAED = (amount) => {
+  const O=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const T=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  const grp=(n)=>{let s="";if(n>=100){s+=O[Math.floor(n/100)]+" Hundred ";n%=100;}if(n>=20){s+=T[Math.floor(n/10)]+" ";n%=10;}if(n>0)s+=O[n]+" ";return s;};
+  let n=Math.floor(amount);const fils=Math.round((amount-n)*100);
+  if(n===0&&fils===0)return "Zero Dirham And Zero Fils";
+  let r="";
+  if(n>=1000000){r+=grp(Math.floor(n/1000000))+"Million ";n%=1000000;}
+  if(n>=1000){r+=grp(Math.floor(n/1000))+"Thousand ";n%=1000;}
+  if(n>0)r+=grp(n);
+  return r.trim()+" Dirham And "+(fils>0?grp(fils).trim()+" Fils":"Zero Fils");
 };
+const exportLpoPDF = (lpo, projects) => {
+  if (!lpo) { showToast("No LPO selected","error"); return; }
+  const proj = projects?.find(p=>p.id===lpo.pid);
+  const doc  = new jsPDF({ orientation:"portrait", format:"a4" });
+  const lm=10, aw=190, pw=210;
+  const navy=[30,58,95];
+  const fmt2 = n => Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // ── Company Header ──────────────────────────────────────────────────────────
+  let y=8;
+  doc.setFillColor(...navy); doc.circle(19,y+10,7,"F");
+  doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont(undefined,"bold");
+  doc.text("G",19,y+13,{align:"center"});
+  doc.setTextColor(0,0,0);
+  doc.setFontSize(9); doc.setFont(undefined,"bold");
+  doc.text("\u0627\u0644\u063a\u064a\u062b \u0644\u0644\u0625\u0646\u0634\u0627\u0621 \u0648\u0627\u0644\u062a\u0639\u0645\u064a\u0631 (\u0630.\u0645.\u0645)",pw/2,y+5,{align:"center"});
+  doc.setFontSize(11);
+  doc.text("Al Ghaith Building Construction (L.L.C.)",pw/2,y+12,{align:"center"});
+  doc.setFontSize(7); doc.setFont(undefined,"normal"); doc.setTextColor(80,80,80);
+  doc.text("Tel.: (04) 3965554  |  Fax: (04) 3966405  |  Office: 710, 711, Burlington Tower, Business Bay, P.O. Box: 122872, Dubai \u2013 UAE",pw/2,y+18,{align:"center"});
+  doc.text("Email: purchase@alghaithconstruction.ae  |  Website: www.alghaithconstruction.ae",pw/2,y+23,{align:"center"});
+  y+=27;
+  doc.setDrawColor(...navy); doc.setLineWidth(0.7); doc.line(lm,y,lm+aw,y); y+=3;
+  doc.setFontSize(11); doc.setFont(undefined,"bold"); doc.setTextColor(0,0,0);
+  doc.text("LOCAL PURCHASE ORDER",pw/2,y+5,{align:"center"}); y+=9;
+  doc.setDrawColor(200,200,200); doc.setLineWidth(0.3); doc.line(lm,y,lm+aw,y); y+=3;
+
+  // ── Info Grid: Supplier (left) | PO Details (right) ────────────────────────
+  const infoY=y, rowH=6, col1=lm, col2=lm+aw/2+2;
+  doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
+  doc.rect(col1,infoY,aw/2-2,rowH*4+4,"S");
+  doc.rect(col2-1,infoY,aw/2-2,rowH*4+4,"S");
+  const suppPhone = lpo.supplierPhone||"";
+  const leftInfo=[
+    ["Supplier Name:", lpo.supplierName||"\u2014"],
+    ["Phone No:",      suppPhone||"\u2014"],
+    ["Contact Person:",lpo.supplierContact||"\u2014"],
+    ["Mobile No:",     suppPhone||"\u2014"],
+  ];
+  const rightInfo=[
+    ["Po No:",         lpo.lpoNum||"\u2014"],
+    ["Date:",          lpo.date||"\u2014"],
+    ["Site Name:",     lpo.siteName||proj?.number||"\u2014"],
+    ["Site Location:", lpo.siteLocation||"\u2014"],
+  ];
+  doc.setFontSize(8);
+  leftInfo.forEach(([k,v],i)=>{
+    const ry=infoY+3+i*rowH+3;
+    doc.setFont(undefined,"bold"); doc.text(k,col1+2,ry);
+    doc.setFont(undefined,"normal");
+    doc.text(String(v).substring(0,30),col1+32,ry);
+  });
+  rightInfo.forEach(([k,v],i)=>{
+    const ry=infoY+3+i*rowH+3;
+    doc.setFont(undefined,"bold"); doc.text(k,col2,ry);
+    doc.setFont(undefined,"normal");
+    doc.text(String(v).substring(0,28),col2+28,ry);
+  });
+  y=infoY+rowH*4+9;
+
+  // ── Items Table ─────────────────────────────────────────────────────────────
+  const heads=[["S.No","Description","Unit","Quantity","Unit Price","Amount Dhs."]];
+  const rows=(lpo.items||[]).map((it,i)=>[
+    i+1, it.desc||"", it.unit||"",
+    Number(it.qty||0).toFixed(3),
+    fmt2(it.rate||0),
+    fmt2(Number(it.qty||0)*Number(it.rate||0)),
+  ]);
+  doc.autoTable({
+    head:heads, body:rows, startY:y,
+    margin:{left:lm,right:lm},
+    styles:{fontSize:8,cellPadding:2},
+    headStyles:{fillColor:navy,fontStyle:"bold",halign:"center"},
+    columnStyles:{
+      0:{halign:"center",cellWidth:12},
+      2:{halign:"center",cellWidth:15},
+      3:{halign:"right",cellWidth:20},
+      4:{halign:"right",cellWidth:25},
+      5:{halign:"right",cellWidth:27},
+    },
+  });
+  y=doc.lastAutoTable.finalY;
+
+  // ── Sub Total / VAT (5%) / Grand Total ──────────────────────────────────────
+  const subTotal=(lpo.items||[]).reduce((s,it)=>s+Number(it.qty||0)*Number(it.rate||0),0);
+  const vat=subTotal*0.05;
+  const grand=subTotal+vat;
+  const vatX=lm+aw-56, vatW=56;
+  [["Sub Total:",fmt2(subTotal),false],["VAT (5%):",fmt2(vat),false],["Grand Total:",fmt2(grand),true]].forEach(([k,v,bold],i)=>{
+    const vy=y+i*7+3;
+    if(bold){doc.setFillColor(...navy);doc.rect(vatX,vy-4.5,vatW,7,"F");doc.setTextColor(255,255,255);}
+    else{doc.setFillColor(245,245,245);doc.rect(vatX,vy-4.5,vatW,6.5,"F");doc.setTextColor(0,0,0);}
+    doc.setFontSize(8.5); doc.setFont(undefined,"bold"); doc.text(k,vatX+2,vy);
+    doc.setFont(undefined,bold?"bold":"normal"); doc.text(v,vatX+vatW-2,vy,{align:"right"});
+    doc.setTextColor(0,0,0);
+  });
+  y+=7*3+5;
+
+  // ── Footer Info Rows ────────────────────────────────────────────────────────
+  const payTerm=(lpo.paymentTerms==="Custom..."||lpo.paymentTerms==="Others")
+    ? (lpo.customPaymentTerms||lpo.paymentTerms||"\u2014")
+    : (lpo.paymentTerms||"\u2014");
+  const words=toWordsAED(grand);
+  const footRows=[
+    ["Total DHS: "+words.substring(0,62), "Total: "+fmt2(grand)],
+    ["Payment Term: "+payTerm,            "Site Contact Name: "+(lpo.siteContactName||"\u2014")],
+    ["MR: "+(lpo.mrNum||"\u2014"),        "Site Mobile: "+(lpo.siteMobile||"\u2014")],
+  ];
+  doc.setFontSize(8); doc.setTextColor(0,0,0);
+  doc.setDrawColor(180,180,180); doc.setLineWidth(0.3);
+  footRows.forEach(([left,right])=>{
+    doc.rect(lm,y,aw,6,"S");
+    doc.setFont(undefined,"normal");
+    doc.text(left.substring(0,72),lm+2,y+4);
+    doc.text(right,lm+aw-2,y+4,{align:"right"});
+    y+=6;
+  });
+  // Notes / TRN
+  doc.rect(lm,y,aw,6,"S");
+  const notesLine="Notes: "+(lpo.supplierTrn?"TRN: "+lpo.supplierTrn : (lpo.remarks||"\u2014"));
+  doc.text(notesLine.substring(0,80),lm+2,y+4);
+  y+=10;
+
+  // ── Authorised Signature ────────────────────────────────────────────────────
+  doc.setDrawColor(0,0,0); doc.setLineWidth(0.4);
+  doc.line(lm,y,lm+42,y);
+  doc.setFontSize(7.5); doc.text("Authorised Signature",lm,y+4);
+
+  doc.save("LPO_"+(lpo.lpoNum||"export")+".pdf");
+};
+
 
 const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSummary) => {
   try {
@@ -6345,7 +6449,7 @@ function useLPOs() {
     if (error) { console.error("LPOs:", error.message); setLoading(false); return; }
     if (data) setLpos(data.map(l => ({
       id: l.id, lpoNum: l.lpo_number || "", pid: String(l.project_id||"").toLowerCase(),
-      supplierName: l.supplier_name || "", supplierContact: l.supplier_contact || "",
+      supplierName: l.supplier_name || "", supplierPhone: l.supplier_phone || "", supplierContact: l.supplier_contact || "",
       supplierEmail: l.supplier_email || "", supplierAddress: l.supplier_address || "",
       supplierTrn: l.supplier_trn || "", mrId: l.mr_id || "", mrNum: l.mr_number || "",
       date: l.date || "", deliveryDate: l.delivery_date || "",
@@ -6353,6 +6457,8 @@ function useLPOs() {
       customPaymentTerms: l.custom_payment_terms || "",
       vatEnabled: l.vat_enabled || false,
       approvalStatus: l.approval_status || "",
+      siteName: l.site_name || "", siteLocation: l.site_location || "",
+      siteContactName: l.site_contact_name || "", siteMobile: l.site_mobile || "",
       status: l.status || "Draft",
       deliveryStatus: l.delivery_status || "Not Delivered",
       deliveryNotes: l.delivery_notes || "", deliveryAttachUrl: l.delivery_attachment_url || "",
@@ -6382,7 +6488,8 @@ function useLPOs() {
     const totalAmount = (f.items || []).reduce((s, i) => s + (Number(i.qty) * Number(i.rate)), 0);
     const { data: lpoData, error } = await supabase.from("lpo").insert([{
       lpo_number: lpoNum, project_id: f.pid,
-      supplier_name: f.supplierName, supplier_contact: f.supplierContact,
+      supplier_name: f.supplierName, supplier_phone: f.supplierPhone||"",
+      supplier_contact: f.supplierContact,
       supplier_email: f.supplierEmail, supplier_address: f.supplierAddress,
       supplier_trn: f.supplierTrn, mr_id: f.mrId || null,
       mr_number: f.mrNum || null,
@@ -6390,6 +6497,8 @@ function useLPOs() {
       payment_terms: f.paymentTerms==="Custom..." ? f.customPaymentTerms : f.paymentTerms,
       custom_payment_terms: f.customPaymentTerms,
       vat_enabled: f.vatEnabled, approval_status: f.approvalStatus||"",
+      site_name: f.siteName||"", site_location: f.siteLocation||"",
+      site_contact_name: f.siteContactName||"", site_mobile: f.siteMobile||"",
       status: "Draft",
       delivery_status: "Not Delivered", total_amount: totalAmount,
       remarks: f.remarks,
@@ -6418,10 +6527,13 @@ function useLPOs() {
   const update = async (id, f) => {
     const totalAmount = (f.items || []).reduce((s, i) => s + (Number(i.qty) * Number(i.rate)), 0);
     const { error } = await supabase.from("lpo").update({
-      project_id: f.pid, supplier_name: f.supplierName, supplier_contact: f.supplierContact,
+      project_id: f.pid, supplier_name: f.supplierName, supplier_phone: f.supplierPhone||"",
+      supplier_contact: f.supplierContact,
       supplier_email: f.supplierEmail, supplier_address: f.supplierAddress,
       supplier_trn: f.supplierTrn, date: f.date || null,
       delivery_date: f.deliveryDate || null, payment_terms: f.paymentTerms,
+      site_name: f.siteName||"", site_location: f.siteLocation||"",
+      site_contact_name: f.siteContactName||"", site_mobile: f.siteMobile||"",
       status: f.status, delivery_status: f.deliveryStatus,
       delivery_notes: f.deliveryNotes, total_amount: totalAmount, remarks: f.remarks,
     }).eq("id", id);
@@ -6958,9 +7070,10 @@ const LPO_DEL_STATUS = ["Not Delivered","Partially Delivered","Fully Delivered"]
 const EMPTY_LPO_ITEM = () => ({ id:Date.now()+Math.random(), desc:"", unit:"Nos", qty:"", rate:"", amount:0, deliveredQty:"0", itemDeliveryStatus:"Not Delivered" });
 const EMPTY_LPO = (mrObj) => ({
   pid: mrObj?.pid||"", mrId: mrObj?.id||"", mrNum: mrObj?.mrNum||"",
-  supplierName:"", supplierContact:"", supplierEmail:"", supplierAddress:"", supplierTrn:"",
+  supplierName:"", supplierPhone:"", supplierContact:"", supplierEmail:"", supplierAddress:"", supplierTrn:"",
   date: new Date().toISOString().split("T")[0], deliveryDate:"",
   paymentTerms:"30 Days", customPaymentTerms:"", vatEnabled:false,
+  siteName:"", siteLocation:"", siteContactName:"", siteMobile:"",
   status:"Draft", approvalStatus:"", deliveryStatus:"Not Delivered",
   deliveryNotes:"", remarks:"",
   items: mrObj?.items?.length
@@ -7193,7 +7306,17 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
           </Grid2>
         </FormCard>
         {/* Supplier Details */}
+                {/* Site Details */}
         <FormCard>
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Site Details</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><Lbl t="Site Name"/><Inp value={form.siteName||""} onChange={set("siteName")} placeholder="e.g. J-212 AMAL TOWER"/></div>
+            <div><Lbl t="Site Location"/><Inp value={form.siteLocation||""} onChange={set("siteLocation")} placeholder="e.g. DUBAI SPORTS CITY"/></div>
+            <div><Lbl t="Site Contact Name"/><Inp value={form.siteContactName||""} onChange={set("siteContactName")} placeholder="e.g. Eng Asim"/></div>
+            <div><Lbl t="Site Mobile"/><Inp value={form.siteMobile||""} onChange={set("siteMobile")} placeholder="e.g. 0544658254"/></div>
+          </div>
+        </FormCard>
+<FormCard>
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Supplier Details</div>
           {/* Supplier quick-select */}
           {suppliers && suppliers.length > 0 && (
@@ -7220,6 +7343,7 @@ const LPOModule = ({ lpos, loading, onAdd, onUpdate, onDelete, projects, mrs, sh
             </div>
           )}
           <div><Lbl t="Supplier Company Name" req/><Inp value={form.supplierName} onChange={set("supplierName")} placeholder="e.g. Al Futtaim Building Materials LLC"/></div>
+          <div><Lbl t="Phone No"/><Inp value={form.supplierPhone||""} onChange={set("supplierPhone")} placeholder="e.g. 04 2857036"/></div>
           <Grid2>
             <div><Lbl t="Contact Person"/><Inp value={form.supplierContact} onChange={set("supplierContact")} placeholder="Contact name"/></div>
             <div><Lbl t="Phone / Email"/><Inp value={form.supplierEmail} onChange={set("supplierEmail")} placeholder="phone or email"/></div>
