@@ -3871,11 +3871,25 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             const toStr=(arr,fn)=>Array.isArray(arr)?arr.filter(Boolean).map(fn).join("\n"):(arr||"");
               let _attRows=[];
               try{
-                const {data:_ad}=await supabase.from("dpr_attendance")
-                  .select("id, am_status, pm_status, ot_hours, description_of_work, team_no, manpower_master(employee_id, employee_name, designation, trade)")
+                // Step 1: fetch attendance rows
+                const {data:_ad,error:_ae}=await supabase.from("dpr_attendance")
+                  .select("id,am_status,pm_status,ot_hours,description_of_work,team_no,manpower_master_id")
                   .eq("dpr_id",sel.id).order("created_at");
-                _attRows=_ad||[];
-              }catch(e){}
+                if(_ae){console.error("Attendance fetch error:",_ae);}
+                if(_ad&&_ad.length>0){
+                  // Step 2: fetch manpower master names separately
+                  const _mids=_ad.map(r=>r.manpower_master_id).filter(Boolean);
+                  let _mmap={};
+                  if(_mids.length>0){
+                    const {data:_mm}=await supabase.from("manpower_master")
+                      .select("id,employee_id,employee_name,designation,trade")
+                      .in("id",_mids);
+                    (_mm||[]).forEach(m=>{_mmap[m.id]=m;});
+                  }
+                  // Step 3: merge
+                  _attRows=_ad.map(r=>({...r,manpower_master:_mmap[r.manpower_master_id]||{}}));
+                }
+              }catch(e){console.error("PDF fetch error:",e);}
             const rpt={
               ...sel,
               manpower:   toStr(sel.manpower, m=>`${m.trade||m.contractor||""}: ${Number(m.count)||0} workers | Foreman: ${m.foreman||""} | Area: ${m.area||m.location||""}`),
