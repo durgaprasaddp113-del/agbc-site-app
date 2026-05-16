@@ -631,134 +631,169 @@ const toWordsAED = (amount) => {
 };
 const exportLpoPDF = (lpo, projects) => {
   if (!lpo) { showToast("No LPO selected","error"); return; }
-  const proj = projects?.find(p=>p.id===lpo.pid);
+  const proj = projects?.find(p => p.id === lpo.pid);
   const doc  = new jsPDF({ orientation:"portrait", format:"a4" });
-  const lm=10, aw=190, pw=210;
-  const navy=[30,58,95];
-  const fmt2 = n => Number(n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+  const lm = 10, aw = 190, pw = 210;
+  const navy = [30, 58, 95];
+  const fmt2 = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const safe = v => String(v || "-").replace(/[^\x00-\x7E]/g, "-");
 
   // ── Company Header ──────────────────────────────────────────────────────────
-  let y=8;
-  doc.setFillColor(...navy); doc.circle(19,y+10,7,"F");
-  doc.setTextColor(255,255,255); doc.setFontSize(13); doc.setFont(undefined,"bold");
-  doc.text("G",19,y+13,{align:"center"});
-  doc.setTextColor(0,0,0);
-  doc.setFontSize(9); doc.setFont(undefined,"bold");
-  doc.text("\u0627\u0644\u063a\u064a\u062b \u0644\u0644\u0625\u0646\u0634\u0627\u0621 \u0648\u0627\u0644\u062a\u0639\u0645\u064a\u0631 (\u0630.\u0645.\u0645)",pw/2,y+5,{align:"center"});
-  doc.setFontSize(11);
-  doc.text("Al Ghaith Building Construction (L.L.C.)",pw/2,y+12,{align:"center"});
-  doc.setFontSize(7); doc.setFont(undefined,"normal"); doc.setTextColor(80,80,80);
-  doc.text("Tel.: (04) 3965554  |  Fax: (04) 3966405  |  Office: 710, 711, Burlington Tower, Business Bay, P.O. Box: 122872, Dubai \u2013 UAE",pw/2,y+18,{align:"center"});
-  doc.text("Email: purchase@alghaithconstruction.ae  |  Website: www.alghaithconstruction.ae",pw/2,y+23,{align:"center"});
-  y+=27;
-  doc.setDrawColor(...navy); doc.setLineWidth(0.7); doc.line(lm,y,lm+aw,y); y+=3;
-  doc.setFontSize(11); doc.setFont(undefined,"bold"); doc.setTextColor(0,0,0);
-  doc.text("LOCAL PURCHASE ORDER",pw/2,y+5,{align:"center"}); y+=9;
-  doc.setDrawColor(200,200,200); doc.setLineWidth(0.3); doc.line(lm,y,lm+aw,y); y+=3;
+  let y = 8;
 
-  // ── Info Grid: Supplier (left) | PO Details (right) ────────────────────────
-  const infoY=y, rowH=6, col1=lm, col2=lm+aw/2+2;
-  doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
-  doc.rect(col1,infoY,aw/2-2,rowH*4+4,"S");
-  doc.rect(col2-1,infoY,aw/2-2,rowH*4+4,"S");
-  const suppPhone = lpo.supplierPhone||"";
-  const leftInfo=[
-    ["Supplier Name:", lpo.supplierName||"\u2014"],
-    ["Phone No:",      suppPhone||"\u2014"],
-    ["Contact Person:",lpo.supplierContact||"\u2014"],
-    ["Mobile No:",     suppPhone||"\u2014"],
+  // Logo square (G)
+  doc.setFillColor(navy[0], navy[1], navy[2]);
+  doc.rect(lm, y, 18, 18, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14); doc.setFont(undefined, "bold");
+  doc.text("G", lm + 9, y + 12, { align:"center" });
+
+  // Company name block (centred, right of logo)
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(12); doc.setFont(undefined, "bold");
+  doc.text("Al Ghaith Building Construction (L.L.C.)", pw / 2 + 8, y + 7, { align:"center" });
+  doc.setFontSize(7.5); doc.setFont(undefined, "normal"); doc.setTextColor(60, 60, 60);
+  doc.text(
+    "Tel.: (04) 3965554  |  Fax: (04) 3966405  |  Office: 710, 711, Burlington Tower, Business Bay, P.O. Box: 122872, Dubai - UAE",
+    pw / 2 + 8, y + 13, { align:"center" }
+  );
+  doc.text(
+    "Email: purchase@alghaithconstruction.ae  |  Website: www.alghaithconstruction.ae",
+    pw / 2 + 8, y + 19, { align:"center" }
+  );
+
+  y += 24;
+  doc.setDrawColor(navy[0], navy[1], navy[2]); doc.setLineWidth(0.7);
+  doc.line(lm, y, lm + aw, y); y += 3;
+
+  // Title
+  doc.setFontSize(11); doc.setFont(undefined, "bold"); doc.setTextColor(0, 0, 0);
+  doc.text("LOCAL PURCHASE ORDER", pw / 2, y + 5, { align:"center" }); y += 9;
+  doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.3);
+  doc.line(lm, y, lm + aw, y); y += 3;
+
+  // ── Info Grid ───────────────────────────────────────────────────────────────
+  const infoY = y, rowH = 6, col1 = lm, col2 = lm + aw / 2 + 2;
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.3);
+  doc.rect(col1,     infoY, aw / 2 - 2, rowH * 4 + 4, "S");
+  doc.rect(col2 - 1, infoY, aw / 2 - 2, rowH * 4 + 4, "S");
+
+  const sp = safe(lpo.supplierPhone);
+  const leftInfo  = [
+    ["Supplier Name:", safe(lpo.supplierName)],
+    ["Phone No:",      sp],
+    ["Contact Person:", safe(lpo.supplierContact)],
+    ["Mobile No:",     sp],
   ];
-  const rightInfo=[
-    ["Po No:",         lpo.lpoNum||"\u2014"],
-    ["Date:",          lpo.date||"\u2014"],
-    ["Site Name:",     lpo.siteName||proj?.number||"\u2014"],
-    ["Site Location:", lpo.siteLocation||"\u2014"],
+  const rightInfo = [
+    ["Po No:",         safe(lpo.lpoNum)],
+    ["Date:",          safe(lpo.date)],
+    ["Site Name:",     safe(lpo.siteName || proj?.number)],
+    ["Site Location:", safe(lpo.siteLocation)],
   ];
+
   doc.setFontSize(8);
-  leftInfo.forEach(([k,v],i)=>{
-    const ry=infoY+3+i*rowH+3;
-    doc.setFont(undefined,"bold"); doc.text(k,col1+2,ry);
-    doc.setFont(undefined,"normal");
-    doc.text(String(v).substring(0,30),col1+32,ry);
+  leftInfo.forEach(([k, v], i) => {
+    const ry = infoY + 3 + i * rowH + 3;
+    doc.setFont(undefined, "bold");   doc.text(k, col1 + 2, ry);
+    doc.setFont(undefined, "normal"); doc.text(v.substring(0, 30), col1 + 32, ry);
   });
-  rightInfo.forEach(([k,v],i)=>{
-    const ry=infoY+3+i*rowH+3;
-    doc.setFont(undefined,"bold"); doc.text(k,col2,ry);
-    doc.setFont(undefined,"normal");
-    doc.text(String(v).substring(0,28),col2+28,ry);
+  rightInfo.forEach(([k, v], i) => {
+    const ry = infoY + 3 + i * rowH + 3;
+    doc.setFont(undefined, "bold");   doc.text(k, col2, ry);
+    doc.setFont(undefined, "normal"); doc.text(v.substring(0, 28), col2 + 28, ry);
   });
-  y=infoY+rowH*4+9;
+  y = infoY + rowH * 4 + 9;
 
   // ── Items Table ─────────────────────────────────────────────────────────────
-  const heads=[["S.No","Description","Unit","Quantity","Unit Price","Amount Dhs."]];
-  const rows=(lpo.items||[]).map((it,i)=>[
-    i+1, it.desc||"", it.unit||"",
-    Number(it.qty||0).toFixed(3),
-    fmt2(it.rate||0),
-    fmt2(Number(it.qty||0)*Number(it.rate||0)),
+  const heads = [["S.No", "Description", "Unit", "Quantity", "Unit Price", "Amount Dhs."]];
+  const rows  = (lpo.items || []).map((it, i) => [
+    i + 1,
+    safe(it.desc),
+    safe(it.unit),
+    Number(it.qty  || 0).toFixed(3),
+    fmt2(it.rate   || 0),
+    fmt2(Number(it.qty || 0) * Number(it.rate || 0)),
   ]);
+
   doc.autoTable({
-    head:heads, body:rows, startY:y,
-    margin:{left:lm,right:lm},
-    styles:{fontSize:8,cellPadding:2},
-    headStyles:{fillColor:navy,fontStyle:"bold",halign:"center"},
-    columnStyles:{
-      0:{halign:"center",cellWidth:12},
-      2:{halign:"center",cellWidth:15},
-      3:{halign:"right",cellWidth:20},
-      4:{halign:"right",cellWidth:25},
-      5:{halign:"right",cellWidth:27},
+    head: heads, body: rows, startY: y,
+    margin: { left: lm, right: lm },
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: navy, fontStyle: "bold", halign: "center" },
+    columnStyles: {
+      0: { halign:"center", cellWidth: 12 },
+      2: { halign:"center", cellWidth: 15 },
+      3: { halign:"right",  cellWidth: 20 },
+      4: { halign:"right",  cellWidth: 25 },
+      5: { halign:"right",  cellWidth: 27 },
     },
   });
-  y=doc.lastAutoTable.finalY;
+  y = doc.lastAutoTable.finalY;
 
   // ── Sub Total / VAT (5%) / Grand Total ──────────────────────────────────────
-  const subTotal=(lpo.items||[]).reduce((s,it)=>s+Number(it.qty||0)*Number(it.rate||0),0);
-  const vat=subTotal*0.05;
-  const grand=subTotal+vat;
-  const vatX=lm+aw-56, vatW=56;
-  [["Sub Total:",fmt2(subTotal),false],["VAT (5%):",fmt2(vat),false],["Grand Total:",fmt2(grand),true]].forEach(([k,v,bold],i)=>{
-    const vy=y+i*7+3;
-    if(bold){doc.setFillColor(...navy);doc.rect(vatX,vy-4.5,vatW,7,"F");doc.setTextColor(255,255,255);}
-    else{doc.setFillColor(245,245,245);doc.rect(vatX,vy-4.5,vatW,6.5,"F");doc.setTextColor(0,0,0);}
-    doc.setFontSize(8.5); doc.setFont(undefined,"bold"); doc.text(k,vatX+2,vy);
-    doc.setFont(undefined,bold?"bold":"normal"); doc.text(v,vatX+vatW-2,vy,{align:"right"});
-    doc.setTextColor(0,0,0);
-  });
-  y+=7*3+5;
+  const subTotal = (lpo.items || []).reduce((s, it) => s + Number(it.qty || 0) * Number(it.rate || 0), 0);
+  const vat   = subTotal * 0.05;
+  const grand = subTotal + vat;
+  const vatX  = lm + aw - 56, vatW = 56;
+
+  [["Sub Total:", fmt2(subTotal), false], ["VAT (5%):", fmt2(vat), false], ["Grand Total:", fmt2(grand), true]]
+    .forEach(([k, v, bold], i) => {
+      const vy = y + i * 7 + 3;
+      if (bold) {
+        doc.setFillColor(navy[0], navy[1], navy[2]);
+        doc.rect(vatX, vy - 4.5, vatW, 7, "F");
+        doc.setTextColor(255, 255, 255);
+      } else {
+        doc.setFillColor(245, 245, 245);
+        doc.rect(vatX, vy - 4.5, vatW, 6.5, "F");
+        doc.setTextColor(0, 0, 0);
+      }
+      doc.setFontSize(8.5); doc.setFont(undefined, "bold");
+      doc.text(k, vatX + 2, vy);
+      doc.setFont(undefined, bold ? "bold" : "normal");
+      doc.text(v, vatX + vatW - 2, vy, { align:"right" });
+      doc.setTextColor(0, 0, 0);
+    });
+  y += 7 * 3 + 5;
 
   // ── Footer Info Rows ────────────────────────────────────────────────────────
-  const payTerm=(lpo.paymentTerms==="Custom..."||lpo.paymentTerms==="Others")
-    ? (lpo.customPaymentTerms||lpo.paymentTerms||"\u2014")
-    : (lpo.paymentTerms||"\u2014");
-  const words=toWordsAED(grand);
-  const footRows=[
-    ["Total DHS: "+words.substring(0,62), "Total: "+fmt2(grand)],
-    ["Payment Term: "+payTerm,            "Site Contact Name: "+(lpo.siteContactName||"\u2014")],
-    ["MR: "+(lpo.mrNum||"\u2014"),        "Site Mobile: "+(lpo.siteMobile||"\u2014")],
+  const payTerm = (lpo.paymentTerms === "Custom..." || lpo.paymentTerms === "Others")
+    ? safe(lpo.customPaymentTerms || lpo.paymentTerms)
+    : safe(lpo.paymentTerms);
+
+  const words = toWordsAED(grand);
+  const footRows = [
+    ["Total DHS: " + words.substring(0, 62),  "Total: " + fmt2(grand)],
+    ["Payment Term: " + payTerm,               "Site Contact Name: " + safe(lpo.siteContactName)],
+    ["MR: " + safe(lpo.mrNum),                 "Site Mobile: "       + safe(lpo.siteMobile)],
   ];
-  doc.setFontSize(8); doc.setTextColor(0,0,0);
-  doc.setDrawColor(180,180,180); doc.setLineWidth(0.3);
-  footRows.forEach(([left,right])=>{
-    doc.rect(lm,y,aw,6,"S");
-    doc.setFont(undefined,"normal");
-    doc.text(left.substring(0,72),lm+2,y+4);
-    doc.text(right,lm+aw-2,y+4,{align:"right"});
-    y+=6;
+
+  doc.setFontSize(8); doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
+  footRows.forEach(([left, right]) => {
+    doc.rect(lm, y, aw, 6, "S");
+    doc.setFont(undefined, "normal");
+    doc.text(left.substring(0, 72), lm + 2, y + 4);
+    doc.text(right, lm + aw - 2, y + 4, { align:"right" });
+    y += 6;
   });
+
   // Notes / TRN
-  doc.rect(lm,y,aw,6,"S");
-  const notesLine="Notes: "+(lpo.supplierTrn?"TRN: "+lpo.supplierTrn : (lpo.remarks||"\u2014"));
-  doc.text(notesLine.substring(0,80),lm+2,y+4);
-  y+=10;
+  doc.rect(lm, y, aw, 6, "S");
+  const notesLine = "Notes: " + (lpo.supplierTrn ? "TRN: " + safe(lpo.supplierTrn) : safe(lpo.remarks));
+  doc.text(notesLine.substring(0, 80), lm + 2, y + 4);
+  y += 10;
 
-  // ── Authorised Signature ────────────────────────────────────────────────────
-  doc.setDrawColor(0,0,0); doc.setLineWidth(0.4);
-  doc.line(lm,y,lm+42,y);
-  doc.setFontSize(7.5); doc.text("Authorised Signature",lm,y+4);
+  // Authorised Signature
+  doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.4);
+  doc.line(lm, y, lm + 42, y);
+  doc.setFontSize(7.5);
+  doc.text("Authorised Signature", lm, y + 4);
 
-  doc.save("LPO_"+(lpo.lpoNum||"export")+".pdf");
+  doc.save("LPO_" + (lpo.lpoNum || "export") + ".pdf");
 };
+
 
 
 const exportDailyReportPDF = (report, projectName, attendanceRows, manpowerSummary) => {
