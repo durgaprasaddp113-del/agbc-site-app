@@ -6460,7 +6460,18 @@ function useLPOs() {
   };
 
   const remove = async (id) => {
+    // Step 1: get lpo_item IDs so we can clean up receipt items
+    const { data: itemRows } = await supabase
+      .from("lpo_items").select("id").eq("lpo_id", id);
+    const itemIds = (itemRows || []).map(r => r.id);
+    // Step 2: delete material_receipt_items referencing these lpo_items
+    if (itemIds.length > 0) {
+      await supabase.from("material_receipt_items")
+        .delete().in("lpo_item_id", itemIds);
+    }
+    // Step 3: delete lpo_items
     await supabase.from("lpo_items").delete().eq("lpo_id", id);
+    // Step 4: delete lpo
     const { error } = await supabase.from("lpo").delete().eq("id", id);
     if (error) return { ok: false, error: error.message };
     await loadData(); return { ok: true };
