@@ -2403,7 +2403,7 @@ const Dashboard = ({ projects, tasks, snags, inspections, reports, mrs = [], lpo
                         className="flex items-center gap-3 bg-slate-50 hover:bg-amber-50 rounded-lg px-3 py-2.5 cursor-pointer transition-colors">
                         <span className="text-xs font-mono font-bold text-amber-700">{proj?.number||"—"}</span>
                         <div className="flex-1 min-w-0 text-xs text-slate-700 truncate">{proj?.name||"—"}</div>
-                        <span className="text-xs text-slate-500">{(()=>{const _a=Number(r.attendancePresent)||0; const _s=(r.mpSummary||[]).reduce((t,x)=>t+(Number(x.no_workers||x.count||0)),0); const _t=_a+_s||Number(r.manpowerTotal)||0; return _t?`${_t} workers`:""})()}</span>
+                        <span className="text-xs text-slate-500">{(()=>{const _a=Number(r.attendancePresent)||0; const _s=(r.mpSummary||[]).reduce((t,x)=>t+(Number(x.no_workers||x.noWorkers||x.count||0)),0); const _m=(r.manpower||[]).reduce((t,x)=>t+(Number(x.count)||0),0); const _t=_a+(_s||_m)||Number(r.manpowerTotal)||0; return _t?`${_t} workers`:""})()}</span>
                         <Badge text={r.status}/>
                         <span className="text-slate-300 text-xs">›</span>
                       </div>
@@ -4040,7 +4040,8 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
                 const proj=projects.find(p=>p.id===r.pid);
                 const _attMp = Number(r.attendancePresent) || 0;
                   const _sumMp = (r.mpSummary||[]).reduce((s,x)=>s+(Number(x.no_workers||x.noWorkers||x.num_workers||x.workers||x.count||0)),0);
-                  const mp = (_attMp + _sumMp) || Number(r.manpowerTotal) || (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+                  const _manMp = (r.manpower||[]).reduce((s,x)=>s+(Number(x.count)||0),0);
+                  const mp = _attMp + (_sumMp || _manMp) || Number(r.manpowerTotal);
                 return (
                   <tr key={r.id} className="hover:bg-amber-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs font-bold text-amber-700">{r.reportNum||"—"}</td>
