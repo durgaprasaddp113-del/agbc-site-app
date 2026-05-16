@@ -634,7 +634,12 @@ const exportLpoPDF = (lpo, projects) => {
 
   if (!lpo) { showToast("No LPO selected","error"); return; }
   const proj = projects?.find(p => p.id === lpo.pid);
-  const doc  = new jsPDF({ orientation:"portrait", format:"a4" });
+  /* resolve jsPDF — works whether loaded via npm or CDN */
+    const _jsPDF = (typeof jsPDF !== "undefined") ? jsPDF
+      : (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF
+      : null;
+    if (!_jsPDF) { alert("PDF library not loaded. Please hard-refresh (Ctrl+Shift+R) and try again."); return; }
+    const doc = new _jsPDF({ orientation:"portrait", format:"a4" });
   const lm = 10, aw = 190, pw = 210;
   const navy = [30, 58, 95];
   const fmt2 = n => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits:2, maximumFractionDigits:2 });
