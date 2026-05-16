@@ -1325,7 +1325,7 @@ function useDailyReports() {
         inspections: parse("inspections_json"),
         safety: parse("safety_json"),
         manpowerTotal: r.manpower_total || 0,
-          attendancePresent: (r.dpr_attendance || []).length,
+          attendancePresent: (r.dpr_attendance || []).filter(a => a.am_status === 'P').length,
         mpSummary: (() => { try { const v = r.manpower_breakdown; return v ? (typeof v === "string" ? JSON.parse(v) : v) : []; } catch { return []; } })(),
         issues: r.issues_delays || "",
         visitors: r.visitors || "",
@@ -3733,7 +3733,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
   // ── VIEW ────────────────────────────────────────────────────────────────────
   if (mode==="view"&&sel) {
     const proj = projects.find(p=>p.id===sel.pid);
-    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0);
+    const totalMP = (sel.manpower||[]).reduce((s,r)=>s+(Number(r.count)||0),0) + (Number(sel.attendancePresent)||0);
     return (
       <div className="p-6 max-w-4xl space-y-4">
         {confirmId&&<ConfirmDialog message="Delete this report?" onConfirm={()=>handleDelete(confirmId)} onCancel={()=>setConfirmId(null)}/>}
@@ -3765,7 +3765,7 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
         </div>
         {/* Sections */}
         {[
-          { title:"👷 Manpower", rows:sel.manpower||[], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
+          { title:"👷 Manpower", rows:[...(sel.manpower||[]),...((Number(sel.attendancePresent)||0)>0?[{trade:"Company Labour (Daily Register)",count:(Number(sel.attendancePresent)||0),foreman:"—",area:"Site",remarks:`${Number(sel.attendancePresent)||0} workers present`}]:[]) ], heads:["Trade/Company","Workers","Foreman","Area","Remarks"],
             cols:["trade","count","foreman","area","remarks"] },
           { title:"🚜 Equipment", rows:sel.equipment||[], heads:["Equipment","Qty","Status","Operator","Remarks"],
             cols:["name","qty","status","operator","remarks"] },
@@ -3796,7 +3796,8 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             const toStr=(arr,fn)=>Array.isArray(arr)?arr.filter(Boolean).map(fn).join("\n"):(arr||"");
             const rpt={
               ...sel,
-              activities: toStr(sel.activities, a=>`${a.location||""}: ${a.activity||""} (${a.trade||""}) ${a.progress||""}%`),
+              manpower:   toStr(sel.manpower, m=>`${m.trade||m.contractor||""}: ${Number(m.count)||0} workers | Foreman: ${m.foreman||""} | Area: ${m.area||m.location||""}`),
+                activities: toStr(sel.activities, a=>`${a.location||""}: ${a.activity||""} (${a.trade||""}) ${a.progress||""}%`),
               materials:  toStr(sel.materials,  m=>`${m.material||""} — ${m.qty||0} ${m.unit||""} | ${m.supplier||""} | DN: ${m.dn||""}`),
               safety:     toStr(sel.safety,     s=>`[${s.severity||""}] ${s.obs||""} → ${s.action||""}`),
               completed:  toStr(sel.equipment,  e=>`${e.name||""} (${e.status||""}) — Op: ${e.operator||""}`),
