@@ -3871,13 +3871,18 @@ const DailyReports = ({ projects, reports, loading, onAdd, onUpdate, onDelete, s
             const toStr=(arr,fn)=>Array.isArray(arr)?arr.filter(Boolean).map(fn).join("\n"):(arr||"");
               let _attRows=[];
               try{
-                // Single join query — same approach as attendance panel
+                // Fetch attendance rows without join
                 const {data:_ad,error:_ae}=await supabase.from("dpr_attendance")
-                  .select("*, manpower_master(id, employee_id, employee_name, designation, trade, default_team_no)")
+                  .select("id,am_status,pm_status,ot_hours,description_of_work,team_no,manpower_master_id")
                   .eq("dpr_id",sel.id)
                   .order("created_at");
-                if(_ae){console.error("Attendance fetch error:",_ae);}
-                else { _attRows=_ad||[]; }
+                if(_ae){console.error("Attendance fetch:",_ae);}
+                if(_ad&&_ad.length>0){
+                  // Use mpMasters already loaded in component state — no DB join needed
+                  const _mmap={};
+                  (mpMasters||[]).forEach(m=>{_mmap[m.id]=m;});
+                  _attRows=_ad.map(r=>({...r,manpower_master:_mmap[r.manpower_master_id]||{}}));
+                }
               }catch(e){console.error("PDF fetch error:",e);}
             const rpt={
               ...sel,
